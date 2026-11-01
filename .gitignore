@@ -1,0 +1,8 @@
+# build output
+dist/
+*.zip
+# local / private
+deploy.env
+old/
+.DS_Store
+.claude/

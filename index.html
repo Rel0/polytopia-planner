@@ -1,0 +1,154 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="theme-color" content="#1c2340">
+<title>Polytopia Planner – Damage Calculator, Star &amp; Market Planner</title>
+<meta name="description" content="Free fan tool for The Battle of Polytopia: damage &amp; combat calculator, star budget planner and market optimizer – right on your own screenshot. Works on phone and desktop.">
+<link rel="canonical" href="https://polytopiaplanner.com/">
+<meta name="robots" content="index, follow">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="Polytopia Planner">
+<meta property="og:title" content="Polytopia Planner – Damage Calculator, Star &amp; Market Planner">
+<meta property="og:description" content="Plan your next Polytopia turn on your own screenshot: combat calculator, star planner, market optimizer, drawing and notes. Free, no sign-up.">
+<meta property="og:url" content="https://polytopiaplanner.com/">
+<meta property="og:image" content="https://polytopiaplanner.com/og-image.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="Polytopia Planner – damage calculator, star and market planner">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Polytopia Planner – Damage Calculator, Star &amp; Market Planner">
+<meta name="twitter:description" content="Plan your next Polytopia turn on your own screenshot. Free, works on phone and desktop.">
+<meta name="twitter:image" content="https://polytopiaplanner.com/og-image.png">
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@graph": [
+    {
+      "@type": "WebApplication",
+      "name": "Polytopia Planner",
+      "url": "https://polytopiaplanner.com/",
+      "description": "Free fan tool for The Battle of Polytopia: damage and combat calculator, star budget planner, market optimizer, drawing and turn notes on your own screenshot.",
+      "applicationCategory": "GameApplication",
+      "operatingSystem": "Any (web browser)",
+      "browserRequirements": "Requires JavaScript",
+      "inLanguage": "en",
+      "isAccessibleForFree": true,
+      "offers": { "@type": "Offer", "price": "0", "priceCurrency": "EUR" },
+      "image": "https://polytopiaplanner.com/og-image.png"
+    },
+    {
+      "@type": "FAQPage",
+      "mainEntity": [
+        {
+          "@type": "Question",
+          "name": "How is damage calculated in Polytopia?",
+          "acceptedAnswer": { "@type": "Answer", "text": "Attack force = attack × attacker HP / max HP. Defense force = defense × defender HP / max HP × defense bonus (×1.5 on forest, mountain or in a city, ×4 behind a City Wall). Damage = attack force / (attack force + defense force) × attack × 4.5, rounded. If the defender survives and the attacker is in its range, it strikes back with defense force / total × defense × 4.5. The Polytopia Planner does this for you, for several attackers in a row." }
+        },
+        {
+          "@type": "Question",
+          "name": "How do I get the most stars from a Market in Polytopia?",
+          "acceptedAnswer": { "@type": "Answer", "text": "A Market earns stars per turn equal to the levels of the Windmills, Forges and Sawmills next to it (up to 8). Their levels come from the Farms, Mines and Lumber Huts next to them. The Market tool lets you paint your territory and finds the layout with the most stars per turn and the lowest cost." }
+        },
+        {
+          "@type": "Question",
+          "name": "Is the Polytopia Planner free?",
+          "acceptedAnswer": { "@type": "Answer", "text": "Yes. It is a free, unofficial fan tool without sign-up. It runs in the browser on phone, tablet and desktop, and your plans are stored only on your device." }
+        }
+      ]
+    }
+  ]
+}
+</script>
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" type="image/png" href="icons/icon-192.png">
+<link rel="apple-touch-icon" href="icons/icon-180.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="PolyPlanner">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<style>
+  /* boot screen: painted immediately, removed by main.js once the app (and a saved screenshot) is ready */
+  #boot{position:fixed;inset:0;z-index:9999;display:flex;align-items:center;justify-content:center;background:#12172b;transition:opacity .25s}
+  #boot.done{opacity:0;pointer-events:none}
+  #boot .bc{display:flex;flex-direction:column;align-items:center;gap:12px;color:#e8ecf8;font:600 15px system-ui,-apple-system,sans-serif}
+  #boot img{width:72px;height:72px;border-radius:16px}
+  #boot .bb{width:160px;height:4px;border-radius:2px;background:#252e52;overflow:hidden}
+  #boot .bb i{display:block;width:40%;height:100%;border-radius:2px;background:#4cc9f0;animation:bootbar 1s ease-in-out infinite}
+  @keyframes bootbar{0%{transform:translateX(-100%)}100%{transform:translateX(250%)}}
+</style>
+<link rel="stylesheet" href="css/app.css?v=26">
+</head>
+<body>
+<div id="boot" aria-hidden="true"><div class="bc"><img src="icons/icon-192.png" alt=""><span>Polytopia Planner</span><div class="bb"><i></i></div></div></div>
+<header>
+  <h1>🗺️ Polytopia Planner</h1>
+  <button id="budget" class="budget" title="Stars (open Costs)" hidden></button>
+  <button id="fitBtn" class="hbtn" title="Show whole image" aria-label="Show whole image">⤢</button>
+</header>
+
+<main>
+  <nav id="rail" aria-label="Tools">
+    <div id="railTools"></div>
+    <div class="spacer"></div>
+    <button id="menuBtn" class="railmenu" aria-label="Menu"><span>⋯</span><small>Menu</small></button>
+  </nav>
+  <div id="stage">
+    <canvas id="cv"></canvas>
+    <div id="empty" hidden>
+      <div class="card">
+        <div style="font-size:40px">📸</div>
+        <h2>Add screenshot</h2>
+        <p>Take a screenshot in the game and choose it here – or paste it with Ctrl/⌘+V or drag it here.</p>
+        <label class="btn primary" for="file">Choose screenshot</label><br>
+        <button class="btn link" id="blankBtn">Start without screenshot</button><br>
+        <button class="btn tutbtn" id="tutBtn">📖 Tutorial – how it works</button>
+      </div>
+      <details class="about">
+        <summary>What can the Polytopia Planner do?</summary>
+        <p>A free fan tool for <b>The Battle of Polytopia</b>. Load a screenshot of your game and plan your next turn right on top of it – on your phone or computer.</p>
+        <ul>
+          <li><b>Damage calculator</b> – place your and enemy units, see damage, retaliation and kills, and get the best attack order.</li>
+          <li><b>Star planner</b> – tap a tile to see what you can build there and what it costs; plan units, techs and your budget for next turn.</li>
+          <li><b>Market optimizer</b> – finds the layout of Windmill, Forge, Sawmill and Market with the most stars per turn.</li>
+          <li><b>Draw &amp; notes</b> – arrows, marks and numbered moves, also by voice.</li>
+        </ul>
+        <h3>How is damage calculated in Polytopia?</h3>
+        <p>Attack force = attack × HP / max HP, defense force = defense × HP / max HP × defense bonus (×1.5 on forest, mountain or in a city, ×4 behind a City Wall). Damage = attack force / (attack force + defense force) × attack × 4.5, rounded. A surviving defender in range strikes back the same way with its defense.</p>
+        <h3>How do I get the most stars from a Market?</h3>
+        <p>A Market earns stars per turn equal to the levels of the Windmills, Forges and Sawmills next to it (up to 8). Their levels come from the Farms, Mines and Lumber Huts around them. The Market tool tries every layout and shows the best one.</p>
+        <h3>Is it free?</h3>
+        <p>Yes – no sign-up, no ads, no tracking. Your plans stay on your device.</p>
+      </details>
+      <a class="privlink" href="privacy.html">Privacy</a>
+    </div>
+    <div id="hint" hidden></div>
+    <div id="float" hidden></div>
+  </div>
+  <aside id="drawer" hidden>
+    <button id="drawerTab" aria-label="Collapse panel"></button>
+    <div id="drawerHead"><b id="drawerTitle"></b><button id="drawerClose" class="x" aria-label="Collapse panel">›</button></div>
+    <div id="drawerBody"></div>
+  </aside>
+</main>
+
+<input id="file" type="file" accept="image/*" hidden>
+<div id="sheet" hidden><div id="sheetBody"></div></div>
+<div id="toast"></div>
+
+<script src="js/data.js?v=26"></script>
+<script src="js/engine.js?v=26"></script>
+<script src="js/vision.js?v=26"></script>
+<script src="js/ai.js?v=26"></script>
+<script src="js/core.js?v=26"></script>
+<script src="js/icons.js?v=26"></script>
+<script src="js/units.js?v=26"></script>
+<script src="js/cost.js?v=26"></script>
+<script src="js/draw.js?v=26"></script>
+<script src="js/market.js?v=26"></script>
+<script src="js/notes.js?v=26"></script>
+<script src="js/tutorial.js?v=26"></script>
+<script src="js/main.js?v=26"></script>
+</body>
+</html>
