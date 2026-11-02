@@ -224,6 +224,14 @@ window.PP = window.PP || {};
   function resName(id) { return RES_NAME[id] || (RES(id) || {}).name || id; }
   function itemNote(it) { return it && (NOTE[it.id] !== undefined ? NOTE[it.id] : it.note); }
   function techName(id) { return (PP.TECH && PP.TECH[id] && PP.TECH[id].name) || id; }
+  // v27: special tribes call some techs differently (Polaris "Frostwork" = Fishing slot …)
+  function unitTech(u) { return u.techName ? u.techName + ' (= ' + techName(u.tech) + ')' : techName(u.tech); }
+  // units to offer for training: my tribe's trainable units (+ ones already planned, e.g. after switching tribe)
+  function trainList(planned) {
+    var U = PP.UNITS || {}, l = PP.myTrainable ? PP.myTrainable() : Object.keys(U).filter(function (k) { return U[k].cost != null; });
+    Object.keys(planned || {}).forEach(function (k) { if (U[k] && U[k].cost != null && +planned[k] > 0 && l.indexOf(k) < 0) l.push(k); });
+    return l;
+  }
   function star(n) { return (n < 0 ? '+' + (-n) : String(n)) + ' ★'; }
   function isBuilding(id) { return BUILDINGS.indexOf(id) >= 0; }
   function uid() { return PP.util && PP.util.uid ? PP.util.uid() : Math.random().toString(36).slice(2, 10); }
@@ -387,7 +395,7 @@ window.PP = window.PP || {};
       if (n <= 0 || !u || u.cost == null) return;
       lines.push({ kind: 'unit', id: k, icon: u.icon, label: (n > 1 ? n + '× ' : '') + u.name, cost: u.cost * n, n: n });
       spent += u.cost * n;
-      if (u.tech && !hasTech(u.tech)) warn.push(u.name + ' needs ' + techName(u.tech));
+      if (u.tech && !hasTech(u.tech)) warn.push(u.name + ' needs ' + unitTech(u));
     });
     var seen = {}, bad = 0, nTiles = 0, badList = [];
     b.placements.forEach(function (p) {
@@ -667,14 +675,13 @@ window.PP = window.PP || {};
       out.mid = homeMid(ci, bt);
       if (ci.side !== 'me') return out;
       var cu = B().cityUnits[ci.id] || {}, U = PP.UNITS || {};
-      Object.keys(U).forEach(function (k) {
+      trainList().forEach(function (k) {
         var u = U[k];
-        if (u.cost == null) return;
         var on = +cu[k] > 0, lock = !hasTech(u.tech), cls = [];
         if (on) cls.push('on'); else if (u.cost > e.rest) cls.push('cant');
         if (lock && !on) cls.push('lock');
         out.items.push({ k: 'unit:' + k, ic: iconHtml(k, u.icon, 30), nm: u.name, cost: u.cost + ' ★', cls: cls, lock: lock && !on, cnt: +cu[k] > 1 ? cu[k] : 0,
-          title: u.name + ' – ' + u.cost + ' ★' + (lock ? ' (needs ' + techName(u.tech) + ')' : '') });
+          title: u.name + ' – ' + u.cost + ' ★' + (lock ? ' (needs ' + unitTech(u) + ')' : '') });
       });
       return out;
     }
@@ -994,7 +1001,7 @@ window.PP = window.PP || {};
     var cu = b.cityUnits[ci.id] || {}, U = PP.UNITS || {}, nHere = 0;
     Object.keys(cu).forEach(function (k) { nHere += +cu[k] || 0; });
     html += '<div class="cs-h"><span>Train units here</span>' + (nHere ? '<span>' + nHere + ' planned</span>' : '') + '</div>';
-    html += Object.keys(U).filter(function (k) { return U[k].cost != null; }).map(function (k) {
+    html += trainList(cu).map(function (k) {
       return unitRow(k, cu[k] || 0, 'cu:' + k, e);
     }).join('');
     if (nHere > 1) html += '<p class="cs-warn">⚠️ A city trains one unit per turn (the new unit stands on the city tile).</p>';
@@ -1010,7 +1017,7 @@ window.PP = window.PP || {};
     return '<div class="' + cls + '"><span class="ic">' + iconHtml(k, u.icon, 24) + '</span><span class="nm">' + esc(u.name) + '</span>' +
       stepper(key, n, false) +
       '<span class="sub"><small>' + u.cost + ' ★' + (n > 1 ? ' · Σ ' + (u.cost * n) + ' ★' : '') + '</small>' +
-      (!avail ? '<i>🔒 ' + esc(techName(u.tech)) + '</i>' : '<i>' + u.hp + '❤ ' + u.atk + '⚔ ' + u.def + '🛡</i>') +
+      (!avail ? '<i>🔒 ' + esc(unitTech(u)) + '</i>' : '<i>' + u.hp + '❤ ' + u.atk + '⚔ ' + u.def + '🛡</i>') +
       '</span></div>';
   }
 
@@ -1018,7 +1025,7 @@ window.PP = window.PP || {};
     var b = B(), U = PP.UNITS || {};
     var html = '<div class="cs-h"><span>Train units</span></div>';
     if (cities().some(function (x) { return x.side === 'me'; })) html += '<p class="cs-note">Tip: tap one of your cities on the map to train a unit there.</p>';
-    html += Object.keys(U).filter(function (k) { return U[k].cost != null; }).map(function (k) {
+    html += trainList(b.unitCounts).map(function (k) {
       return unitRow(k, b.unitCounts[k] || 0, 'u:' + k, e);
     }).join('');
     return html;

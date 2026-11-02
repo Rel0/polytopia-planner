@@ -8,7 +8,9 @@ A free fan tool for **The Battle of Polytopia** – plan your next turn right on
 
 ## Features
 
-- ⚔️ **Damage calculator** – place units on your screenshot and simulate fights (HP, veteran, defense bonus)
+- ⚔️ **Damage calculator** – place units on your screenshot and simulate fights (HP, veteran, defense bonus);
+  all 55 units incl. ships and the special tribes (Aquarion, ∑∫ỹriȱŋ, Polaris, Cymanti) with their skills
+  (splash, explode, poison, freeze, convert, tentacles, …)
 - ⭐ **Star & market planner** – budget your stars and optimize market purchases
 - ✏️ **Draw & notes** – arrows, markings and notes on top of the map
 - Automatic grid detection and text recognition (OCR) run in the browser – screenshots stay on your device

@@ -90,6 +90,175 @@ window.PP = window.PP || {};
       f: W }
   ];
 
+  // ---------------------------------------------------------------- v27: ships + special tribe units (white silhouettes)
+  // boat hull (bottom half of the box)
+  var HULL = 'M-46 8H46C43 22 34 33 22 36H-22C-34 33 -43 22 -46 8Z';
+  var HULL_S = 'M-38 14H38C35 26 28 34 18 36H-18C-28 34 -35 26 -38 14Z';
+  // Raft: three logs with a small mast and flag
+  I.raft = [
+    { d: 'M-38 14H38M-38 25H38M-34 36H34', s: W, w: 9, cap: 'round' },
+    { d: 'M-6 8V-42', s: W, w: 5, cap: 'round' },
+    { d: poly([-4, -42, 30, -30, -4, -16]), f: W }
+  ];
+  // Scout: hull with mast and two sails
+  I.scout = [
+    { d: HULL, f: W },
+    { d: 'M0 4V-46', s: W, w: 4.5, cap: 'round' },
+    { d: poly([5, -42, 5, 0, 38, 0]) + poly([-5, -32, -5, 0, -30, 0]), f: W }
+  ];
+  // Rammer: low hull with a long ram spike and a cabin
+  I.rammer = [
+    { d: 'M-46 0H26L48 8L28 14C26 26 18 33 8 36H-24C-36 33 -44 18 -46 0Z', f: W },
+    { d: 'M-30 -4V-24C-30 -28 -27 -30 -24 -30H2C5 -30 8 -28 8 -24V-4Z', f: W },
+    { d: poly([-22, -22, -8, -22, -8, -14, -22, -14]), f: 'cut', s: 'cut', w: 0.1 }
+  ];
+  // Bomber: hull with a mortar firing a ball
+  I.bomber = [
+    { d: HULL, f: W },
+    { d: 'M-18 2L4 -26', s: W, w: 17, cap: 'butt' },
+    { d: 'M-30 4C-30 -8 -18 -14 -6 -10L4 2Z', f: W },
+    { d: circ(26, -36, 9), f: W }
+  ];
+  // Juggernaut: big hull carrying a crenellated tower
+  I.juggernaut = [
+    { d: HULL, f: W },
+    { d: 'M-26 4V-34H-16V-26H-6V-34H6V-26H16V-34H26V4Z', f: W },
+    { d: 'M-6 4V-8C-6 -12 -3 -14 0 -14C3 -14 6 -12 6 -8V4Z', f: 'cut', s: 'cut', w: 0.1 }
+  ];
+  // Dagger: short blade with guard and grip
+  var DAGGER = [
+    { d: poly([-6, 8, 28, -30, 38, -38, 32, -26, 4, 14]), f: W, s: W, w: 3 },
+    { d: 'M-16 -2L10 24', s: W, w: 7, cap: 'round' },
+    { d: 'M-2 12L-22 32', s: W, w: 8, cap: 'round' }
+  ];
+  I.dagger = DAGGER;
+  // Pirate: dagger above a small hull
+  I.pirate = [
+    { d: HULL_S, f: W },
+    { d: poly([-2, -2, 22, -34, 30, -40, 26, -30, 6, 4]), f: W, s: W, w: 3 },
+    { d: 'M-10 -8L8 10', s: W, w: 6, cap: 'round' },
+    { d: 'M0 2L-14 16', s: W, w: 6.5, cap: 'round' }
+  ];
+  // Cloak: hooded figure with a dark face opening
+  var HOOD = 'M0 -44C20 -44 32 -28 32 -6L38 42H-38L-32 -6C-32 -28 -20 -44 0 -44Z';
+  I.cloak = [
+    { d: HOOD, f: W },
+    { d: 'M0 -30C10 -30 16 -20 16 -10C16 2 8 8 0 8C-8 8 -16 2 -16 -10C-16 -20 -10 -30 0 -30Z', f: 'cut', s: 'cut', w: 0.1 }
+  ];
+  // Dinghy: small hull carrying a hood
+  I.dinghy = [
+    { d: HULL_S, f: W },
+    { d: 'M0 -44C13 -44 21 -34 21 -20L24 10H-24L-21 -20C-21 -34 -13 -44 0 -44Z', f: W },
+    { d: 'M0 -35C7 -35 11 -28 11 -21C11 -13 6 -9 0 -9C-6 -9 -11 -13 -11 -21C-11 -28 -7 -35 0 -35Z', f: 'cut', s: 'cut', w: 0.1 }
+  ];
+  // Shark: dorsal fin above a wave
+  I.shark = [
+    { d: 'M-34 16C-14 12 0 -16 2 -44C18 -28 32 -6 36 16Z', f: W },
+    { d: 'M-46 30C-38 22 -31 22 -23 30S-8 38 0 30S15 22 23 30S38 38 46 30', s: W, w: 7, cap: 'round' }
+  ];
+  // Jelly: dome with wavy tentacles
+  I.jelly = [
+    { d: 'M-36 2C-36 -26 -20 -40 0 -40C20 -40 36 -26 36 2C30 6 24 2 18 6C12 2 6 6 0 2C-6 6 -12 2 -18 6C-24 2 -30 6 -36 2Z', f: W },
+    { d: 'M-22 12C-28 22 -16 30 -22 42M-7 12C-13 22 -1 30 -7 42M8 12C2 22 14 30 8 42M23 12C17 22 29 30 23 42', s: W, w: 4.5, cap: 'round' }
+  ];
+  // Puffer: spiky round fish with tail and eye
+  I.puffer = [
+    { d: circ(-4, 0, 28) + poly([-4, -44, 4, -28, -12, -28]) + poly([-4, 44, 4, 28, -12, 28]) + poly([-46, 0, -30, -8, -30, 8]) +
+        poly([-34, -32, -18, -24, -26, -16]) + poly([-34, 32, -18, 24, -26, 16]) + poly([26, -32, 10, -24, 18, -16]) + poly([26, 32, 10, 24, 18, 16]) +
+        poly([22, 0, 46, -16, 40, 0, 46, 16]), f: W },
+    { d: circ(8, -8, 5), f: 'cut', s: 'cut', w: 0.1 }
+  ];
+  // Tridention: trident
+  I.tridention = [
+    { d: 'M0 -18V44', s: W, w: 7, cap: 'round' },
+    { d: 'M-26 -40V-24C-26 -14 -16 -10 0 -10C16 -10 26 -14 26 -24V-40', s: W, w: 7, cap: 'round' },
+    { d: 'M0 -46V-10', s: W, w: 7, cap: 'round' },
+    { d: poly([-26, -48, -32, -36, -20, -36]) + poly([26, -48, 32, -36, 20, -36]) + poly([0, -52, -6, -40, 6, -40]), f: W, s: W, w: 3 }
+  ];
+  // Crab: body with two claws and legs
+  I.crab = [
+    { d: 'M-30 6C-30 -8 -16 -14 0 -14C16 -14 30 -8 30 6C30 18 16 24 0 24C-16 24 -30 18 -30 6Z', f: W },
+    { d: 'M-26 16L-42 30M-30 6L-46 14M26 16L42 30M30 6L46 14M-20 -8L-30 -24M20 -8L30 -24', s: W, w: 5, cap: 'round' },
+    { d: 'M-30 -24C-44 -24 -46 -44 -32 -46L-30 -36L-22 -42C-18 -32 -22 -24 -30 -24Z' + 'M30 -24C44 -24 46 -44 32 -46L30 -36L22 -42C18 -32 22 -24 30 -24Z', f: W },
+    { d: circ(-8, 0, 3.5) + circ(8, 0, 3.5), f: 'cut', s: 'cut', w: 0.1 }
+  ];
+  // Polytaur: bull head with horns
+  I.polytaur = [
+    { d: 'M-20 -20C-20 -26 -14 -30 0 -30C14 -30 20 -26 20 -20L18 14C18 30 10 40 0 40C-10 40 -18 30 -18 14Z', f: W },
+    { d: 'M-20 -18C-36 -18 -44 -30 -42 -44M20 -18C36 -18 44 -30 42 -44M-20 -10L-34 -2M20 -10L34 -2', s: W, w: 7, cap: 'round' },
+    { d: circ(-9, -10, 3.6) + circ(9, -10, 3.6) + circ(-6, 26, 3.2) + circ(6, 26, 3.2), f: 'cut', s: 'cut', w: 0.1 }
+  ];
+  // Egg (Dragon Egg, Insect Egg): egg with a zigzag crack
+  I.egg = [
+    { d: 'M0 -44C20 -44 34 -10 34 12C34 32 18 44 0 44C-18 44 -34 32 -34 12C-34 -10 -20 -44 0 -44Z', f: W },
+    { d: 'M-30 4L-16 -6L-6 6L6 -6L16 6L30 -4', s: 'cut', w: 4.5, cap: 'round' }
+  ];
+  // Dragon: head in profile with horn, open jaw and a wing
+  I.dragon = [
+    { d: 'M-44 44C-40 20 -30 4 -14 -6C-16 -20 -10 -34 4 -40L2 -50L14 -40C26 -38 36 -30 44 -22L46 -12L28 -12L42 0L24 2C14 4 8 12 6 22L4 44Z', f: W },
+    { d: circ(14, -26, 4), f: 'cut', s: 'cut', w: 0.1 },
+    { d: 'M-36 34C-28 18 -18 10 -8 8', s: 'cut', w: 3.5, cap: 'round' }
+  ];
+  // Mooni: six-armed snowflake
+  I.mooni = [
+    { d: 'M0 -44V44M-38 -22L38 22M-38 22L38 -22', s: W, w: 6.5, cap: 'round' },
+    { d: 'M-10 -36L0 -26L10 -36M-10 36L0 26L10 36M-36 -8L-22 -12L-26 -26M36 8L22 12L26 26M-36 8L-22 12L-26 26M36 -8L22 -12L26 -26', s: W, w: 5, cap: 'round' },
+    { d: circ(0, 0, 9), f: W }
+  ];
+  // Battle Sled: sled with curved runner and a backrest with a spear
+  I.battleSled = [
+    { d: 'M-46 30H28C42 30 46 18 38 10', s: W, w: 6, cap: 'round' },
+    { d: 'M-30 30V16M0 30V16M24 30V16', s: W, w: 5, cap: 'round' },
+    { d: 'M-40 18V-2C-40 -6 -37 -8 -34 -8H-26V4H34V18Z', f: W },
+    { d: 'M-20 0L26 -46', s: W, w: 5, cap: 'round' },
+    { d: poly([26, -46, 16, -42, 22, -36]), f: W, s: W, w: 3 }
+  ];
+  // Ice Fortress: tower with battlements and a door
+  I.iceFortress = [
+    { d: 'M-30 44V-30H-18V-20H-6V-30H6V-20H18V-30H30V44Z' + poly([-36, -30, -24, -44, -12, -30]) + poly([12, -30, 24, -44, 36, -30]), f: W },
+    { d: 'M-10 44V24C-10 18 -6 14 0 14C6 14 10 18 10 24V44Z' + poly([-20, -8, -10, -8, -10, 2, -20, 2]) + poly([10, -8, 20, -8, 20, 2, 10, 2]), f: 'cut', s: 'cut', w: 0.1 }
+  ];
+  // Hexapod (also Doomux): beetle seen from above
+  I.hexapod = [
+    { d: 'M0 -16C16 -16 24 -2 24 14C24 32 12 44 0 44C-12 44 -24 32 -24 14C-24 -2 -16 -16 0 -16Z' + circ(0, -26, 11), f: W },
+    { d: 'M-22 -2L-40 -14M-24 14L-44 14M-22 30L-40 42M22 -2L40 -14M24 14L44 14M22 30L40 42M-6 -34L-14 -48M6 -34L14 -48', s: W, w: 5, cap: 'round' },
+    { d: 'M0 -14V42', s: 'cut', w: 3.5, cap: 'butt' }
+  ];
+  // Moth (also Phychi): two pairs of wings, body, antennae
+  I.moth = [
+    { d: 'M-4 -10C-16 -38 -40 -42 -44 -26C-46 -10 -28 0 -4 0Z' + 'M4 -10C16 -38 40 -42 44 -26C46 -10 28 0 4 0Z' +
+        'M-4 4C-22 6 -36 18 -30 34C-24 42 -10 30 -4 16Z' + 'M4 4C22 6 36 18 30 34C24 42 10 30 4 16Z', f: W },
+    { d: 'M0 -18V30', s: W, w: 7, cap: 'round' },
+    { d: 'M-2 -20C-6 -32 -12 -38 -20 -42M2 -20C6 -32 12 -38 20 -42', s: W, w: 3.5, cap: 'round' }
+  ];
+  // Raychi: manta ray with tail
+  I.raychi = [
+    { d: 'M0 -30C20 -30 38 -12 48 4C30 2 16 8 0 26C-16 8 -30 2 -48 4C-38 -12 -20 -30 0 -30Z', f: W },
+    { d: 'M0 24C2 32 8 40 18 46', s: W, w: 4, cap: 'round' },
+    { d: circ(-10, -12, 3.2) + circ(10, -12, 3.2), f: 'cut', s: 'cut', w: 0.1 }
+  ];
+  // Boomchi: round bomb with a burning fuse
+  I.boomchi = [
+    { d: circ(-6, 10, 30), f: W },
+    { d: 'M10 -16L18 -26', s: W, w: 10, cap: 'butt' },
+    { d: 'M18 -26C22 -34 28 -36 34 -34', s: W, w: 4, cap: 'round' },
+    { d: 'M36 -44V-38M44 -36H38M42 -44L38 -40M30 -42L33 -39', s: W, w: 3.5, cap: 'round' },
+    { d: 'M-22 2C-20 -6 -14 -10 -8 -12', s: 'cut', w: 4, cap: 'round' }
+  ];
+  // Living Island: shell-island with a palm tree
+  I.livingIsland = [
+    { d: 'M-46 30C-42 6 -24 -4 0 -4C24 -4 42 6 46 30Z', f: W },
+    { d: 'M-46 38H46', s: W, w: 5, cap: 'round' },
+    { d: 'M-24 22L-12 8M0 24V6M24 22L12 8', s: 'cut', w: 3.5, cap: 'round' },
+    { d: 'M6 -4C6 -20 2 -30 -4 -36', s: W, w: 5, cap: 'round' },
+    { d: 'M-4 -36C-16 -46 -30 -42 -36 -30C-24 -36 -14 -36 -4 -36Z' + 'M-4 -36C6 -48 22 -48 30 -38C18 -40 8 -40 -4 -36Z' + 'M-4 -36C-8 -28 -16 -22 -26 -20C-20 -30 -12 -36 -4 -36Z' + 'M-4 -36C6 -32 14 -24 16 -14C8 -24 0 -30 -4 -36Z', f: W }
+  ];
+  // Centipede (also Segment): chain of body segments with legs and antennae
+  I.centipede = [
+    { d: circ(26, -26, 11) + circ(8, -8, 12) + circ(-12, 10, 12) + circ(-30, 28, 10), f: W },
+    { d: 'M30 -36L36 -48M36 -24L48 -26M0 -20L-6 -30M20 0L28 8M-20 -2L-28 -10M0 20L6 30M-40 18L-46 10M-20 38L-14 46', s: W, w: 4, cap: 'round' }
+  ];
+
   // ---------------------------------------------------------------- buildings (flat colour)
   var BR = '#8a5a34', BRD = '#5e3b20', BRL = '#b98154', GR = '#5fc24a', GRD = '#3c8f2f', ST = '#9aa3b5', STD = '#6b7386', STL = '#c8cfdc',
     RED = '#d8463c', REDD = '#a52e28', CRM = '#f3ead8', SKY = '#58b8ef', SEA = '#2a6fc9', GOLD = '#ffcf3f', OR = '#ff8a2a';
@@ -267,6 +436,14 @@ window.PP = window.PP || {};
   // drop helper-only parts
   Object.keys(I).forEach(function (k) { I[k] = I[k].filter(function (p) { return !p.skip; }); });
   var UNIT = { warrior: 1, archer: 1, defender: 1, rider: 1, swordsman: 1, catapult: 1, knight: 1, mindbender: 1, giant: 1 };
+  // every unit in PP.UNITS gets a symbol: its own, or the one named by its `ico` (e.g. Mermaid Archer → archer)
+  if (PP.UNITS) Object.keys(PP.UNITS).forEach(function (k) {
+    var src = PP.UNITS[k].ico || k;
+    if (!I[k] && I[src]) I[k] = I[src];
+    if (I[k]) UNIT[k] = 1;
+  });
+  ['raft', 'scout', 'rammer', 'bomber', 'juggernaut', 'dagger', 'pirate', 'cloak', 'dinghy', 'shark', 'jelly', 'puffer', 'tridention', 'crab',
+    'polytaur', 'egg', 'dragon', 'mooni', 'battleSled', 'iceFortress', 'hexapod', 'moth', 'raychi', 'boomchi', 'livingIsland', 'centipede'].forEach(function (k) { UNIT[k] = 1; });
 
   // ---------------------------------------------------------------- canvas
   var p2d = {};

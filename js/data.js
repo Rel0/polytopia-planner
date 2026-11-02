@@ -5,21 +5,141 @@ window.PP = window.PP || {};
 (function (PP) {
   'use strict';
 
-  // hp, atk, def, mov (move range), rng (attack range), cost (★), tech (required tech id)
+  // hp, atk, def, mov (move range), rng (attack range), cost (★ to train), tech (required tech id).
+  // Values from the Polytopia wiki (polytopia.fandom.com, Nov 2026, after "Path of the Ocean").
+  // Optional fields:
+  //   ico   – PP.icons symbol to draw (default: the unit key)
+  //   carry – naval unit whose HP comes from the unit it carries (hp = null)
+  //   up    – ★ to upgrade a Raft into this ship (shown instead of a training cost)
+  //   val   – value for the attack optimizer when the unit can't be trained (super units, Daggers …)
+  //   train: false – not trained in a city (spawned, grown, upgraded or enchanted)
+  //   techName – the tribe's own name for the tech (tech = the standard tech in the same tree slot)
+  //   skills: fort (city defense bonus), stiff (no retaliation), surprise (no retaliation when it attacks),
+  //           explode (half damage to all adjacent enemies, the unit dies; boomOpt = optional instead of a normal attack),
+  //           splash, poison, persist, double, freeze, convert, stomp, tentacles … (see PP.SKILL_INFO), noVet (can't become a veteran)
+  function u(name, emoji, hp, atk, def, mov, rng, cost, tech, more) {
+    var o = { name: name, icon: emoji, hp: hp, atk: atk, def: def, mov: mov, rng: rng, cost: cost, tech: tech };
+    if (more) Object.keys(more).forEach(function (k) { o[k] = more[k]; });
+    (o.skills || []).forEach(function (k) { o[k] = true; });
+    return o;
+  }
+  var SUPER = { train: false, val: 15, super: true };
+  function S(skills, more) { var o = { skills: skills }; if (more) Object.keys(more).forEach(function (k) { o[k] = more[k]; }); return o; }
+  function sup(skills, more) { return S(skills.concat(['noVet']), Object.assign({}, SUPER, more || {})); }
+
   PP.UNITS = {
-    warrior:    { name: 'Warrior',        icon: '⚔️', hp: 10, atk: 2,   def: 2, mov: 1, rng: 1, cost: 2,    tech: null },
-    archer:     { name: 'Archer',   icon: '🏹', hp: 10, atk: 2,   def: 1, mov: 1, rng: 2, cost: 3,    tech: 'archery' },
-    defender:   { name: 'Defender',    icon: '🛡️', hp: 15, atk: 1,   def: 3, mov: 1, rng: 1, cost: 3,    tech: 'strategy' },
-    rider:      { name: 'Rider',         icon: '🐎', hp: 10, atk: 2,   def: 1, mov: 2, rng: 1, cost: 3,    tech: 'riding' },
-    swordsman:  { name: 'Swordsman', icon: '🗡️', hp: 15, atk: 3,   def: 3, mov: 1, rng: 1, cost: 5,    tech: 'smithery' },
-    catapult:   { name: 'Catapult',       icon: '🪨', hp: 10, atk: 4,   def: 0, mov: 1, rng: 3, cost: 8,    tech: 'mathematics' },
-    knight:     { name: 'Knight',         icon: '🏇', hp: 10, atk: 3.5, def: 1, mov: 3, rng: 1, cost: 8,    tech: 'chivalry' },
-    mindbender: { name: 'Mind Bender',    icon: '🔮', hp: 10, atk: 0,   def: 1, mov: 1, rng: 1, cost: 5,    tech: 'philosophy' },
-    giant:      { name: 'Giant',          icon: '🗿', hp: 40, atk: 5,   def: 4, mov: 1, rng: 1, cost: null, tech: null },
+    // ---- standard units (all regular tribes)
+    warrior:    u('Warrior',     '⚔️', 10, 2,   2, 1, 1, 2, null,          S(['fort'])),
+    archer:     u('Archer',      '🏹', 10, 2,   1, 1, 2, 3, 'archery',     S(['fort'])),
+    defender:   u('Defender',    '🛡️', 15, 1,   3, 1, 1, 3, 'strategy',    S(['fort'])),
+    rider:      u('Rider',       '🐎', 10, 2,   1, 2, 1, 3, 'riding',      S(['fort'])),
+    swordsman:  u('Swordsman',   '🗡️', 15, 3,   3, 1, 1, 5, 'smithery'),
+    catapult:   u('Catapult',    '🪨', 10, 4,   0, 1, 3, 8, 'mathematics', S(['stiff'])),
+    knight:     u('Knight',      '🏇', 10, 3.5, 1, 3, 1, 8, 'chivalry',    S(['fort', 'persist'])),
+    mindbender: u('Mind Bender', '🔮', 10, 0,   1, 1, 1, 5, 'philosophy',  S(['stiff', 'convert', 'heal'])),
+    cloak:      u('Cloak',       '🥷', 5,  2, 0.5, 2, 1, 8, 'diplomacy',   S(['stiff', 'noVet'])),
+    dagger:     u('Dagger',      '🔪', 10, 2,   2, 1, 1, null, null,       S(['surprise', 'noVet'], { train: false, val: 2 })),
+    giant:      u('Giant',       '🗿', 40, 5,   4, 1, 1, null, null,       sup([])),
+    // ---- ships (a land unit that moves into a port becomes a Raft; HP = the carried unit's)
+    raft:       u('Raft',        '🛶', null, 0, 1, 2, 0, null, 'fishing',  S(['stiff'], { carry: true, train: false, up: 0 })),
+    scout:      u('Scout',       '⛵', null, 2, 1, 3, 2, null, 'sailing',  S([], { carry: true, train: false, up: 5 })),
+    rammer:     u('Rammer',      '🚤', null, 3, 3, 3, 1, null, 'ramming',  S([], { carry: true, train: false, up: 5, techName: 'Aquaculture' })),
+    bomber:     u('Bomber',      '💣', null, 3, 2, 2, 3, null, 'navigation', S(['stiff', 'splash'], { carry: true, train: false, up: 15 })),
+    juggernaut: u('Juggernaut',  '🚢', 40, 4,   4, 2, 1, null, null,       S(['stiff', 'stomp', 'noVet'], { train: false, val: 15, ico: 'juggernaut' })),
+    pirate:     u('Pirate',      '🏴‍☠️', 10, 2, 2, 2, 1, null, null,       S(['surprise', 'noVet'], { train: false, val: 2 })),
+    dinghy:     u('Dinghy',      '🛶', 5,  2, 0.5, 2, 1, null, null,       S(['stiff', 'noVet'], { train: false, val: 8 })),
+
+    // ---- Aquarion (all land units are amphibious "mermaid" versions)
+    mermaid:         u('Mermaid',          '🧜', 10, 2, 2, 1, 1, 2, null,         S(['fort'], { ico: 'warrior' })),
+    mermaidArcher:   u('Mermaid Archer',   '🏹', 10, 2, 1, 1, 2, 3, 'archery',    S(['fort'], { ico: 'archer' })),
+    mermaidDefender: u('Mermaid Defender', '🛡️', 15, 1, 3, 1, 1, 3, 'strategy',   S(['fort'], { ico: 'defender' })),
+    amphibian:       u('Amphibian',        '🐸', 10, 2, 1, 2, 1, 3, 'riding',     S(['fort'], { ico: 'rider' })),
+    swordsmaid:      u('Swordsmaid',       '🗡️', 15, 3, 3, 1, 1, 5, 'smithery',   S([], { ico: 'swordsman' })),
+    puffer:          u('Puffer',           '🐡', 10, 4, 0, 2, 3, 8, 'mathematics', S(['stiff'])),
+    tridention:      u('Tridention',       '🔱', 10, 2.5, 1, 2, 2, 8, 'chivalry', S(['fort', 'persist'], { techName: 'Spearing' })),
+    siren:           u('Siren',            '🔮', 10, 0, 1, 1, 1, 5, 'philosophy', S(['stiff', 'convert', 'heal'], { ico: 'mindbender' })),
+    scuba:           u('Scuba',            '🥷', 5,  0, 0.5, 2, 1, 8, 'diplomacy', S(['stiff', 'noVet'], { ico: 'cloak' })),
+    mermaidDagger:   u('Mermaid Dagger',   '🔪', 10, 2, 2, 1, 1, null, null,      S(['surprise', 'noVet'], { train: false, val: 2, ico: 'dagger' })),
+    shark:           u('Shark',            '🦈', 10, 3.5, 2, 3, 1, 8, 'sailing',  S(['surprise'], { techName: 'Marine Life' })),
+    jelly:           u('Jelly',            '🪼', 20, 2, 2, 2, 1, 8, 'navigation', S(['stiff', 'tentacles', 'noVet'])),
+    crab:            u('Crab',             '🦀', 40, 4, 4, 2, 1, null, null,      sup([])),
+
+    // ---- ∑∫ỹriȱŋ (standard units + Polytaur; the Dragon replaces the Giant)
+    polytaur:   u('Polytaur',    '🐂', 15, 3, 1, 1, 1, null, 'hunting',   S(['fort', 'noVet'], { train: false, val: 3, techName: 'Forest Magic', note: 'enchant an animal for 3 ★' })),
+    dragonEgg:  u('Dragon Egg',  '🥚', 10, 0, 2, 1, 1, null, null,        sup(['fort', 'stiff'], { ico: 'egg' })),
+    babyDragon: u('Baby Dragon', '🐉', 15, 3, 3, 2, 1, null, null,        sup([], { ico: 'dragon' })),
+    fireDragon: u('Fire Dragon', '🐲', 20, 4, 3, 3, 2, null, null,        sup(['splash'], { ico: 'dragon' })),
+
+    // ---- Polaris
+    iceArcher:   u('Ice Archer',   '🏹', 10, 1, 1, 1, 2, 3, 'archery',     S(['fort', 'stiff', 'freeze'], { ico: 'archer' })),
+    mooni:       u('Mooni',        '❄️', 10, 0, 1, 1, 1, 5, 'fishing',     S(['stiff', 'autoFreeze', 'noVet'], { techName: 'Frostwork' })),
+    battleSled:  u('Battle Sled',  '🛷', 15, 3, 2, 2, 1, 5, 'sailing',     S([], { techName: 'Sledding' })),
+    iceFortress: u('Ice Fortress', '🏯', 20, 4, 3, 1, 2, 15, 'navigation', S(['noVet'], { techName: 'Polar Warfare' })),
+    gaami:       u('Gaami',        '☃️', 30, 4, 3, 1, 1, null, null,       sup(['autoFreeze'], { ico: 'giant' })),
+
+    // ---- Cymanti
+    hexapod:      u('Hexapod',       '🪲', 5,  3, 1, 2, 1, 3, 'riding',       S([])),
+    kiton:        u('Kiton',         '🐞', 15, 1, 3, 1, 1, 3, 'strategy',     S(['poisonDef'], { ico: 'defender' })),
+    phychi:       u('Phychi',        '🦟', 5,  0.7, 2, 2, 2, 3, 'archery',    S(['surprise', 'double', 'poison'], { ico: 'moth' })),
+    mantis:       u('Mantis',        '🦗', 15, 3, 3, 1, 1, 5, 'smithery',     S([], { ico: 'swordsman' })),
+    exida:        u('Exida',         '🪨', 10, 3, 1, 2, 3, 8, 'mathematics',  S(['splash', 'poison'], { ico: 'catapult' })),
+    doomux:       u('Doomux',        '🐜', 20, 3.5, 2, 3, 1, 10, 'chivalry',  S(['explode', 'boomOpt', 'noVet'], { techName: 'Shock Tactics', ico: 'hexapod' })),
+    shaman:       u('Shaman',        '🔮', 10, 1, 1, 1, 1, 5, 'meditation',   S(['convert', 'swarm', 'noVet'], { techName: 'Rituals', ico: 'mindbender' })),
+    moth:         u('Moth',          '🦋', 10, 2, 0.1, 2, 1, 5, 'diplomacy',  S(['stiff', 'poison', 'noVet'], { techName: 'Synergy' })),
+    larva:        u('Larva',         '🐛', 10, 2, 2, 1, 1, null, null,        S(['surprise', 'noVet'], { train: false, val: 2, ico: 'dagger' })),
+    insectEgg:    u('Insect Egg',    '🥚', 10, 2, 3, 0, 0, null, null,        S(['stiff', 'explode', 'noVet'], { train: false, val: 2, ico: 'egg' })),
+    raychi:       u('Raychi',        '🐟', 10, 3, 2, 3, 1, 5, 'sailing',      S([], { techName: 'Pescetism' })),
+    boomchi:      u('Boomchi',       '💥', 10, 3, 3, 2, 0, 5, 'ramming',      S(['stiff', 'explode'], { techName: 'Inflation' })),
+    livingIsland: u('Living Island', '🏝️', 20, 4, 4, 2, 1, 20, 'navigation', S(['stomp', 'poison', 'noVet'], { techName: 'Oceanology' })),
+    centipede:    u('Centipede',     '🐛', 20, 4, 3, 2, 1, null, null,        sup([])),
+    segment:      u('Segment',       '🟤', 10, 2, 2, 1, 1, null, null,        sup(['stiff', 'explode'], { val: 2, ico: 'centipede' })),
   };
 
   // Value used by the attack optimizer when a unit has no purchase price.
   PP.GIANT_VALUE = 15;
+
+  // Tribes: the four special tribes have their own unit sets, every other tribe uses the standard set.
+  // Order = palette order (land, special, ships, super units).
+  var STD_LAND = ['warrior', 'archer', 'defender', 'rider', 'swordsman', 'catapult', 'knight', 'mindbender', 'cloak', 'dagger'];
+  var STD_SEA = ['raft', 'scout', 'rammer', 'bomber', 'pirate', 'dinghy'];
+  PP.TRIBES = [
+    { id: 'standard', name: 'Standard', dot: '#9aa5c8', units: STD_LAND.concat(STD_SEA, ['juggernaut', 'giant']),
+      title: 'Xin-xi, Imperius, Bardur, Oumaji, Kickoo, Hoodrick, Luxidoor, Vengir, Zebasi, Ai-Mo, Quetzali, Yădakk' },
+    { id: 'aquarion', name: 'Aquarion', dot: '#e8a99c', units: ['mermaid', 'mermaidArcher', 'mermaidDefender', 'amphibian', 'swordsmaid', 'puffer', 'tridention',
+      'siren', 'scuba', 'mermaidDagger', 'shark', 'jelly', 'crab'] },
+    { id: 'elyrion', name: '∑∫ỹriȱŋ', dot: '#c060c8', units: STD_LAND.concat(['polytaur'], STD_SEA, ['dragonEgg', 'babyDragon', 'fireDragon']) },
+    { id: 'polaris', name: 'Polaris', dot: '#d8ecf8', units: ['warrior', 'iceArcher', 'defender', 'rider', 'swordsman', 'catapult', 'knight', 'mindbender',
+      'cloak', 'dagger', 'mooni', 'battleSled', 'iceFortress', 'gaami'] },
+    { id: 'cymanti', name: 'Cymanti', dot: '#b8d040', units: ['warrior', 'phychi', 'kiton', 'hexapod', 'mantis', 'exida', 'doomux', 'shaman', 'moth',
+      'larva', 'insectEgg', 'raychi', 'boomchi', 'livingIsland', 'centipede', 'segment'] },
+  ];
+  PP.TRIBE = {};
+  PP.TRIBES.forEach(function (t) { PP.TRIBE[t.id] = t; });
+  // unit keys of a tribe (unknown id → standard)
+  PP.tribeUnits = function (id) { return (PP.TRIBE[id] || PP.TRIBE.standard).units.filter(function (k) { return PP.UNITS[k]; }); };
+  // tribe chosen for a side in the Units tool (state.ui.units.tribe)
+  PP.sideTribe = function (side) {
+    var p = PP.state && PP.state.ui && PP.state.ui.units, t = p && p.tribe && p.tribe[side === 'enemy' ? 'enemy' : 'me'];
+    return PP.TRIBE[t] ? t : 'standard';
+  };
+  // units the player can train in a city (own tribe)
+  PP.myTrainable = function () { return PP.tribeUnits(PP.sideTribe('me')).filter(PP.trainable); };
+  // can be trained in a city (shows up in the star planner)
+  PP.trainable = function (k) { var x = PP.UNITS[k]; return !!x && x.cost != null && x.train !== false; };
+  // land units a ship can carry (its HP comes from them; Cloak/Dagger become Dinghy/Pirate instead)
+  PP.carriable = function (k) { var x = PP.UNITS[k]; return !!x && !x.carry && x.hp != null && !x.super && !/^(juggernaut|pirate|dinghy|insectEgg|cloak|dagger)$/.test(k); };
+  // skill labels for the unit info line
+  PP.SKILL_NAMES = { fort: 'Fortify', stiff: 'Stiff', surprise: 'Surprise', explode: 'Explode', splash: 'Splash', poison: 'Poison',
+    poisonDef: 'Poisons attackers', persist: 'Persist', double: 'Double attack', freeze: 'Freeze', autoFreeze: 'Auto freeze', convert: 'Convert',
+    heal: 'Heal', swarm: 'Swarm', stomp: 'Stomp', tentacles: 'Tentacles', carry: 'Carry' };
+  // what each skill does in the damage calculator (tooltips / info line)
+  PP.SKILL_INFO = {
+    stiff: 'never strikes back', surprise: 'its attacks get no retaliation', splash: 'also hits the enemies next to the target (half damage)',
+    explode: 'explodes: half damage to all adjacent enemies + poison, the unit dies', poison: 'poisons what it hits (defense bonus halved)',
+    poisonDef: 'poisons units that attack it', persist: 'may attack again after a kill', double: 'attacks twice',
+    freeze: 'no damage – freezes the target (it can\'t strike back)', convert: 'converts the target to your side', fort: 'gets the city defense bonus',
+    stomp: 'when it moves next to enemies they take half damage', tentacles: 'enemies moving next to it take half damage first'
+  };
 
   PP.TECHS = [
     { id: 'climbing',     name: 'Climbing',        tier: 1, parent: null },

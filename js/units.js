@@ -21,7 +21,7 @@ window.PP = window.PP || {};
     '.un-side button.on.me{background:#2c62c9}.un-side button.on.enemy{background:#c62f47}',
     '.un-pal{display:grid;grid-template-columns:repeat(auto-fill,minmax(36px,1fr));gap:3px;margin-top:6px}',
     '.un-pal button{border:1px solid transparent;background:var(--panel2,#252e52);border-radius:10px;padding:3px 0 2px;display:flex;flex-direction:column;align-items:center;gap:0;min-height:46px;min-width:0;color:var(--muted,#9aa5c8);overflow:hidden}',
-    '.un-pal button b{font-size:8.5px;font-weight:700;max-width:100%;line-height:1.1;white-space:nowrap;overflow:hidden;text-overflow:clip;padding:0 1px;letter-spacing:-.01em}',
+    '.un-pal button b{font-size:8.5px;font-weight:700;max-width:100%;line-height:1.1;white-space:nowrap;overflow:hidden;text-overflow:clip;padding:0 1px;letter-spacing:-.04em}',
     '.un-pal button.on{border-color:#ffd23f;background:rgba(255,210,63,.16);color:var(--text,#e8ecf8)}',
     '.un-pal svg{display:block;flex:none}',
     // sub-mode switch (Place | Battle)
@@ -146,8 +146,12 @@ window.PP = window.PP || {};
     '.un-peek .sd1 i{font-style:normal;font-size:14px;opacity:.9}',
     '.un-peek .sd1.me{background:#2c62c9}.un-peek .sd1.enemy{background:#c62f47}',
     '.un-peek .un-pal{flex:1 1 auto;margin:0;grid-template-columns:repeat(9,minmax(0,1fr));gap:2px}',
+    // v27: more than 9 units → rows; in the phone sheet's compact peek state one row that scrolls sideways
+    '#drawer.peek .un-peek .un-pal{grid-template-columns:none;grid-auto-flow:column;grid-auto-columns:calc((100% - 16px) / 8.5);overflow-x:auto;scrollbar-width:none;overscroll-behavior-x:contain;scroll-snap-type:x proximity}',
+    '#drawer.peek .un-peek .un-pal::-webkit-scrollbar{display:none}',
+    '#drawer.peek .un-peek .un-pal button{scroll-snap-align:start}',
     '.un-peek .un-pal button{min-height:46px;padding:3px 0 2px}',
-    '.un-peek .un-pal button b{font-size:8px;letter-spacing:-.03em}',
+    '.un-peek .un-pal button b{font-size:8px;letter-spacing:-.05em}',
     '.un-peek .cn{flex:none;display:flex;align-items:center}',
     '.un-peek .big{display:inline-flex;align-items:center;background:var(--bg,#12172b);border-radius:12px;padding:2px;flex:none}',
     '.un-peek .big button{border:0;background:var(--panel2,#252e52);color:var(--text,#e8ecf8);width:40px;height:40px;border-radius:10px;font-size:22px;font-weight:800;line-height:1;padding:0}',
@@ -165,6 +169,30 @@ window.PP = window.PP || {};
     '.un-peek .er{flex:1;min-width:0;font-size:13px;color:var(--muted,#9aa5c8)}.un-peek .er b{color:#ff8ca6}',
     '.un-next{display:flex;align-items:center;gap:6px;margin:12px 0 0}',
     '.un-next span{flex:1;font-size:12px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted,#9aa5c8);font-weight:800}',
+    // v27: tribe picker, carried unit, stat line
+    '.un-tribe{margin:2px 0 8px;min-width:0}',
+    '.un-tribe>span{display:block;font-size:11px;font-weight:800;color:var(--muted,#9aa5c8);text-transform:uppercase;letter-spacing:.05em;margin-bottom:4px}',
+    '.un-tribe>div{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:3px}',
+    '.un-tribe button{display:flex;align-items:center;justify-content:center;gap:4px;border:1px solid var(--line,#33406e);background:none;color:var(--muted,#9aa5c8);border-radius:999px;padding:0 4px;min-height:30px;font-size:11.5px;font-weight:700;white-space:nowrap;overflow:hidden;min-width:0}',
+    '.un-tribe button i{width:9px;height:9px;border-radius:50%;flex:none}',
+    '.un-tribe button.on{border-color:#ffd23f;color:var(--text,#e8ecf8);background:rgba(255,210,63,.12)}',
+    '.un-carry{display:flex;align-items:center;gap:6px;margin-top:7px}',
+    '.un-carry>span{flex:none;font-size:11.5px;font-weight:800;color:var(--muted,#9aa5c8)}',
+    '.un-carry .types{flex:1;margin:0;grid-template-columns:repeat(auto-fill,34px)}',
+    '.un-stat{display:block;margin-top:6px;font-size:11.5px;color:var(--muted,#9aa5c8);line-height:1.35}',
+    '.un-how .un-stat{margin-top:3px}',
+    '.un-carry .types{display:grid;gap:3px}',
+    '.un-carry .types button{border:1px solid transparent;background:var(--panel2,#252e52);border-radius:9px;padding:2px 0;min-height:34px;display:flex;align-items:center;justify-content:center}',
+    '.un-carry .types button.on{border-color:#ffd23f;background:rgba(255,210,63,.16)}',
+    '.un-row .l4{display:flex;flex-wrap:wrap;gap:3px 6px;margin-top:5px;font-size:11.5px;color:var(--text,#e8ecf8)}',
+    '.un-row .l4 span{background:rgba(255,255,255,.06);border-radius:7px;padding:2px 6px}',
+    '.un-boom{flex:none;border:1px solid var(--line,#33406e);background:none;color:var(--muted,#9aa5c8);border-radius:8px;padding:0 7px;min-height:26px;font-size:11.5px;font-weight:700;margin-left:auto}',
+    '.un-boom.on{border-color:#ff9f43;color:#ffb36b;background:rgba(255,159,67,.14)}',
+    '.un-stx{display:inline-flex;gap:4px;flex-wrap:wrap}',
+    '.un-stx button{border:1px solid var(--line,#33406e);background:none;color:var(--muted,#9aa5c8);border-radius:9px;min-height:32px;padding:0 8px;font-size:12px;font-weight:700}',
+    '.un-stx button.on{border-color:#7bd94a;color:#b6f08f;background:rgba(123,217,74,.12)}',
+    '.un-stx button[data-un=frozen].on{border-color:#9fe3ff;color:#c8f0ff;background:rgba(159,227,255,.12)}',
+    '.un-ctl .un-stx{margin-left:auto}',
     // editor popover
     '.un-ed{position:fixed;z-index:60;width:min(350px,calc(100vw - 16px));background:rgba(22,28,52,.98);border:1px solid var(--line,#33406e);border-radius:16px;box-shadow:0 14px 40px rgba(0,0,0,.6);color:var(--text,#e8ecf8);padding:10px;font-size:13.5px;max-height:calc(100dvh - 16px);overflow-y:auto;overscroll-behavior:contain}',
   ].join('\n');
@@ -186,6 +214,12 @@ window.PP = window.PP || {};
   function toast(m, ms) { if (PP.ui && PP.ui.toast) PP.ui.toast(m, ms); }
   function U(type) { return (PP.UNITS && PP.UNITS[type]) || { name: type, hp: 10, atk: 0, def: 0, mov: 1, rng: 1 }; }
   function types() { return TYPES.filter(function (t) { return PP.UNITS && PP.UNITS[t]; }).concat(Object.keys(PP.UNITS || {}).filter(function (t) { return TYPES.indexOf(t) < 0; })); }
+  // v27: every side has a tribe (prefs.tribe.me / .enemy); the palette shows that tribe's units
+  function tribeOf(side) { var p = uiPrefs(), t = p.tribe && p.tribe[side === 'enemy' ? 'enemy' : 'me']; return PP.TRIBE && PP.TRIBE[t] ? t : 'standard'; }
+  function typesFor(side) { return PP.tribeUnits ? PP.tribeUnits(tribeOf(side)) : types(); }
+  // types offered when changing a unit: its side's tribe (+ its current type if that comes from another tribe)
+  function typesOfUnit(u) { var l = typesFor(u.side); return l.indexOf(u.type) >= 0 ? l : l.concat([u.type]); }
+  function carryOpts(u) { return typesFor(u.side).filter(function (k) { return PP.carriable && PP.carriable(k); }); }
   function maxHp(u) { return PP.engine && PP.engine.maxHp ? PP.engine.maxHp(u) : U(u.type).hp + (u.vet ? 5 : 0); }
   function st() { return PP.state; }
   function units() { return (PP.state && PP.state.units) || []; }
@@ -208,7 +242,9 @@ window.PP = window.PP || {};
     s.ui = s.ui || {};
     var p = s.ui.units || (s.ui.units = {});
     if (p.side !== 'enemy') p.side = 'me';
-    if (!(p.brush && PP.UNITS && PP.UNITS[p.brush])) p.brush = types()[0] || 'warrior';
+    if (!p.tribe || typeof p.tribe !== 'object') p.tribe = { me: 'standard', enemy: 'standard' };
+    var pal = PP.tribeUnits ? PP.tribeUnits(PP.TRIBE && PP.TRIBE[p.tribe[p.side]] ? p.tribe[p.side] : 'standard') : types();
+    if (!(p.brush && PP.UNITS && PP.UNITS[p.brush]) || pal.indexOf(p.brush) < 0) p.brush = pal[0] || 'warrior';
     // sub-mode: Place (default when there are no units) | Battle
     if (!units().length) p.sub = 'place';
     else if (p.sub !== 'place' && p.sub !== 'battle') p.sub = 'battle';
@@ -632,6 +668,12 @@ window.PP = window.PP || {};
       DISC + '.9)', hurt ? (u.hp <= mx / 3 ? '#ff7088' : '#ffc061') : '#fff', hurt ? (u.hp <= mx / 3 ? '#ff4d6d' : '#f5a524') : 'rgba(255,255,255,.35)');
     // tiny marks: veteran star (upper right), shield when the defense bonus is > 1 (lower left)
     if (u.vet) star(ctx, x + Rd * 0.85, y - Rd * 0.8, clamp(R * 0.36, 3, 6.5));
+    // v27: status dots upper left – green = poisoned, ice blue = frozen
+    if (R >= 8) [u.poison ? '#7bd94a' : null, u.frozen ? '#9fe3ff' : null].filter(Boolean).forEach(function (col, i) {
+      var dr = clamp(R * 0.2, 2.2, 4), dx = x - Rd * 0.85 + i * dr * 2.2, dy = y - Rd * 0.8;
+      ctx.beginPath(); ctx.arc(dx, dy, dr, 0, Math.PI * 2); ctx.fillStyle = col; ctx.fill();
+      ctx.lineWidth = Math.max(0.8, dr * 0.35); ctx.strokeStyle = 'rgba(0,0,0,.7)'; ctx.stroke();
+    });
     var b = effBonus(u);
     if (b > 1 && R >= 9) shieldMark(ctx, x - Rd * 0.95, y + Rd * 0.7, clamp(R * 0.4, 3.2, 6.5), b >= 4);
     if (isDetected(u) && typeof u.conf === 'number' && u.conf < 0.6) chip(ctx, x - Rd * 0.9, y - Rd * 0.85, '?', clamp(R * 0.55, 6, 10), '#ffaa00', '#1d1a10', 'rgba(40,25,0,.8)');
@@ -667,22 +709,75 @@ window.PP = window.PP || {};
 
   // ================================================================ damage calculation
   function defCheck(a, t, d) { return canReach(a, t, d) ? '' : 'out of range (distance ' + d + ')'; }
+  // enemies (= the defending side) on the 8 tiles around x, without the ids in `skip`
+  function enemiesAround(x, skip) {
+    return units().filter(function (o) { return !isAtt(o) && skip.indexOf(o.id) < 0 && dist(o, x) === 1; });
+  }
+  function cp(u, o) { return Object.assign({}, u, o); }
+  // v27: one target, attackers in order – with the unit skills (see PP.SKILL_INFO). Side effects on other enemies
+  // (splash, explosions) are collected in res.fx; target status (poisoned, frozen, converted) in res.
   function simulate(t, order) {
-    var tb = effBonus(t), hp = t.hp, steps = [], killedAt = 0, losses = [];
+    var E = PP.engine, tb = effBonus(t), hp = t.hp, tPois = !!t.poison, tFroz = !!t.frozen, conv = false;
+    var steps = [], killedAt = 0, losses = [], ex = {};
+    var exOf = function (x) { return ex[x.id] || (ex[x.id] = { u: x, before: x.hp, hp: x.hp, poison: !!x.poison, b: effBonus(x) }); };
+    var hitOther = function (a, aHp, x, kind, poison) {
+      var e = exOf(x); if (e.hp <= 0) return null;
+      var dm = E.half(cp(a, { hp: aHp }), cp(x, { hp: e.hp, bonus: e.b, poison: e.poison }));
+      e.hp = Math.max(0, e.hp - dm); if (poison && e.hp > 0) e.poison = true;
+      return { u: x, dmg: dm, after: e.hp, kind: kind, poison: !!(poison && e.hp > 0) };
+    };
     order.forEach(function (a, i) {
-      var d = dist(a, t), w = defCheck(a, t, d), s = { a: a, n: i + 1, d: d, far: !!w, warn: w };
-      if (!(U(a.type).atk > 0) || !(a.hp > 0)) { s.none = true; steps.push(s); return; }
-      if (hp <= 0) { s.skipped = true; steps.push(s); return; }
-      var r = PP.engine.attack(a, Object.assign({}, t, { hp: hp, bonus: tb }), d);
-      s.dmg = r.dmg; s.ret = r.ret; s.tBefore = hp; s.tAfter = r.defHp; s.aBefore = a.hp; s.aAfter = r.attHp;
-      hp = r.defHp;
-      if (hp <= 0 && !killedAt) killedAt = i + 1;
+      var A = U(a.type), d = dist(a, t), w = defCheck(a, t, d), s = { a: a, n: i + 1, d: d, far: !!w, warn: w, fx: [] };
+      if (!((A.atk > 0 || A.convert || A.freeze) && a.hp > 0) || a.frozen) { s.none = true; s.why = a.frozen ? 'frozen – can\'t attack' : 'can\'t attack'; steps.push(s); return; }
+      if (hp <= 0 || conv) { s.skipped = true; steps.push(s); return; }
+      var aHp = a.hp, boom = !!A.explode && (!A.boomOpt || !!a.boom), melee = boom || A.rng <= 1;
+      s.tBefore = hp; s.aBefore = a.hp;
+      // Tentacles: a melee attacker that moves next to the target is hit first (half damage)
+      if (U(t.type).tentacles && !tFroz && melee && d > 1) {
+        var z = E.half(cp(t, { hp: hp }), cp(a, { bonus: effBonus(a) }));
+        if (z > 0) { s.zap = z; aHp = Math.max(0, aHp - z); }
+      }
+      // Stomp: moving next to the target damages it (and every other enemy next to the new tile)
+      if (A.stomp && d > 1 && aHp > 0) {
+        var sd = E.half(cp(a, { hp: aHp }), cp(t, { hp: hp, bonus: tb, poison: tPois }));
+        if (sd > 0) { s.stomp = sd; hp = Math.max(0, hp - sd); }
+        s.note = 'Stomp also hits other enemies next to its new tile';
+      }
+      var aHp0 = aHp, dmg = 0, ret = 0;
+      if (aHp > 0 && hp > 0) {
+        for (var h = 0; h < (A.double ? 2 : 1) && hp > 0 && aHp > 0; h++) {
+          var r = E.attack(cp(a, { hp: aHp }), cp(t, { hp: hp, bonus: tb, poison: tPois, frozen: tFroz }), d, { boom: boom });
+          dmg += r.dmg; ret += r.ret; hp = r.defHp; aHp = r.attHp;
+          if (r.poison) { tPois = true; s.poison = true; }
+          if (r.freeze) { tFroz = true; s.freeze = true; }
+          if (r.convert) { conv = true; s.convert = true; }
+          if (r.poisonAtt) s.poisonAtt = true;
+          if (r.explode) s.boom = true;
+          if (h === 1) s.double = true;
+        }
+      }
+      // Splash: enemies next to the target take half damage (Exida: poison only)
+      if (A.splash && !s.freeze && !s.convert && aHp0 > 0) {
+        enemiesAround(t, [t.id, a.id]).forEach(function (x) {
+          if (A.poison) { var e = exOf(x); if (e.hp > 0 && !e.poison) { e.poison = true; s.fx.push({ u: x, dmg: 0, after: e.hp, kind: 'splash', poison: true }); } }
+          else { var f = hitOther(a, aHp0, x, 'splash', false); if (f && f.dmg) s.fx.push(f); }
+        });
+      }
+      // Explosion: every enemy next to the exploding unit (known when it already stands next to the target)
+      if (s.boom) {
+        if (d <= 1) enemiesAround(a, [t.id, a.id]).forEach(function (x) { var f = hitOther(a, aHp0, x, 'explode', true); if (f) s.fx.push(f); });
+        else s.note = 'The explosion also hits other enemies next to the tile where it explodes';
+      }
+      s.dmg = dmg; s.ret = ret; s.tAfter = hp; s.aAfter = aHp;
+      if (hp <= 0 && !killedAt) { killedAt = i + 1; if (A.persist) s.persist = true; }
       if (s.aAfter <= 0) losses.push(a);
       steps.push(s);
     });
-    return { t: t, bonus: tb, steps: steps, hpAfter: hp, killedAt: killedAt, losses: losses,
+    var fx = Object.keys(ex).map(function (k) { return ex[k]; }).filter(function (e) { return e.hp !== e.before || e.poison !== !!e.u.poison; });
+    return { t: t, bonus: tb, steps: steps, hpAfter: hp, killedAt: killedAt, losses: losses, converted: conv, poison: tPois && hp > 0, frozen: tFroz && hp > 0, fx: fx,
       used: steps.filter(function (s) { return s.dmg != null; }).length };
   }
+  function done(res) { return res.hpAfter <= 0 || !!res.converted; }
   function calcFor(t) {
     if (!t || !PP.engine || !PP.engine.attack) return null;
     return simulate(t, sel().attackers.map(byId).filter(Boolean));
@@ -703,6 +798,7 @@ window.PP = window.PP || {};
     if (!res || !res.used || !res.t) return null;
     var ci = cityAt(res.t); if (!ci) return null;
     var out = { own: res.t.side !== 'enemy', city: ci };
+    if (res.converted) { out.yes = false; out.why = U(res.t.type).name + ' is converted – it now stands in the city for the attacker'; return out; }
     if (res.hpAfter > 0) { out.yes = false; out.why = U(res.t.type).name + ' survives with ' + res.hpAfter + ' HP'; return out; }
     var cand = null, melee = false, adj = false;
     res.steps.forEach(function (s) {
@@ -733,16 +829,18 @@ window.PP = window.PP || {};
   }
   function score(res) {
     var taken = 0, used = 0, dealt = 0;
-    res.steps.forEach(function (s) { if (s.dmg != null) { used++; taken += Math.min(s.ret, s.aBefore); dealt += s.tBefore - s.tAfter; } });
-    return [res.hpAfter <= 0 ? 1 : 0, -res.losses.length, -taken, -used, dealt];
+    res.steps.forEach(function (s) { if (s.dmg != null) { used++; taken += s.aBefore - Math.max(0, s.aAfter); dealt += s.tBefore - s.tAfter; } });
+    (res.fx || []).forEach(function (e) { dealt += e.before - e.hp; });
+    return [done(res) ? 1 : 0, -res.losses.length, -taken, -used, dealt];
   }
   function better(a, b) { for (var i = 0; i < a.length; i++) if (a[i] !== b[i]) return a[i] > b[i]; return false; }
   // Sorting criteria for the attack order (Battle): the chosen one stays active and re-sorts automatically.
   var SORTS = [['dmg', 'Max damage'], ['units', 'Fewest units'], ['safe', 'Least damage taken']];
   function scoreBy(res, by) {
     var taken = 0, used = 0, dealt = 0;
-    res.steps.forEach(function (s) { if (s.dmg != null) { used++; taken += Math.min(s.ret, s.aBefore); dealt += s.tBefore - s.tAfter; } });
-    var kill = res.hpAfter <= 0 ? 1 : 0, need = kill ? res.killedAt : 99, loss = res.losses.length;
+    res.steps.forEach(function (s) { if (s.dmg != null) { used++; taken += s.aBefore - Math.max(0, s.aAfter); dealt += s.tBefore - s.tAfter; } });
+    (res.fx || []).forEach(function (e) { dealt += e.before - e.hp; });
+    var kill = done(res) ? 1 : 0, need = kill ? res.killedAt : 99, loss = res.losses.length;
     if (by === 'dmg') return [dealt, kill, -loss, -taken, -used];       // most damage to the target
     if (by === 'units') return [kill, -need, -loss, -taken, dealt];    // kill with as few attacks as possible
     return [-taken, -loss, kill, dealt, -used];                         // 'safe': least total damage taken (a lost unit counts its full HP)
@@ -788,6 +886,7 @@ window.PP = window.PP || {};
   // ================================================================ actions
   function placeCoin(c, r, type, side) {
     var u = { id: uid(), c: c, r: r, side: side, type: type, hp: 10, vet: false, bonus: 1, bonusMode: 'auto', src: 'user' };
+    if (U(type).carry) u.carry = carryOpts(u)[0] || 'warrior';
     u.hp = maxHp(u);
     setBonus(u, 'auto');
     st().units = units().filter(function (x) { return !(x.c === c && x.r === r); });
@@ -853,12 +952,16 @@ window.PP = window.PP || {};
   function applyAttack() {
     var res = calc();
     if (!res || !res.used) { toast('No attack selected'); return; }
-    var dead = {}, cb = sel(), cv = cityVerdict(res);
+    var dead = {}, cb = sel(), cv = cityVerdict(res), extra = 0;
     res.steps.forEach(function (s) {
       if (s.dmg == null) return;
       s.a.hp = Math.max(0, s.aAfter); if (s.a.hp <= 0) dead[s.a.id] = 1;
+      if (s.poisonAtt && s.a.hp > 0) s.a.poison = true;
     });
     res.t.hp = Math.max(0, res.hpAfter); if (res.t.hp <= 0) dead[res.t.id] = 1;
+    res.t.poison = res.poison; res.t.frozen = res.frozen;
+    (res.fx || []).forEach(function (e) { e.u.hp = e.hp; e.u.poison = e.poison && e.hp > 0; if (e.hp <= 0) { dead[e.u.id] = 1; extra++; } });
+    if (res.converted) { res.t.side = atkSide(); res.t.poison = false; }
     var kills = 0, losses = 0;
     st().units = units().filter(function (u) {
       if (!dead[u.id]) return true;
@@ -870,7 +973,8 @@ window.PP = window.PP || {};
     cb.attackers = [];
     sel(); commit();
     var tn = U(res.t.type).name;
-    toast('⚔️ Applied' + (kills ? ': ' + tn + ' defeated' : ': ' + tn + ' has ' + res.hpAfter + ' HP left') + (losses ? ', ' + losses + ' attacker' + (losses > 1 ? 's' : '') + ' lost' : '') +
+    toast('⚔️ Applied' + (res.converted ? ': ' + tn + ' converted' : dead[res.t.id] ? ': ' + tn + ' defeated' : ': ' + tn + ' has ' + res.hpAfter + ' HP left') +
+      (extra ? ', ' + extra + ' more defeated' : '') + (losses ? ', ' + losses + ' attacker' + (losses > 1 ? 's' : '') + ' lost' : '') +
       (cv && cv.yes ? ' · 🏰 ' + U(cv.a.type).name + ' moves into the city' : ''));
   }
 
@@ -923,6 +1027,34 @@ window.PP = window.PP || {};
   function shyName(n) { return SHY[n] || esc(n); }
   function uName(u) { return esc(U(u.type).name) + (u.vet ? ' ★' : ''); }
 
+  // v27: effects of one attack (skills) as a small line under the attacker row
+  function fxHtml(s) {
+    var l = [];
+    if (s.zap) l.push('🪼 Tentacles hit it first: −' + s.zap);
+    if (s.stomp) l.push('👣 Stomp −' + s.stomp);
+    if (s.double) l.push('2 hits');
+    if (s.freeze) l.push('❄️ Target frozen – no retaliation from it');
+    if (s.convert) l.push('🌀 Converts the target');
+    if (s.poison) l.push('🧪 Target poisoned');
+    if (s.poisonAtt) l.push('🧪 Attacker gets poisoned');
+    (s.fx || []).forEach(function (f) {
+      l.push((f.kind === 'explode' ? '💥 ' : '💦 Splash ') + esc(U(f.u.type).name) + (f.dmg ? ' −' + f.dmg + (f.after <= 0 ? ' ☠' : ' → ' + f.after) : '') + (f.poison ? ' 🧪' : ''));
+    });
+    if (s.persist) l.push('↻ Persist: may attack again');
+    if (s.note) l.push('ℹ️ ' + esc(s.note));
+    return l.length ? '<div class="l4">' + l.map(function (x) { return '<span>' + x + '</span>'; }).join('') + '</div>' : '';
+  }
+  // Doomux: explode instead of a normal attack
+  function boomBtn(a) {
+    if (!U(a.type).boomOpt) return '';
+    return '<button class="un-boom' + (a.boom ? ' on' : '') + '" data-un="boom" data-id="' + a.id + '" aria-pressed="' + !!a.boom + '" title="Explode instead of attacking">💥 Explode</button>';
+  }
+  // poisoned / frozen toggles
+  function statusChips(u) {
+    return '<span class="un-stx"><button data-un="poison" data-id="' + u.id + '" class="' + (u.poison ? 'on' : '') + '" aria-pressed="' + !!u.poison + '" title="Poisoned: defense bonus halved">🧪 Poisoned</button>' +
+      '<button data-un="frozen" data-id="' + u.id + '" class="' + (u.frozen ? 'on' : '') + '" aria-pressed="' + !!u.frozen + '" title="Frozen: can\'t attack or strike back">❄️ Frozen</button></span>';
+  }
+
   function calcHtml() {
     var cb = sel(), t = byId(cb.active), h = '';
     var nA = cb.attackers.length;
@@ -952,7 +1084,7 @@ window.PP = window.PP || {};
       '<div class="nm"><b>Target: ' + uName(t) + '</b><small>Attack ' + fmt(d.atk) + ' · Defense ' + fmt(d.def) + (d.rng > 1 ? ' · Range ' + d.rng : '') +
         (bonusDesc(t) ? ' · <span data-bonus-desc>' + esc(bonusDesc(t)) + '</span>' : '') + '</small></div>' +
       '<button class="un-x" data-un="untarget" data-id="' + t.id + '" aria-label="Remove target">✕</button></div>' +
-      '<div class="un-ctl"><span style="min-width:44px">HP</span>' + hpCtl(t, 'hp') + '</div>' +
+      '<div class="un-ctl"><span style="min-width:44px">HP</span>' + hpCtl(t, 'hp') + statusChips(t) + '</div>' +
       '<div class="un-ctl" style="display:block"><span>Defense bonus</span>' + bonusHtml(t) + '</div>';
     if (!res || !res.steps.length) {
       h += '<div class="un-empty">Tap ' + words().att + ' – this shows how much damage each one deals and takes back.</div></div>';
@@ -962,21 +1094,26 @@ window.PP = window.PP || {};
     res.steps.forEach(function (s) {
       var a = s.a;
       h += '<div class="un-row' + (s.skipped || s.none ? ' skip' : '') + '"><div class="l1"><span class="un-n">' + s.n + '</span>' + coinSvg(a.type, a.side, 22) +
-        '<b>' + uName(a) + '</b><button class="rm" data-un="unatt" data-id="' + a.id + '" aria-label="Remove attacker">✕</button></div>';
+        '<b>' + uName(a) + '</b>' + boomBtn(a) + '<button class="rm" data-un="unatt" data-id="' + a.id + '" aria-label="Remove attacker">✕</button></div>';
       if (!s.none && !s.skipped) {
         h += '<div class="l2"><span class="st dmg"><small>Damage</small>' + fmt(s.dmg) + '</span><span class="st ' + (s.ret ? 'ret' : 'z') + '"><small title="Retaliation">Retal.</small>' + fmt(s.ret) + '</span>' +
           '<span class="st' + (s.tAfter <= 0 ? ' kill' : '') + '"><small>Target HP</small>' + (s.tAfter <= 0 ? '☠' : s.tAfter) + '</span></div>';
       }
-      var note = s.none ? '<span class="grow">can\'t attack</span>'
+      var note = s.none ? '<span class="grow">' + esc(s.why || 'can\'t attack') + '</span>'
         : s.skipped ? '<span class="grow">not needed ✓</span>'
-          : '<span class="grow">' + (s.aAfter <= 0 ? '<span class="die">☠ dies</span>' : '→ <b style="color:var(--text,#e8ecf8)">' + s.aAfter + '</b> HP') +
+          : '<span class="grow">' + (s.aAfter <= 0 ? '<span class="die">' + (s.boom ? '💥 explodes' : '☠ dies') + '</span>' : '→ <b style="color:var(--text,#e8ecf8)">' + s.aAfter + '</b> HP') +
             (s.far ? '<br><span class="far">⚠ ' + esc(s.warn) + '</span>' : (s.d > 1 ? ' · dist. ' + s.d : '')) + '</span>';
-      h += '<div class="l3">' + hpCtl(a, 'hp') + note + '</div></div>';
+      h += '<div class="l3">' + hpCtl(a, 'hp') + note + '</div>' + fxHtml(s) + '</div>';
     });
     h += '</div>';
     if (res.used) {
-      if (res.killedAt) h += '<div class="un-res kill">☠ Target dies on attack ' + res.killedAt + (res.killedAt < res.steps.length ? '<small>Remaining units stay free</small>' : '') + '</div>';
-      else h += '<div class="un-res">Target survives with ' + res.hpAfter + ' HP</div>';
+      if (res.converted) h += '<div class="un-res kill">🌀 Target is converted' + (res.hpAfter < t.hp ? ' (' + res.hpAfter + ' HP)' : '') + '</div>';
+      else if (res.killedAt) h += '<div class="un-res kill">☠ Target dies on attack ' + res.killedAt + (res.killedAt < res.steps.length ? '<small>Remaining units stay free</small>' : '') + '</div>';
+      else h += '<div class="un-res">Target survives with ' + res.hpAfter + ' HP' + (res.poison || res.frozen ? '<small>' + [res.poison ? '🧪 poisoned' : '', res.frozen ? '❄️ frozen' : ''].filter(Boolean).join(' · ') + '</small>' : '') + '</div>';
+      var fxk = (res.fx || []).filter(function (e) { return e.hp <= 0; });
+      if (res.fx && res.fx.length) h += '<div class="un-res hold" style="margin-top:4px">Also hit: ' + res.fx.map(function (e) {
+        return esc(U(e.u.type).name) + ' ' + (e.hp <= 0 ? '☠' : e.hp !== e.before ? e.before + '→' + e.hp : '') + (e.poison && e.hp > 0 ? ' 🧪' : '');
+      }).join(', ') + (fxk.length ? '<small>' + fxk.length + ' more unit' + (fxk.length > 1 ? 's' : '') + ' defeated</small>' : '') + '</div>';
       if (res.losses.length) h += '<div class="un-res" style="margin-top:4px">Lost: ' + res.losses.map(function (u) { return esc(U(u.type).name); }).join(', ') + '</div>';
       h += verdictHtml(cityVerdict(res));
     }
@@ -996,7 +1133,36 @@ window.PP = window.PP || {};
     return h + '</div>';
   }
 
-  var SHORT = { swordsman: 'Swords', mindbender: 'Bender', catapult: 'Catapult', defender: 'Defend.' };
+  var SHORT = { swordsman: 'Swords', mindbender: 'Bender', catapult: 'Catapult', defender: 'Defend.', juggernaut: 'Jugger.',
+    mermaidArcher: 'Archer', mermaidDefender: 'Defend.', mermaidDagger: 'Dagger', swordsmaid: 'Swords', amphibian: 'Amphib.', tridention: 'Trident',
+    dragonEgg: 'Egg', babyDragon: 'Baby', fireDragon: 'Dragon', iceArcher: 'Ice Arch.', battleSled: 'Sled', iceFortress: 'Fortress',
+    insectEgg: 'Egg', livingIsland: 'Island', centipede: 'Centi', mermaid: 'Merm.', hexapod: 'Hexa', doomux: 'Doomux', shaman: 'Shaman',
+    boomchi: 'Boom', segment: 'Segm.', polytaur: 'Taur' };
+  // one-line unit info: HP · attack · defense · range · move + skills
+  function statLine(k, u) {
+    var d = U(k), hp = d.carry ? (u ? maxHp(u) - (u.vet ? 5 : 0) : null) : d.hp, sk = [];
+    Object.keys(PP.SKILL_NAMES || {}).forEach(function (s) { if (d[s] && s !== 'carry') sk.push(PP.SKILL_NAMES[s]); });
+    return (hp != null ? hp + ' HP · ' : 'HP of the unit it carries · ') + 'Attack ' + fmt(d.atk) + ' · Defense ' + fmt(d.def) + (d.rng !== 1 ? ' · Range ' + d.rng : '') + ' · Move ' + d.mov +
+      (sk.length ? ' · ' + sk.join(', ') : '') + (d.note ? ' · ' + d.note : '');
+  }
+  // tribe picker for the side of new units
+  function tribeHtml(p) {
+    var cur = tribeOf(p.side);
+    return '<div class="un-tribe" role="radiogroup" aria-label="Tribe"><span>' + (p.side === 'enemy' ? 'Enemy tribe' : 'My tribe') + '</span><div>' +
+      (PP.TRIBES || []).map(function (t) {
+        return '<button data-un="tribe" data-v="' + t.id + '" class="' + (t.id === cur ? 'on' : '') + '" role="radio" aria-checked="' + (t.id === cur) + '"' +
+          (t.title ? ' title="' + esc(t.title) + '"' : '') + '><i style="background:' + t.dot + '"></i>' + esc(t.name) + '</button>';
+      }).join('') + '</div></div>';
+  }
+  // ships: which unit is on board (sets the max HP)
+  function carryHtml(u) {
+    if (!U(u.type).carry) return '';
+    var side = u.side === 'enemy' ? 'enemy' : 'me', cur = u.carry || 'warrior', opts = carryOpts(u);
+    if (opts.indexOf(cur) < 0) opts = opts.concat([cur]);
+    return '<div class="un-carry"><span>Carries</span><div class="types">' + opts.map(function (k) {
+      return '<button data-un="carry" data-id="' + u.id + '" data-v="' + k + '" class="' + (cur === k ? 'on' : '') + '" title="' + esc(U(k).name) + ' (' + U(k).hp + ' HP)" aria-label="' + esc(U(k).name) + '">' + coinSvg(k, side, 26) + '</button>';
+    }).join('') + '</div></div>';
+  }
   function shortName(k) { return SHORT[k] || U(k).name; }
   // top row: Place | Battle switch (+ in Place mode: side toggle for new units and the eraser)
   function modeHtml(p) {
@@ -1037,7 +1203,7 @@ window.PP = window.PP || {};
     return '<div class="un-peek" data-peek="sel:' + u.id + '"><span class="cn" title="' + esc(U(u.type).name) + '">' + coinSvg(u.type, side, 30) + '</span>' +
       '<span class="big"><button data-un="hp" data-id="' + u.id + '" data-d="-1" aria-label="less HP">−</button><b>' + u.hp + '<small>/' + mx + '</small></b>' +
       '<button data-un="hp" data-id="' + u.id + '" data-d="1" aria-label="more HP">+</button></span><span class="gap"></span>' +
-      '<button class="pb' + (u.vet ? ' on' : '') + '" data-un="vet" data-id="' + u.id + '" aria-pressed="' + !!u.vet + '" title="Veteran (+5 max HP)">★ Vet</button>' +
+      '<button class="pb' + (u.vet ? ' on' : '') + '" data-un="vet" data-id="' + u.id + '" aria-pressed="' + !!u.vet + '" title="Veteran (+5 max HP)"' + (U(u.type).noVet && !u.vet ? ' disabled' : '') + '>★ Vet</button>' +
       '<button class="pb del" data-un="del" data-id="' + u.id + '" aria-label="Delete" title="Delete">🗑</button>' +
       '<button class="pb ok" data-un="desel" aria-label="Done" title="Done – choose the next unit">✓</button></div>';
   }
@@ -1048,7 +1214,7 @@ window.PP = window.PP || {};
     if (!t) return nA + (en ? ' enemy' : '') + ' attacker' + (nA > 1 ? 's' : '') + ' – now <b>tap ' + w.tgt1 + '</b>';
     var res = calcFor(t), tn = esc(U(t.type).name);
     if (!res || !res.used) return tn + ' <small>' + t.hp + ' HP</small> – now <b>tap ' + w.att + '</b>';
-    var kill = res.hpAfter <= 0, end = kill ? '<span class="kill">☠</span>' : '<span class="dmg">' + res.hpAfter + '</span>';
+    var kill = res.hpAfter <= 0, end = res.converted ? '<span class="kill">🌀</span>' : kill ? '<span class="kill">☠</span>' : '<span class="dmg">' + res.hpAfter + '</span>';
     // v13: city verdict first (the line is clamped to two lines)
     var cv = cityVerdict(res), pre = cv ? '<span class="city ' + (cv.yes ? (cv.own ? 'dmg' : 'kill') : 'ret') + '" data-city="' + (cv.yes ? 'yes' : 'no') + '">🏰 ' +
       (cv.yes ? 'City falls' : 'City holds') + '</span> · ' : '';
@@ -1072,9 +1238,9 @@ window.PP = window.PP || {};
   function paletteHtml() {
     var p = uiPrefs(), h = '';
     h += '<div class="un-pal" style="margin-top:0">';
-    types().forEach(function (k) {
+    typesFor(p.side).forEach(function (k) {
       var d = U(k);
-      h += '<button data-un="brush" data-v="' + k + '" class="' + (p.brush === k ? 'on' : '') + '" title="' + esc(d.name) + ' – Attack ' + fmt(d.atk) + ' · Defense ' + fmt(d.def) + (d.rng > 1 ? ' · Range ' + d.rng : '') + '">' +
+      h += '<button data-un="brush" data-v="' + k + '" class="' + (p.brush === k ? 'on' : '') + '" title="' + esc(d.name) + ' – ' + esc(statLine(k)) + '">' +
         coinSvg(k, p.side, 30) + '<b>' + esc(shortName(k)) + '</b></button>';
     });
     h += '</div>';
@@ -1116,14 +1282,15 @@ window.PP = window.PP || {};
       '<button class="del" data-un="del" data-id="' + u.id + '">🗑 Delete</button>' +
       '<button class="un-x" data-un="desel" aria-label="Done" title="Done">✓</button></div>';
     if (p.typesOpen) {
-      h += '<div class="types">' + types().map(function (k) {
+      h += '<div class="types">' + typesOfUnit(u).map(function (k) {
         return '<button data-un="utype" data-id="' + u.id + '" data-v="' + k + '" class="' + (u.type === k ? 'on' : '') + '" title="' + esc(U(k).name) + '" aria-label="' + esc(U(k).name) + '">' + coinSvg(k, side, 28) + '</button>';
       }).join('') + '</div>';
     }
     h += '<div class="ln"><span class="big"><button data-un="hp" data-id="' + u.id + '" data-d="-1" aria-label="less HP">−</button><b>' + u.hp + '<small>/' + mx + '</small></b>' +
       '<button data-un="hp" data-id="' + u.id + '" data-d="1" aria-label="more HP">+</button></span>' +
       '<button class="chip" data-un="full" data-id="' + u.id + '"' + (u.hp >= mx ? ' disabled' : '') + '>Full</button>' +
-      '<button class="chip' + (u.vet ? ' on' : '') + '" data-un="vet" data-id="' + u.id + '" aria-pressed="' + !!u.vet + '">★ Veteran</button></div>';
+      '<button class="chip' + (u.vet ? ' on' : '') + '" data-un="vet" data-id="' + u.id + '" aria-pressed="' + !!u.vet + '"' + (U(u.type).noVet && !u.vet ? ' disabled title="Can\'t become a veteran"' : '') + '>★ Veteran</button></div>';
+    h += carryHtml(u) + '<div class="un-stat">' + esc(statLine(u.type, u)) + '</div><div class="ln">' + statusChips(u) + '</div>';
     h += '<div class="ln" style="display:block">' + bonusHtml(u) + '</div>';
     return h + '</div>';
   }
@@ -1136,12 +1303,13 @@ window.PP = window.PP || {};
       '<span class="sd"><button data-un="uside" data-id="' + u.id + '" data-v="me" class="' + (side === 'me' ? 'on' : '') + '" title="Mine" aria-label="Mine"><i style="background:#3a7bf0"></i></button>' +
       '<button data-un="uside" data-id="' + u.id + '" data-v="enemy" class="' + (side === 'enemy' ? 'on' : '') + '" title="Enemy" aria-label="Enemy"><i style="background:#e63b55"></i></button></span>' +
       '<button class="chip" data-un="full" data-id="' + u.id + '"' + (u.hp >= mx ? ' disabled' : '') + '>Full HP</button></div>';
+    h += '<div class="un-stat">' + esc(statLine(u.type, u)) + '</div><div class="ln">' + statusChips(u) + '</div>';
     if (p.typesOpen) {
-      h += '<div class="types">' + types().map(function (k) {
+      h += '<div class="types">' + typesOfUnit(u).map(function (k) {
         return '<button data-un="utype" data-id="' + u.id + '" data-v="' + k + '" class="' + (u.type === k ? 'on' : '') + '" title="' + esc(U(k).name) + '" aria-label="' + esc(U(k).name) + '">' + coinSvg(k, side, 28) + '</button>';
       }).join('') + '</div>';
     }
-    h += '<div class="ln" style="display:block">' + bonusHtml(u) + '</div>';
+    h += carryHtml(u) + '<div class="ln" style="display:block">' + bonusHtml(u) + '</div>';
     return h + '</div>';
   }
 
@@ -1175,13 +1343,15 @@ window.PP = window.PP || {};
     if (p.sub === 'place') {
       var u = p.selId ? byId(p.selId) : null;
       h += (u ? selPeekHtml(u) : palPeekHtml(p)) + '<div style="height:8px"></div>' + modeHtml(p);
+      if (!u && !p.eraser) h += tribeHtml(p);
       if (u) {
         h += detailHtml(u);
         h += '<div class="un-next"><span>Next unit</span>' + sideHtml(p) + '</div>' + paletteHtml();
         h += '<div class="un-how">Tap an empty tile = place <b>' + esc(U(p.brush).name) + '</b> · ✓ = choose another type</div>';
       }
       else if (p.eraser) h += '<div class="un-how">🧽 <b>Eraser on:</b> tap units to delete them.</div>';
-      else h += '<div class="un-how">Tap a tile = place <b>' + esc(U(p.brush).name) + '</b> (' + (p.side === 'enemy' ? 'Enemy' : 'Mine') + ') · tap a unit = edit · drag a unit = move</div>';
+      else h += '<div class="un-how">Tap a tile = place <b>' + esc(U(p.brush).name) + '</b> (' + (p.side === 'enemy' ? 'Enemy' : 'Mine') + ') · tap a unit = edit · drag a unit = move' +
+        '<small class="un-stat">' + esc(statLine(p.brush)) + '</small></div>';
       h += autoHtml();
     } else {
       h += battlePeekHtml() + '<div style="height:8px"></div>' + modeHtml(p) + calcHtml();
@@ -1200,7 +1370,16 @@ window.PP = window.PP || {};
     else if (a === 'bonus') { setBonus(u, v); touched(); }
     else if (a === 'uside') { u.side = v === 'enemy' ? 'enemy' : 'me'; touched(); sel(); }
     else if (a === 'types') { p.typesOpen = !p.typesOpen; }
-    else if (a === 'utype') { var full = u.hp >= maxHp(u); u.type = v; if (full || u.hp > maxHp(u)) u.hp = maxHp(u); touched(); p.brush = v; }
+    else if (a === 'utype') {
+      var full = u.hp >= maxHp(u); u.type = v;
+      if (U(v).carry) { if (!u.carry) u.carry = carryOpts(u)[0] || 'warrior'; } else delete u.carry;
+      if (U(v).noVet && !U(v).carry) u.vet = false;
+      if (full || u.hp > maxHp(u)) u.hp = maxHp(u); touched(); if (typesFor(p.side).indexOf(v) >= 0) p.brush = v;
+    }
+    else if (a === 'poison') { u.poison = !u.poison; touched(); }
+    else if (a === 'frozen') { u.frozen = !u.frozen; touched(); }
+    else if (a === 'boom') { u.boom = !u.boom; }
+    else if (a === 'carry') { var full2 = u.hp >= maxHp(u); u.carry = v; if (full2 || u.hp > maxHp(u)) u.hp = maxHp(u); touched(); }
     else if (a === 'del') { removeUnit(u.id); closeEditor(); toast(U(u.type).name + ' deleted'); }
     else return false;
     commit();
@@ -1217,7 +1396,14 @@ window.PP = window.PP || {};
       if (v === 'battle' && !units().length) { toast('Place some units first'); return; }
       p.sub = v; p.selId = null; p.eraser = false; closeEditor(); commit();
     }
-    else if (a === 'side') { p.side = v; commit(); }
+    else if (a === 'side') { p.side = v; uiPrefs(); commit(); }
+    else if (a === 'tribe') {
+      var old = typesFor(p.side), i = old.indexOf(p.brush);
+      p.tribe[p.side] = v;
+      // keep the "same" unit: same slot in the new tribe's list (Archer → Ice Archer …)
+      var nw = typesFor(p.side); p.brush = nw[i] && i < 8 ? nw[i] : nw[0];
+      commit();
+    }
     else if (a === 'as') setAtkSide(v);
     else if (a === 'brush') { p.brush = v; p.eraser = false; commit(); }
     else if (a === 'eraser') { p.eraser = !p.eraser; if (p.eraser) p.selId = null; commit(); }
@@ -1455,6 +1641,11 @@ window.PP = window.PP || {};
       var nr = clamp(R * 0.45, 6, 9.5);
       numBadge(ctx, p.x - R * 0.8 - nr * 0.35, p.y - R * 0.8 - nr * 0.35, String(i + 1), nr, '#ffd23f', '#1d1a10');
       if (s && s.dmg != null && s.ret) chip(ctx, p.x, p.y + R + clamp(R * 0.48, 9, 14) * 1.1, s.aAfter <= 0 ? '☠ ' + s.aBefore + '→0' : s.aBefore + '→' + s.aAfter, clamp(R * 0.48, 9, 14), s.aAfter <= 0 ? '#b3122f' : 'rgba(14,18,34,.92)', '#fff', 'rgba(255,210,63,.9)');
+    });
+    if (res && res.fx) res.fx.forEach(function (e) {
+      if (e.hp === e.before) return;
+      var q2 = cpos(e.u.c, e.u.r), fs2 = clamp(R * 0.48, 9, 14);
+      chip(ctx, q2.x, q2.y - R - fs2 * 1.05, e.hp <= 0 ? '☠ ' + e.before + '→0' : e.before + '→' + e.hp, fs2, e.hp <= 0 ? '#06a77d' : '#8a1a2e', '#fff', 'rgba(255,255,255,.8)');
     });
     if (tAct && res && res.used) {
       var q = cpos(tAct.c, tAct.r), kill = res.hpAfter <= 0;

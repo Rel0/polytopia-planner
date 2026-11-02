@@ -12,47 +12,88 @@ window.PP = window.PP || {};
 
   // ======================= Combat =======================
 
-  E.maxHp = function (u) {
+  // max HP; ships (carry) take the HP of the unit they carry (u.carry, default Warrior)
+  E.baseHp = function (u) {
     var U = UNITS()[u.type];
-    return (U ? U.hp : 10) + (u.vet ? 5 : 0);
+    if (U && U.carry) { var C = UNITS()[u.carry] || UNITS().warrior; return (C && C.hp) || 10; }
+    return (U && U.hp) || 10;
+  };
+  E.maxHp = function (u) {
+    return E.baseHp(u) + (u.vet ? 5 : 0);
   };
 
-  // Value of a unit for the optimizer (purchase price, giant = 15).
+  // Value of a unit for the optimizer (purchase price; super units 15; ships = carried unit + upgrade).
   E.unitValue = function (u) {
     var U = UNITS()[u.type];
     if (!U) return 0;
-    return U.cost == null ? (PP.GIANT_VALUE || 15) : U.cost;
+    if (U.carry) return E.unitValue({ type: UNITS()[u.carry] ? u.carry : 'warrior' }) + (U.up || 0);
+    if (U.cost != null) return U.cost;
+    return U.val != null ? U.val : (PP.GIANT_VALUE || 15);
   };
 
-  // Polytopia attack formula. dist = tile distance between the units (null → attacker's range).
-  E.attack = function (att, def, dist) {
+  // Poison halves the defense bonus (wiki: 1 → 0.5, 1.5 → 0.7, wall 4 → 2).
+  E.poisonBonus = function (b) { b = b || 1; return b === 1 ? 0.5 : b === 1.5 ? 0.7 : b / 2; };
+
+  // Raw Polytopia damage numbers (no skills): attacker att → defender def (def.bonus = effective defense bonus,
+  // def.poison = poisoned). → { dmg, retRaw }
+  E.raw = function (att, def) {
+    var A = UNITS()[att.type], D = UNITS()[def.type];
+    if (!A || !D || !(A.atk > 0)) return { dmg: 0, retRaw: 0 };
+    var b = def.poison ? E.poisonBonus(def.bonus || 1) : (def.bonus || 1);
+    var aF = A.atk * att.hp / E.maxHp(att);
+    var dF = D.def * def.hp / E.maxHp(def) * b;
+    var tot = aF + dF;
+    if (!(tot > 0)) return { dmg: 0, retRaw: 0 };
+    return { dmg: Math.round(aF / tot * A.atk * 4.5), retRaw: Math.round(dF / tot * D.def * 4.5) };
+  };
+  // splash / explosion / stomp / tentacles: the regular damage against that unit, halved and rounded down
+  E.half = function (att, def) { return Math.floor(E.raw(att, def).dmg / 2); };
+
+  // One attack with skills. dist = tile distance (null → attacker's range). opts.boom: explode instead of attacking.
+  // Skills: stiff defender / surprise attacker / frozen defender → no retaliation; freeze (Ice Archer): no damage,
+  // freezes the target; convert (Mind Bender, Siren, Shaman): target changes sides (the Shaman hits first);
+  // explode: half damage, the attacker dies; poison: the target is poisoned after the hit.
+  E.attack = function (att, def, dist, opts) {
     var A = UNITS()[att.type], D = UNITS()[def.type];
     var res = { dmg: 0, ret: 0, defHp: def.hp, attHp: att.hp };
-    if (!A || !D || !(A.atk > 0)) return res;
-    var aF = A.atk * att.hp / E.maxHp(att);
-    var dF = D.def * def.hp / E.maxHp(def) * (def.bonus || 1);
-    var tot = aF + dF;
-    if (!(tot > 0)) return res;
-    var dmg = Math.round(aF / tot * A.atk * 4.5);
-    var defHp = Math.max(0, def.hp - dmg);
+    if (!A || !D) return res;
+    var boom = !!A.explode && (A.boomOpt ? !!(opts && opts.boom) : true);
+    if (A.freeze) { res.freeze = true; return res; }
+    if (A.convert && !(A.atk > 0)) { res.convert = true; return res; }
+    if (!(A.atk > 0)) return res;
+    var r = E.raw(att, def);
+    if (boom) {
+      res.dmg = Math.floor(r.dmg / 2); res.defHp = Math.max(0, def.hp - res.dmg); res.attHp = 0; res.explode = true;
+      if (res.defHp > 0) res.poison = true;
+      return res;
+    }
+    var defHp = Math.max(0, def.hp - r.dmg);
     // the attacker moves until in range, so it attacks from min(dist, own range)
-    var ad = dist == null ? A.rng : Math.max(1, Math.min(dist, A.rng));
-    var ret = defHp > 0 && D.rng >= ad ? Math.round(dF / tot * D.def * 4.5) : 0;
-    res.dmg = dmg; res.ret = ret; res.defHp = defHp; res.attHp = Math.max(0, att.hp - ret);
+    var ad = dist == null ? Math.max(1, A.rng) : Math.max(1, Math.min(dist, A.rng));
+    var conv = A.convert && defHp > 0;
+    var ret = defHp > 0 && !conv && D.rng >= ad && !D.stiff && !A.surprise && !def.frozen ? r.retRaw : 0;
+    res.dmg = r.dmg; res.ret = ret; res.defHp = defHp; res.attHp = Math.max(0, att.hp - ret);
+    if (conv) res.convert = true;
+    if (A.poison && defHp > 0) res.poison = true;
+    if (D.poisonDef && res.attHp > 0) res.poisonAtt = true;
     return res;
   };
 
   // Defense bonus incl. city: own city on the unit's tile → walls ×4, else ×1.5.
+  // Only units with Fortify get a city bonus (e.g. the Giant, Swordsman or Catapult don't).
   E.effectiveBonus = function (unit, cities) {
+    var U = UNITS()[unit.type], fort = !U || !!U.fort;
     var list = cities || [];
     for (var i = 0; i < list.length; i++) {
       var c = list[i];
       if (c.c === unit.c && c.r === unit.r) {
         // a unit standing in a foreign city gets no city bonus
         if (c.side && unit.side && c.side !== unit.side) break;
+        if (!fort) return 1;
         return c.walls ? 4 : 1.5;
       }
     }
+    if (!fort && (unit.bonusKind === 'city' || unit.bonusKind === 'wall')) return 1;
     return unit.bonus || 1;
   };
 
@@ -60,7 +101,8 @@ window.PP = window.PP || {};
     var A = UNITS()[att.type];
     if (!A) return false;
     if (dist == null) return true;
-    return dist <= A.mov + A.rng;
+    if (att.frozen) return false;
+    return dist <= A.mov + Math.max(1, A.rng);
   };
 
   // Objective vector: [killedValue↑, losses↓, lostValue↓, dmgTaken↓, dmgDealt↑, used↓, kills]
