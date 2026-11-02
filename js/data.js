@@ -222,7 +222,7 @@ window.PP = window.PP || {};
     { id: 'mountaintemple', name: 'Mountain Temple', icon: '🏔️', cost: 20, pop: 1, tech: 'meditation', terrain: ['mountain'] },
     // water
     { id: 'fish',     name: 'Fish',    icon: '🐟', cost: 2,  pop: 1, tech: 'fishing',      terrain: ['water'], needs: 'fish' },
-    { id: 'port',     name: 'Port',           icon: '⚓', cost: 7,  pop: 0, tech: 'sailing',      terrain: ['water'] },
+    { id: 'port',     name: 'Port',           icon: '⚓', cost: 7,  pop: 1, tech: 'fishing',      terrain: ['water'] }, // Path of the Ocean: Fishing, +1 pop
     { id: 'watertemple', name: 'Water Temple', icon: '🔱', cost: 20, pop: 1, tech: 'aquatism',     terrain: ['water', 'ocean'] },
   ];
   PP.ITEM = {};

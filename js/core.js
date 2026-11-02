@@ -477,8 +477,12 @@ window.PP = window.PP || {};
   const MODE_LABELS = { units: 'Units', cost: 'Costs', draw: 'Draw', market: 'Market', notes: 'Notes', calibrate: 'Grid' };
   const toolInfo = id => TOOLS.find(t => t.id === id) || { id, icon: (registry[id] || {}).icon || '🧰', label: (registry[id] || {}).label || MODE_LABELS[id] || id };
   const firstTool = () => TOOL_IDS.find(id => registry[id]) || 'idle';
+  // deep link from the landing pages: /?tool=units|cost|market|draw|notes opens that tool (once)
+  let linkTool = (() => { try { return new URLSearchParams(location.search).get('tool'); } catch (e) { return null; } })();
+  const takeLinkTool = () => { const t = linkTool && registry[linkTool] && TOOL_IDS.includes(linkTool) ? linkTool : null; linkTool = null; return t; };
 
   PP.modes = {
+    takeLinkTool: () => takeLinkTool(),
     current: null,
     register(name, mode) { registry[name] = mode || {}; if (domReady) updateRail(); },
     get: name => registry[name] || null,
@@ -1032,7 +1036,7 @@ window.PP = window.PP || {};
   let afterCal = null;
   function calDone() {
     save();
-    const st = S(), want = afterCal || st.ui.mode;
+    const st = S(), want = takeLinkTool() || afterCal || st.ui.mode;
     afterCal = null;
     st.ui.drawerOpen = true;
     PP.modes.set(want && registry[want] && TOOL_IDS.includes(want) ? want : firstTool());
@@ -1315,7 +1319,9 @@ window.PP = window.PP || {};
     img = null; pix = null; hiRes = null; ocrToken++; st.board = 'blank'; st.grid = Object.assign({}, DEFAULT_GRID);
     needFit = true; fit();
     st.ui.drawerOpen = true;
-    if (PP.modes.current === 'calibrate' || !TOOL_IDS.includes(PP.modes.current)) PP.modes.set(firstTool());
+    const lt = takeLinkTool();
+    if (lt) PP.modes.set(lt);
+    else if (PP.modes.current === 'calibrate' || !TOOL_IDS.includes(PP.modes.current)) PP.modes.set(firstTool());
     commit();
   }
 

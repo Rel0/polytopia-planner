@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#1c2340">
+<title>Polytopia Damage Calculator – Battle &amp; Attack Calculator (all units)</title>
+<meta name="description" content="Free Polytopia damage calculator: damage formula, retaliation, splash and kills for every unit (incl. Aquarion, Polaris, Cymanti) and the best attack order – on your own screenshot.">
+<link rel="canonical" href="https://polytopiaplanner.com/damage-calculator/">
+<meta name="robots" content="index, follow">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="Polytopia Planner">
+<meta property="og:title" content="Polytopia Damage Calculator – Battle &amp; Attack Calculator (all units)">
+<meta property="og:description" content="Free Polytopia damage calculator: damage formula, retaliation, splash and kills for every unit (incl. Aquarion, Polaris, Cymanti) and the best attack order – on your own screenshot.">
+<meta property="og:url" content="https://polytopiaplanner.com/damage-calculator/">
+<meta property="og:image" content="https://polytopiaplanner.com/og-image.png">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Polytopia Damage Calculator – Battle &amp; Attack Calculator (all units)">
+<meta name="twitter:description" content="Free Polytopia damage calculator: damage formula, retaliation, splash and kills for every unit (incl. Aquarion, Polaris, Cymanti) and the best attack order – on your own screenshot.">
+<meta name="twitter:image" content="https://polytopiaplanner.com/og-image.png">
+<link rel="icon" type="image/png" href="/icons/icon-192.png">
+<link rel="apple-touch-icon" href="/icons/icon-180.png">
+<link rel="stylesheet" href="/css/pages.css?v=3">
+<script type="application/ld+json">[{"@context":"https://schema.org","@type":"WebApplication","name":"Polytopia Damage Calculator","url":"https://polytopiaplanner.com/damage-calculator/","applicationCategory":"GameApplication","operatingSystem":"Any (web browser)","isAccessibleForFree":true,"offers":{"@type":"Offer","price":"0","priceCurrency":"EUR"},"description":"Free Polytopia damage calculator: damage formula, retaliation, splash and kills for every unit (incl. Aquarion, Polaris, Cymanti) and the best attack order – on your own screenshot.","image":"https://polytopiaplanner.com/og-image.png","inLanguage":"en"},{"@context":"https://schema.org","@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"Polytopia Planner","item":"https://polytopiaplanner.com/"},{"@type":"ListItem","position":2,"name":"Damage Calculator","item":"https://polytopiaplanner.com/damage-calculator/"}]},{"@context":"https://schema.org","@type":"FAQPage","mainEntity":[{"@type":"Question","name":"How is damage calculated in Polytopia?","acceptedAnswer":{"@type":"Answer","text":"attackForce = attack × HP / max HP; defenseForce = defense × HP / max HP × defense bonus. Damage = round(attackForce / (attackForce + defenseForce) × attack × 4.5). If the defender survives and the attacker is within its range, it strikes back with round(defenseForce / total × defense × 4.5)."}},{"@type":"Question","name":"How does splash damage work in Polytopia?","acceptedAnswer":{"@type":"Answer","text":"Units with Splash (Bomber, Fire Dragon) also hit every enemy next to the target. Each of them takes the damage a normal hit would deal to it, halved and rounded down. The Exida’s splash only poisons the neighbours."}},{"@type":"Question","name":"How much damage does an explosion do?","acceptedAnswer":{"@type":"Answer","text":"Exploding units (Boomchi, Doomux, Segment, Insect Egg) deal half of their normal damage to every adjacent enemy and poison them. The exploding unit dies."}},{"@type":"Question","name":"What does poison do in Polytopia?","acceptedAnswer":{"@type":"Answer","text":"Poison halves the defense bonus of the unit (×1 becomes 0.5, ×1.5 becomes 0.7, a city wall ×4 becomes 2), so it takes more damage. It also prevents healing until the unit recovers."}},{"@type":"Question","name":"Which units get the city defense bonus?","acceptedAnswer":{"@type":"Answer","text":"Only units with the Fortify skill (e.g. Warrior, Archer, Defender, Rider, Knight). A Giant, Swordsman or Catapult gets no bonus in a city, but still gets terrain bonuses."}},{"@type":"Question","name":"Does the calculator work for all tribes?","acceptedAnswer":{"@type":"Answer","text":"Yes – all 55 current units, including ships and the special tribes Aquarion, ∑∫ỹriȱŋ, Polaris and Cymanti. Pick your tribe and the enemy’s tribe in the Units tool."}}]}]</script>
+</head>
+<body>
+<div class="top"><div class="in">
+  <a class="brand" href="/"><img src="/icons/icon-192.png" alt="" width="28" height="28"><span>Polytopia Planner</span></a>
+  <nav class="nav" aria-label="Pages"><a href="/damage-calculator/" class="on" aria-current="page">Damage Calculator</a><a href="/tech-tree/">Tech Tree &amp; Costs</a><a href="/market-planner/">Market Calculator</a><a href="/units/">All Units</a><a class="app" href="/?tool=units">Open app</a></nav>
+</div></div>
+<main>
+<div class="hero"><h1>Polytopia Damage Calculator<br><span class="muted" style="font-size:.6em;font-weight:700">Battle, attack &amp; combat calculator</span></h1><p class="lead">Place your and enemy units on your own screenshot and see the exact damage, retaliation and kills before you attack – with the best attack order for several attackers.</p>
+<div class="ctas"><a class="cta" href="/?tool=units">Open the Damage Calculator →</a><a class="cta sec" href="/units/">All unit stats</a></div>
+<p class="note">Free · no sign-up · works on phone, tablet and desktop · your screenshots stay on your device</p></div>
+<section><h2>How it works</h2><ol class="steps">
+<li><b>Add a screenshot</b><span>Take a screenshot in Polytopia and open it – or start with a blank board.</span></li>
+<li><b>Place units</b><span>Pick your tribe and the enemy’s, then tap tiles to place units. Set HP, veteran, poisoned or frozen.</span></li>
+<li><b>Battle</b><span>Tap your attackers in order, then the target: damage, retaliation, splash and kills appear instantly.</span></li>
+</ol></section>
+<section id="formula"><h2>Polytopia damage formula</h2>
+<p>The calculator uses the community-verified combat formula from the Polytopia wiki:</p>
+<pre>attackForce  = attack  × attackerHP / attackerMaxHP
+defenseForce = defense × defenderHP / defenderMaxHP × defenseBonus
+total        = attackForce + defenseForce
+damage       = round(attackForce  / total × attack  × 4.5)
+retaliation  = round(defenseForce / total × defense × 4.5)   (only if the defender survives and is in range)</pre>
+<p>A veteran has +5 max HP. Ships (Raft, Scout, Rammer, Bomber) use the HP of the unit they carry.</p>
+<h3>Defense bonus</h3>
+<div class="tw"><table><thead><tr><th>Where the defender stands</th><th class="n">Bonus</th></tr></thead><tbody>
+<tr><td>None</td><td class="n">×1</td></tr><tr><td>Forest (Archery)</td><td class="n">×1.5</td></tr><tr><td>Mountain (Climbing)</td><td class="n">×1.5</td></tr><tr><td>Water / ocean (Aquatism)</td><td class="n">×1.5</td></tr><tr><td>City (units with Fortify)</td><td class="n">×1.5</td></tr><tr><td>City Wall (units with Fortify)</td><td class="n">×4</td></tr>
+</tbody></table></div></section>
+<section><h2>Unit skills in battle</h2><p>The calculator also handles the special abilities that change a fight:</p>
+<div class="tw"><table><thead><tr><th>Skill</th><th>Units</th><th>Effect</th></tr></thead><tbody>
+<tr><td><b>Splash</b></td><td class="sk">Bomber, Fire Dragon</td><td class="sk">Every enemy next to the target takes half of the damage it would take from a normal hit (rounded down).</td></tr><tr><td><b>Splash + Poison</b></td><td class="sk">Exida</td><td class="sk">The target is hit and poisoned, the enemies next to it are poisoned (no damage).</td></tr><tr><td><b>Explode</b></td><td class="sk">Boomchi, Doomux, Segment, Insect Egg</td><td class="sk">Half damage to every adjacent enemy, poisons them – the exploding unit dies.</td></tr><tr><td><b>Poison</b></td><td class="sk">Phychi, Exida, Moth, Living Island; Kiton poisons its attackers</td><td class="sk">A poisoned unit’s defense bonus is halved (×1 → 0.5, ×1.5 → 0.7, wall ×4 → 2) – later attacks deal more damage.</td></tr><tr><td><b>Freeze</b></td><td class="sk">Ice Archer</td><td class="sk">No damage, but the target is frozen and can’t strike back.</td></tr><tr><td><b>Convert</b></td><td class="sk">Mind Bender, Siren, Shaman</td><td class="sk">The target switches sides (the Shaman deals damage first).</td></tr><tr><td><b>Double attack</b></td><td class="sk">Phychi</td><td class="sk">Attacks twice per turn.</td></tr><tr><td><b>Stiff</b></td><td class="sk">Catapult, Mind Bender, Bomber, Jelly, Puffer …</td><td class="sk">Never strikes back.</td></tr><tr><td><b>Surprise</b></td><td class="sk">Dagger, Pirate, Shark, Phychi, Larva</td><td class="sk">Its attacks never get retaliation.</td></tr><tr><td><b>Tentacles</b></td><td class="sk">Jelly</td><td class="sk">Melee units that move next to it are hit first.</td></tr><tr><td><b>Stomp</b></td><td class="sk">Juggernaut, Living Island</td><td class="sk">Damages adjacent enemies when it moves.</td></tr><tr><td><b>Persist</b></td><td class="sk">Knight, Tridention</td><td class="sk">May attack again after a kill.</td></tr>
+</tbody></table></div></section>
+<section id="faq"><h2>FAQ</h2><details><summary>How is damage calculated in Polytopia?</summary><p>attackForce = attack × HP / max HP; defenseForce = defense × HP / max HP × defense bonus. Damage = round(attackForce / (attackForce + defenseForce) × attack × 4.5). If the defender survives and the attacker is within its range, it strikes back with round(defenseForce / total × defense × 4.5).</p></details><details><summary>How does splash damage work in Polytopia?</summary><p>Units with Splash (Bomber, Fire Dragon) also hit every enemy next to the target. Each of them takes the damage a normal hit would deal to it, halved and rounded down. The Exida’s splash only poisons the neighbours.</p></details><details><summary>How much damage does an explosion do?</summary><p>Exploding units (Boomchi, Doomux, Segment, Insect Egg) deal half of their normal damage to every adjacent enemy and poison them. The exploding unit dies.</p></details><details><summary>What does poison do in Polytopia?</summary><p>Poison halves the defense bonus of the unit (×1 becomes 0.5, ×1.5 becomes 0.7, a city wall ×4 becomes 2), so it takes more damage. It also prevents healing until the unit recovers.</p></details><details><summary>Which units get the city defense bonus?</summary><p>Only units with the Fortify skill (e.g. Warrior, Archer, Defender, Rider, Knight). A Giant, Swordsman or Catapult gets no bonus in a city, but still gets terrain bonuses.</p></details><details><summary>Does the calculator work for all tribes?</summary><p>Yes – all 55 current units, including ships and the special tribes Aquarion, ∑∫ỹriȱŋ, Polaris and Cymanti. Pick your tribe and the enemy’s tribe in the Units tool.</p></details></section>
+<section><h2>More Polytopia tools</h2><ul class="chips"><li><a href="/tech-tree/">Tech Tree &amp; Costs</a></li><li><a href="/market-planner/">Market Calculator</a></li><li><a href="/units/">All Units</a></li><li><a href="/">Polytopia Planner app</a></li></ul></section>
+</main>
+<footer><div class="in">
+  <nav aria-label="Footer"><a href="/damage-calculator/">Damage Calculator</a><a href="/tech-tree/">Tech Tree &amp; Costs</a><a href="/market-planner/">Market Calculator</a><a href="/units/">All Units</a><a href="/">App</a><a href="/privacy.html">Privacy</a><a href="https://github.com/Rel0/polytopia-planner">GitHub</a></nav>
+  Free, unofficial fan tool – not affiliated with or endorsed by Midjiwan AB. “The Battle of Polytopia” is a trademark of Midjiwan AB.
+  Unit data from the community wiki, last checked 2026-11-02.
+</div></footer>
+</body>
+</html>

@@ -7,6 +7,12 @@ window.PP = window.PP || {};
     return;
   }
   PP.app.init();
+  // deep link (?tool=…) with a board already loaded → open that tool now; without a board it opens after
+  // "Start without screenshot" / the first screenshot
+  if (PP.state && PP.state.board && PP.modes.takeLinkTool) {
+    const lt = PP.modes.takeLinkTool();
+    if (lt) { PP.state.ui.drawerOpen = true; PP.modes.set(lt); }
+  }
   // hide the boot screen once the app is drawn – waiting for a saved screenshot to come back from storage
   const boot = document.getElementById('boot'), t0 = performance.now();
   const ready = () => !PP.state || PP.state.board !== 'image' || !!(PP.board && PP.board.image);
