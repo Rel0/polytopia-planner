@@ -103,9 +103,9 @@ function hero(h1, lead, tool, ctaText, extra) {
 function battlePage(p) {
   const KIND = [['None', '×1'], ['Forest (Archery)', '×1.5'], ['Mountain (Climbing)', '×1.5'], ['Water / ocean (Aquatism)', '×1.5'], ['City (units with Fortify)', '×1.5'], ['City Wall (units with Fortify)', '×4']];
   const skillRows = [
-    ['Splash', 'Bomber, Fire Dragon', 'Every enemy next to the target takes half of the damage it would take from a normal hit (rounded down).'],
+    ['Splash', 'Bomber, Fire Dragon', 'Every enemy next to the target takes half of the damage it would take from a normal hit – not rounded, so a unit can end up with x.5 HP.'],
     ['Splash + Poison', 'Exida', 'The target is hit and poisoned, the enemies next to it are poisoned (no damage).'],
-    ['Explode', 'Boomchi, Doomux, Segment, Insect Egg', 'Half damage to every adjacent enemy, poisons them – the exploding unit dies.'],
+    ['Explode', 'Boomchi, Doomux, Segment, Insect Egg', 'Half damage (not rounded) to every adjacent enemy, poisons them – the exploding unit dies.'],
     ['Poison', 'Phychi, Exida, Moth, Living Island; Kiton poisons its attackers', 'A poisoned unit’s defense bonus is halved (×1 → 0.5, ×1.5 → 0.7, wall ×4 → 2) – later attacks deal more damage.'],
     ['Freeze', 'Ice Archer', 'No damage, but the target is frozen and can’t strike back.'],
     ['Convert', 'Mind Bender, Siren, Shaman', 'The target switches sides (the Shaman deals damage first).'],
@@ -118,7 +118,7 @@ function battlePage(p) {
   ];
   const faq = [
     ['How is damage calculated in Polytopia?', 'attackForce = attack × HP / max HP; defenseForce = defense × HP / max HP × defense bonus. Damage = round(attackForce / (attackForce + defenseForce) × attack × 4.5). If the defender survives and the attacker is within its range, it strikes back with round(defenseForce / total × defense × 4.5).'],
-    ['How does splash damage work in Polytopia?', 'Units with Splash (Bomber, Fire Dragon) also hit every enemy next to the target. Each of them takes the damage a normal hit would deal to it, halved and rounded down. The Exida’s splash only poisons the neighbours.'],
+    ['How does splash damage work in Polytopia?', 'Units with Splash (Bomber, Fire Dragon) also hit every enemy next to the target. Each of them takes half the damage a normal hit would deal to it, without rounding – an odd damage leaves the unit at x.5 HP. The Exida’s splash only poisons the neighbours.'],
     ['How much damage does an explosion do?', 'Exploding units (Boomchi, Doomux, Segment, Insect Egg) deal half of their normal damage to every adjacent enemy and poison them. The exploding unit dies.'],
     ['What does poison do in Polytopia?', 'Poison halves the defense bonus of the unit (×1 becomes 0.5, ×1.5 becomes 0.7, a city wall ×4 becomes 2), so it takes more damage. It also prevents healing until the unit recovers.'],
     ['Which units get the city defense bonus?', 'Only units with the Fortify skill (e.g. Warrior, Archer, Defender, Rider, Knight). A Giant, Swordsman or Catapult gets no bonus in a city, but still gets terrain bonuses.'],
