@@ -15,7 +15,8 @@
 // Steps: ① Cities (tap own cities; territory 3×3 or 5×5 each, borders editable per tile) → ② What's here (paint) →
 // ③ Plan (exact optimizer, runs in chunks with a spinner). Only the tiles of the selected territories are planned.
 // Pure logic (node-testable): PP.market.optimize(cells, opts), PP.market.createJob(cells, opts).step(deadline)
-// cells [{ c, r, terrain, res:[crop|ore|fruit], bld, name?, own? }], opts { clear, burn, grow, destroy, produce, costs }.
+// cells [{ c, r, terrain, res:[crop|ore|fruit], bld, name?, own? }], opts { clear, burn, grow, destroy, produce, windmill, forge, sawmill, costs }.
+// windmill / forge / sawmill = false: no NEW workshop of that type (tech not researched); existing ones still count.
 // own = 'c,r' of the city tile the cell belongs to (explicit territory); without it: nearest city within 2.
 (function (root) { root.PP = root.PP || {}; })(typeof window !== 'undefined' ? window : globalThis);
 (function (PP) {
@@ -31,6 +32,7 @@
   const BLDS = PRODS.concat(UNIQUE);
   const TERR = ['field', 'forest', 'mountain', 'water', 'city'];
   const OPT_KEYS = ['clear', 'burn', 'grow', 'destroy', 'produce'];
+  const WS_KEYS = WS; // workshop types the user allows to be built (opts.windmill / forge / sawmill)
   // ★ per action. destroy: free in the game (assumed 0 ★, still one action)
   const DEF_COST = { market: 5, windmill: 5, forge: 5, sawmill: 5, farm: 5, mine: 5, lumber: 3, clear: -1, burn: 5, plant: 5, fruit: 2, destroy: 0 };
   const RANGE = 2; // city territory radius (Chebyshev)
@@ -76,7 +78,7 @@
   }
   function normOpts(opts) {
     const o = {};
-    for (const k of OPT_KEYS) o[k] = !(opts && opts[k] === false);
+    for (const k of OPT_KEYS.concat(WS_KEYS)) o[k] = !(opts && opts[k] === false);
     return o;
   }
   function costs(opts) {
@@ -195,7 +197,7 @@
       for (const T of WS) {
         if (P.potLevel(y, T) === 0) continue;
         if (b === T) return true;
-        if (P.canAct[y] && pField[y] && (!b || dOK[y])) return true;
+        if (P.o[T] && P.canAct[y] && pField[y] && (!b || dOK[y])) return true;
       }
       return false;
     });
@@ -232,7 +234,7 @@
         const Ek = E[k][T], list = [], allD = Ek.every(i => dOK[i]);
         if (!Ek.some(i => occ0.has(i))) list.push({ kind: 'keep', tiles: Ek, frees: [], w: 0, cost: 0, act: 0 });
         if (Ek.length && allD) list.push({ kind: 'destroy', tiles: [], frees: Ek, w: Ek.length * wD, cost: Ek.length * C.destroy, act: Ek.length });
-        if (allD) {
+        if (allD && P.o[T]) {
           for (const x of terrTiles[k]) {
             if (!mAdj.has(x) || occ0.has(x) || Ek.indexOf(x) >= 0 || !pField[x]) continue;
             const b = cells[x].bld;
@@ -658,7 +660,7 @@
     return { owner: P.owner, cities: P.cities, cells: P.cells, implicit: P.implicit };
   }
 
-  PP.market = { CAP, PROD, WS, UNIQUE, PRODS, BLDS, OPT_KEYS, DEF_COST, RANGE, optimize, createJob, solveOnce, prepare, incomeOf, territory, normRegion, inRegion, normCell, costs, fieldPath, prodPath };
+  PP.market = { CAP, PROD, WS, WS_KEYS, UNIQUE, PRODS, BLDS, OPT_KEYS, DEF_COST, RANGE, optimize, createJob, solveOnce, prepare, incomeOf, territory, normRegion, inRegion, normCell, costs, fieldPath, prodPath };
 
 
   // ======================================================================== UI (browser only)
@@ -699,6 +701,7 @@
   const RES_TER = { crop: 'field', fruit: 'field', ore: 'mountain' };
   const OPT_LABEL = { clear: ['🪓', 'Clear Forest', '+1 ★'], burn: ['🔥', 'Burn Forest', '→ Crop'], grow: ['🌱', 'Grow Forest', 'Empty → Forest'],
     destroy: ['💥', 'Destroy buildings', 'move / replace'], produce: ['🏗️', 'New Farms, Mines, Lumber Huts', ''] };
+  const TECH_OF_WS = { windmill: 'Construction', forge: 'Smithery', sawmill: 'Mathematics' }; // fallback when PP.TECH is missing
 
   const ui = { step: 1, brush: 'forest', paint: null, alt: 0, sel: null, entered: false, borders: false, edit: null };
   const S = () => PP.state;
@@ -709,7 +712,7 @@
     if (!st.market || typeof st.market !== 'object') st.market = {};
     const m = st.market;
     if (!m.opts || typeof m.opts !== 'object') m.opts = {};
-    for (const k of OPT_KEYS) if (typeof m.opts[k] !== 'boolean') m.opts[k] = true;
+    for (const k of OPT_KEYS.concat(WS_KEYS)) if (typeof m.opts[k] !== 'boolean') m.opts[k] = true;
     if (!st.tiles || typeof st.tiles !== 'object' || Array.isArray(st.tiles)) st.tiles = {};
     if (!Array.isArray(st.cities)) st.cities = [];
     // region === false: v17 state. null: fresh state or a new screenshot (core resets it) → start over.
@@ -1323,6 +1326,11 @@
         const [ic, lab, sub] = OPT_LABEL[k];
         return `<button class="mk-opt ${m.opts[k] ? 'on' : ''} ${k === 'produce' ? 'wide' : ''}" data-opt="${k}"><span class="bx">${m.opts[k] ? '✓' : ''}</span><span>${ic} ${lab}${sub ? `<small>${sub}</small>` : ''}</span></button>`;
       }).join('') + '</div>';
+      h += '<h3>Workshops you can build</h3><div class="mk-opts">' + WS_KEYS.map(k => {
+        const it = ITEM(k) || {}, tech = it.tech && PP.TECH && PP.TECH[it.tech] ? PP.TECH[it.tech].name : TECH_OF_WS[k];
+        return `<button class="mk-opt ${m.opts[k] ? 'on' : ''}" data-opt="${k}" title="Uncheck if you don't have ${esc(tech)} – existing ${esc(nm(k))}s still count"><span class="bx">${m.opts[k] ? '✓' : ''}</span><span>${iconHtml(k, 16)} ${esc(nm(k))}<small>${esc(tech)}</small></span></button>`;
+      }).join('') + '</div>';
+      if (!WS_KEYS.some(k => m.opts[k])) h += '<p class="mk-note" style="margin-top:2px">No new workshops – the plan only uses the Windmills, Forges and Sawmills already on the board.</p>';
       if (p) h += planHtml(p, res);
       else if (res && res.tooBig) h += `<p class="mk-note" style="color:var(--warn,#ffaa00)">Too many possibilities for the exact search (${res.tooBig.toLocaleString('en')} Market combinations). Mark the tiles in step ② (unmarked tiles count as Empty, so every one is a possible Market site) or plan fewer cities at once.</p>`;
       else if (res && !res.pending) h += '<p class="mk-note">No Market can earn anything here. A Market needs an Empty tile of a city’s territory next to a Windmill, Forge or Sawmill site – and those need Farms, Mines or Lumber Huts (or tiles that can become one) next to them. Check the tiles in step ② and the allowed actions.</p>';
