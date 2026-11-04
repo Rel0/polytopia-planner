@@ -44,9 +44,15 @@ window.PP = window.PP || {};
     var dF = D.def * def.hp / E.maxHp(def) * b;
     var tot = aF + dF;
     if (!(tot > 0)) return { dmg: 0, retRaw: 0 };
-    return { dmg: Math.round(aF / tot * A.atk * 4.5), retRaw: Math.round(dF / tot * D.def * 4.5) };
+    return { dmg: E.round(aF / tot * A.atk * 4.5), retRaw: E.round(dF / tot * D.def * 4.5) };
   };
-  // splash / explosion / stomp / tentacles: the regular damage against that unit, halved and rounded down
+  // Round to the nearest whole number, .5 up (warrior vs warrior = 4.5 → 5). The value is snapped to 6 decimals
+  // first: exact ties like 7.5 otherwise come out of float math as 7.4999… and would be rounded the wrong way.
+  E.round = function (x) { return Math.round(Math.round(x * 1e6) / 1e6); };
+  // Splash and explosion (wiki "Combat"): the regular damage against that unit divided by 2 WITHOUT rounding,
+  // so an odd damage leaves the unit at x.5 HP (an in-game quirk the wiki documents).
+  E.splash = function (att, def) { return E.raw(att, def).dmg / 2; };
+  // stomp / tentacles: the wiki gives no formula; half the regular damage, rounded down
   E.half = function (att, def) { return Math.floor(E.raw(att, def).dmg / 2); };
 
   // One attack with skills. dist = tile distance (null → attacker's range). opts.boom: explode instead of attacking.
@@ -63,7 +69,7 @@ window.PP = window.PP || {};
     if (!(A.atk > 0)) return res;
     var r = E.raw(att, def);
     if (boom) {
-      res.dmg = Math.floor(r.dmg / 2); res.defHp = Math.max(0, def.hp - res.dmg); res.attHp = 0; res.explode = true;
+      res.dmg = r.dmg / 2; res.defHp = Math.max(0, def.hp - res.dmg); res.attHp = 0; res.explode = true;
       if (res.defHp > 0) res.poison = true;
       return res;
     }

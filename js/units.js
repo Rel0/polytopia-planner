@@ -722,7 +722,7 @@ window.PP = window.PP || {};
     var exOf = function (x) { return ex[x.id] || (ex[x.id] = { u: x, before: x.hp, hp: x.hp, poison: !!x.poison, b: effBonus(x) }); };
     var hitOther = function (a, aHp, x, kind, poison) {
       var e = exOf(x); if (e.hp <= 0) return null;
-      var dm = E.half(cp(a, { hp: aHp }), cp(x, { hp: e.hp, bonus: e.b, poison: e.poison }));
+      var dm = E.splash(cp(a, { hp: aHp }), cp(x, { hp: e.hp, bonus: e.b, poison: e.poison }));
       e.hp = Math.max(0, e.hp - dm); if (poison && e.hp > 0) e.poison = true;
       return { u: x, dmg: dm, after: e.hp, kind: kind, poison: !!(poison && e.hp > 0) };
     };
@@ -906,7 +906,7 @@ window.PP = window.PP || {};
     if (isAuto(u)) setBonus(u, 'auto');
     return true;
   }
-  function setHp(u, delta) { u.hp = clamp(Math.round(u.hp + delta), 1, maxHp(u)); if (isDetected(u)) { u.src = 'user'; u.conf = 1; } }
+  function setHp(u, delta) { var h = u.hp % 1 ? (delta < 0 ? Math.floor(u.hp) : Math.ceil(u.hp)) : u.hp + delta; u.hp = clamp(h, 1, maxHp(u)); if (isDetected(u)) { u.src = 'user'; u.conf = 1; } }
   function tapUnit(u) {
     var cb = sel();
     if (isAtt(u)) {
