@@ -59,13 +59,6 @@ window.PP = window.PP || {};
     { d: poly([30, -28, 12, -22, 24, -10]), f: W, s: W, w: 3 },
     { d: poly([-36, 38, -40, 26, -32, 30]) + poly([-36, 38, -24, 42, -28, 34]), f: W, s: W, w: 2.5 }
   ];
-  // Swordsman: sword, blade up-right
-  I.swordsman = [
-    { d: poly([-10, 4, 28, -34, 40, -40, 34, -28, -4, 10]), f: W, s: W, w: 3 },
-    { d: 'M-22 -6L6 22', s: W, w: 8, cap: 'round' },
-    { d: 'M-6 6L-26 26', s: W, w: 7.5, cap: 'round' },
-    { d: circ(-31, 31, 7), f: W }
-  ];
   // Catapult: throwing arm with bucket on a wheeled frame
   I.catapult = [
     { d: 'M-38 20H38', s: W, w: 8, cap: 'round' },
@@ -127,9 +120,11 @@ window.PP = window.PP || {};
   ];
   // Dagger: short blade with guard and grip
   var DAGGER = [
-    { d: poly([-6, 8, 28, -30, 38, -38, 32, -26, 4, 14]), f: W, s: W, w: 3 },
-    { d: 'M-16 -2L10 24', s: W, w: 7, cap: 'round' },
-    { d: 'M-2 12L-22 32', s: W, w: 8, cap: 'round' }
+    { d: 'M-8 -10H24L46 0L24 10H-8Z', f: W },
+    { d: 'M-8 -20V20', s: W, w: 8, cap: 'round' },
+    { d: 'M-12 0H-36', s: W, w: 10, cap: 'round' },
+    { d: circ(-42, 0, 6), f: W },
+    { d: 'M0 0H30', s: 'cut', w: 2.5, cap: 'round' }
   ];
   I.dagger = DAGGER;
   // Pirate: dagger above a small hull
@@ -257,6 +252,115 @@ window.PP = window.PP || {};
   I.centipede = [
     { d: circ(26, -26, 11) + circ(8, -8, 12) + circ(-12, 10, 12) + circ(-30, 28, 10), f: W },
     { d: 'M30 -36L36 -48M36 -24L48 -26M0 -20L-6 -30M20 0L28 8M-20 -2L-28 -10M0 20L6 30M-40 18L-46 10M-20 38L-14 46', s: W, w: 4, cap: 'round' }
+  ];
+
+  // ---------------------------------------------------------------- v28: own symbols for the special-tribe units
+  // (silhouettes modelled on the in-game unit figures; drawn by us, no game assets)
+  // Mermaid figure: head + torso merging into a fish tail with a fluke (lower left); the weapon goes upper right
+  var MER_BODY = 'M-30 -16C-30 -20 -27 -22 -23 -22H-7C-3 -22 0 -20 0 -16L1 2C2 14 8 24 20 28L32 20L30 34L44 44L22 44C4 42 -12 32 -20 18C-27 6 -30 -4 -30 -16Z' + circ(-15, -31, 10);
+  var MER = { d: MER_BODY, f: W };
+  // Mermaid (Warrior): fish-tailed fighter with a club
+  I.mermaid = [MER,
+    { d: 'M6 -2L28 -36', s: 'cut', w: 16, cap: 'round' },
+    { d: 'M6 -2L28 -36', s: W, w: 7, cap: 'round' },
+    { d: 'M20 -22L32 -42', s: W, w: 13, cap: 'round' }];
+  // Mermaid Archer: fish tail + bow
+  I.mermaidArcher = [MER,
+    { d: 'M10 -46C34 -40 44 -14 34 8', s: W, w: 6, cap: 'round' },
+    { d: 'M10 -46L34 8', s: W, w: 2.2, cap: 'round' },
+    { d: 'M4 -4L40 -34', s: W, w: 4, cap: 'round' },
+    { d: poly([46, -40, 32, -36, 40, -26]), f: W, s: W, w: 2.5 }];
+  // Mermaid Defender: fish tail + round-topped shield
+  I.mermaidDefender = [MER,
+    { d: 'M24 -44C32 -39 38 -38 46 -38C46 -14 40 0 24 8C8 0 2 -14 2 -38C10 -38 16 -39 24 -44Z', s: 'cut', w: 7 },
+    { d: 'M24 -44C32 -39 38 -38 46 -38C46 -14 40 0 24 8C8 0 2 -14 2 -38C10 -38 16 -39 24 -44Z', f: W },
+    { d: 'M24 -36V0', s: 'cut', w: 3, cap: 'round' }];
+  // Amphibian (Rider): a frog mount seen from the front
+  I.amphibian = [
+    { d: 'M-40 30C-44 6 -30 -12 -18 -16C-24 -22 -24 -36 -14 -40C-6 -42 -2 -36 0 -30C2 -36 6 -42 14 -40C24 -36 24 -22 18 -16C30 -12 44 6 40 30C30 40 -30 40 -40 30Z', f: W },
+    { d: 'M-48 40C-44 30 -36 28 -30 32M48 40C44 30 36 28 30 32', s: W, w: 6, cap: 'round' },
+    { d: circ(-12, -30, 4.5) + circ(12, -30, 4.5), f: 'cut', s: 'cut', w: 0.1 },
+    { d: 'M-22 4C-12 12 12 12 22 4', s: 'cut', w: 3.5, cap: 'round' }];
+  // Swordsmaid (Swordsman): fish tail + long sword
+  I.swordsmaid = [MER,
+    { d: poly([6, -6, 36, -42, 46, -48, 42, -36, 12, 0]), f: W, s: W, w: 2.5 },
+    { d: 'M-2 -16L18 8', s: W, w: 6, cap: 'round' }];
+  // Siren (Mind Bender): fish tail + staff with an orb
+  I.siren = [MER,
+    { d: 'M26 44V-26', s: W, w: 5.5, cap: 'round' },
+    { d: circ(26, -36, 11), f: W },
+    { d: circ(26, -36, 5), f: 'cut', s: 'cut', w: 0.1 }];
+  // Scuba (Cloak): fish tail with a diving mask and snorkel instead of a head
+  I.scuba = [
+    { d: 'M-30 -16C-30 -20 -27 -22 -23 -22H-7C-3 -22 0 -20 0 -16L1 2C2 14 8 24 20 28L32 20L30 34L44 44L22 44C4 42 -12 32 -20 18C-27 6 -30 -4 -30 -16Z', f: W },
+    { d: 'M-34 -44H8C12 -44 14 -42 14 -38V-30C14 -26 12 -24 8 -24H-34C-38 -24 -40 -26 -40 -30V-38C-40 -42 -38 -44 -34 -44Z', f: W },
+    { d: circ(-24, -34, 6) + circ(-2, -34, 6), f: 'cut', s: 'cut', w: 0.1 },
+    { d: 'M18 -34H26V-50', s: W, w: 5, cap: 'round' }];
+  // Mermaid Dagger (Dagger): fish tail + short knife
+  I.mermaidDagger = [MER,
+    { d: poly([8, -14, 40, -34, 26, -10]), f: W, s: W, w: 2.5 },
+    { d: 'M4 -18L12 -2', s: W, w: 7, cap: 'round' }];
+
+  // Kiton (Defender): round armoured beetle with spikes on its shell, seen from above
+  I.kiton = [
+    { d: circ(0, 8, 30) + circ(0, -28, 10) + poly([-30, -12, -40, -30, -18, -22]) + poly([30, -12, 40, -30, 18, -22]) +
+        poly([-30, 28, -46, 30, -34, 14]) + poly([30, 28, 46, 30, 34, 14]) + poly([0, 38, -8, 48, 8, 48]), f: W },
+    { d: 'M-34 0L-46 -6M34 0L46 -6M-26 34L-36 44M26 34L36 44', s: W, w: 4.5, cap: 'round' },
+    { d: 'M-22 -4C-10 6 10 6 22 -4M-22 18C-10 28 10 28 22 18', s: 'cut', w: 4, cap: 'round' }];
+  // Mantis (Swordsman): praying mantis in profile with raised forelegs
+  I.mantis = [
+    { d: 'M-44 30C-40 18 -26 10 -10 8C-4 8 -2 14 -6 18C-18 28 -32 34 -44 30Z', f: W },
+    { d: 'M-8 12L10 -22', s: W, w: 6.5, cap: 'round' },
+    { d: poly([4, -32, 22, -44, 26, -24]) , f: W, s: W, w: 4 },
+    { d: 'M8 -14L28 -6L22 -26M14 -8L30 4L36 -16', s: W, w: 4.5, cap: 'round' },
+    { d: 'M-10 14L-22 40M-2 14L4 40M-18 16L-36 40', s: W, w: 3.5, cap: 'round' },
+    { d: 'M16 -42L10 -50M22 -42L30 -48', s: W, w: 2.5, cap: 'round' }];
+  // Exida (Catapult): scorpion-like crawler with a long curved neck and a round head
+  I.exida = [
+    { d: 'M-26 24C-26 12 -12 6 4 6C20 6 30 14 30 24C30 34 18 38 2 38C-14 38 -26 34 -26 24Z', f: W },
+    { d: 'M-12 10C-30 -4 -30 -24 -10 -32C2 -36 8 -38 10 -44', s: W, w: 8, cap: 'round' },
+    { d: circ(12, -42, 9), f: W },
+    { d: circ(14, -42, 3.5), f: 'cut', s: 'cut', w: 0.1 },
+    { d: 'M-20 30L-42 44M-20 18L-46 16M24 30L44 44M24 18L46 14', s: W, w: 4, cap: 'round' }];
+  // Gaami (Giant): tall cloaked ice giant with antlers
+  I.gaami = [
+    { d: 'M-8 -30H8L28 44H-28Z' + circ(0, -30, 10), f: W },
+    { d: 'M-6 -38L-18 -50M-12 -44L-26 -44M-16 -48L-22 -54M6 -38L18 -50M12 -44L26 -44M16 -48L22 -54', s: W, w: 4, cap: 'round' },
+    { d: 'M0 -18V44', s: 'cut', w: 3, cap: 'butt' }];
+  // Shaman (Mind Bender): robed figure with a curled horn helmet and a skull staff
+  I.shaman = [
+    { d: 'M-2 -24H18L32 44H-16Z' + circ(8, -30, 11), f: W },
+    { d: 'M14 -38C24 -46 34 -36 26 -28C22 -24 18 -28 20 -32', s: W, w: 5, cap: 'round' },
+    { d: 'M-24 44L-30 -22', s: W, w: 5, cap: 'round' },
+    { d: circ(-31, -32, 10) + poly([-38, -26, -24, -26, -26, -18, -36, -18]), f: W },
+    { d: circ(-35, -33, 2.8) + circ(-27, -33, 2.8), f: 'cut', s: 'cut', w: 0.1 }];
+  // Doomux (Knight): big armoured pill bug in profile, segmented shell and pincers
+  I.doomux = [
+    { d: 'M-46 26C-46 -6 -24 -26 4 -26C28 -26 42 -10 42 12V26Z', f: W },
+    { d: 'M36 14L50 4L44 18M36 22L50 30L40 30', s: W, w: 4, cap: 'round' },
+    { d: 'M-30 -14C-24 0 -24 14 -28 26M-12 -24C-6 -6 -6 10 -10 26M8 -26C14 -8 14 10 10 26', s: 'cut', w: 3.5, cap: 'round' },
+    { d: circ(28, 6, 4.5), f: 'cut', s: 'cut', w: 0.1 },
+    { d: 'M-40 26L-44 40M-20 26L-22 40M0 26L2 40M20 26L24 40', s: W, w: 4, cap: 'round' }];
+  // Larva (Dagger): segmented grub with a round head
+  I.larva = [
+    { d: circ(-32, 10, 11) + circ(-14, 6, 13) + circ(6, 4, 14) + circ(28, -2, 14), f: W },
+    { d: 'M-23 -2V20M-4 -8V18M17 -10V16', s: 'cut', w: 3, cap: 'round' },
+    { d: circ(32, -4, 3.5), f: 'cut', s: 'cut', w: 0.1 },
+    { d: 'M-30 20L-32 30M-12 18L-12 28M8 18L8 28', s: W, w: 4, cap: 'round' }];
+  // Phychi (Archer): dragonfly – long thin body, two pairs of narrow wings
+  I.phychi = [
+    { d: 'M-40 40L18 -18', s: W, w: 7, cap: 'round' },
+    { d: circ(24, -24, 10), f: W },
+    { d: 'M8 -10C-4 -30 -24 -44 -36 -40C-40 -34 -24 -18 4 -6Z' + 'M10 -6C30 -2 46 12 44 24C38 28 22 16 6 -2Z' +
+        'M-2 2C-18 -10 -40 -16 -46 -8C-44 0 -26 6 -4 6Z' + 'M2 4C10 18 12 38 4 46C-4 44 -4 26 -2 6Z', f: W },
+    { d: circ(27, -27, 3.2), f: 'cut', s: 'cut', w: 0.1 }];
+
+  // Swordsman: long broadsword with a wide crossguard (the Dagger is a short knife – see below)
+  I.swordsman = [
+    { d: poly([-12, 10, 30, -34, 44, -46, 38, -30, -2, 16]), f: W, s: W, w: 3 },
+    { d: 'M-24 -4L6 26', s: W, w: 8, cap: 'round' },
+    { d: 'M-8 12L-28 32', s: W, w: 7, cap: 'round' },
+    { d: circ(-33, 37, 7), f: W }
   ];
 
   // ---------------------------------------------------------------- buildings (flat colour)
