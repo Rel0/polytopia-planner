@@ -751,7 +751,7 @@
       n.prods = cur.prods.filter(q => !winTile.has(q.t)).concat(D.prods.map(q => ({ t: g(q.t), X: q.X })).filter(q => q.t != null));
       return n;
     }
-    // ---- v29 quick options: every city alone (exact, all income levels) → fastest payback, cheaper, fewer steps
+    // ---- v29 quick option: every city alone (exact, all income levels) + Dinkelbach group search → fastest payback
     const SCQ = 1000, ratio = p => (p.cost * SCQ + p.actions) / p.income;
     const base0 = { mSel: cur.mSel.slice(), stages: cur.stages.slice(), prods: [] }; // keep everything
     const perCity = []; let qi = 0, quickDone = !!(opts && opts.quick === false), cityMs = 150;
@@ -767,8 +767,7 @@
         const D = yield* runSearch(SP, { mode: 'cost', incCap: L }); if (!D) continue;
         const p = materialize(SP, D, 'x'); if (p.income > 0 && ratio(p) < ratio(pr)) { Dr = D; pr = p; }
       }
-      const Df = yield* runSearch(SP, { mode: 'steps', incCap: pb.income });
-      return { k, ratio: ratio(pr), SP, raw: { Dr, Db, Df } };
+      return { k, ratio: ratio(pr), SP, raw: { Dr, Db } };
     }
     function combine(list, field) {
       // the chosen per-city decisions on top of "keep everything"
@@ -821,20 +820,11 @@
         if (p.income > 0) cands.push(p);
         yield;
       }
-      let fast = null, cheap = null;
-      const half = Math.ceil(best.income / 2);
-      for (const p of cands) {
-        if (!fast || rq(p) < rq(fast)) fast = p;
-        if (p.income >= half && (!cheap || rq(p) < rq(cheap))) cheap = p;
-      }
+      let fast = null;
+      for (const p of cands) if (!fast || rq(p) < rq(fast)) fast = p;
       if (fast && rq(best) <= rq(fast)) fast = null;
-      if (cheap && rq(best) <= rq(cheap)) cheap = null;
-      // fewer steps: every city with its own fewest-steps plan – if that still reaches the best's ★
-      const pf = materialize(P, combine(order, 'Df'), 'fewer');
-      const fewer = pf.income >= best.income && pf.actions * BIG + pf.cost < best.actions * BIG + best.cost ? pf : null;
       if (fast) quickAlts.push(Object.assign(fast, { tag: 'fast', quick: true }));
-      if (cheap) quickAlts.push(Object.assign({}, cheap, { tag: 'cheaper', quick: true }));
-      if (fewer) quickAlts.push(Object.assign(fewer, { tag: 'fewer', quick: true }));
+
     }
     let gen = null;
     job.step = function (deadline) {
@@ -1159,8 +1149,6 @@
   const fmtEta = sec => (sec == null ? '' : sec < 60 ? '≤ ' + Math.max(1, Math.ceil(sec / 5) * 5) + ' s' : '≤ ' + Math.ceil(sec / 60) + ' min');
   // Tasks run one after the other in the worker (time-limited each):
   //   fast    fastest payback (Dinkelbach: min cost − λ·★, λ = best ratio so far; an optimum ≥ 0 proves it)
-  //   cheaper the best payback among plans with at least half the ★ (many cities only – the exact search has its own)
-  //   fewer   as many ★ with the fewest steps (many cities only)
   //   inc     no plan earns more ★ (many cities only; instant when every Market can reach 8 ★)
   //   cost    no plan with these ★ is cheaper (many cities only)
   function startProof(res, sig, costSecs) {
@@ -1174,14 +1162,13 @@
     const pr = prover = { sig, res, t0: Date.now() };
     const incDone = !large || res.best.income >= res.large.ub || prev.inc === 'proven';
     res.proof = { inc: incDone ? 'proven' : 'waiting', cost: !large || prev.cost === 'proven' ? 'proven' : 'waiting', fast: prev.fast === 'proven' ? 'proven' : 'waiting',
-      cheaper: large ? 'waiting' : 'done', fewer: large ? 'waiting' : 'done', exact: !large, secs: 0, costSecs };
+      exact: !large, secs: 0, costSecs };
     // ?v=STAMP becomes the worker's content hash on release (scripts/stamp-assets.js)
     let worker;
     try { worker = pr.worker = new Worker('js/market-worker.js?v=STAMP'); } catch (e) { res.proof.noSolver = true; ['inc', 'cost', 'fast'].forEach(k => { if (res.proof[k] !== 'proven') res.proof[k] = 'open'; }); return; }
     const SC = PP.marketMilp.SCALE;
     const val = p => p.income * HUGE - (p.cost * BIG + p.actions);
     const score = p => (p.cost * SC + p.actions) / p.income;   // fastest payback: ★ cost per ★/turn (steps break ties)
-    const stepsV = p => p.actions * SC + p.cost;                 // fewer steps: steps first, then cost
     const same = (a, b) => a && b && a.income === b.income && a.cost === b.cost && a.actions === b.actions;
     const setAlt = (tag, p) => {
       res.alts = (res.alts || []).filter(q => q.tag !== tag);
@@ -1207,7 +1194,6 @@
     const queue = pr.queue = [];
     pr.costSecs = costSecs;
     if (res.proof.fast !== 'proven') queue.push('fast');
-    if (large) queue.push('cheaper', 'fewer');
     if (!incDone) queue.push('inc');
     if (res.proof.cost !== 'proven') queue.push('cost');
     let dk = null; // Dinkelbach state { tag, minInc, plan, D }
@@ -1219,17 +1205,14 @@
       const B = taskBudget(task, costSecs); pr.until = Date.now() + B * 1000; proofRefresh();
       if (task === 'inc') { until = Date.now() + PROOF_SECS * 1000; send({ mode: 'income' }, PROOF_SECS, res.decision); }
       else if (task === 'cost') { until = Date.now() + costSecs * 1000; send({ mode: 'cost', minIncome: res.best.income }, costSecs, res.decision); }
-      else if (task === 'fewer') {
-        until = Date.now() + Math.min(costSecs, 30) * 1000;
-        send({ mode: 'steps', minIncome: res.best.income }, left(), res.decision);
-      } else {
-        // fast / cheaper: start from the best known ratio among the plans we have
-        const minInc = task === 'cheaper' ? Math.ceil(res.best.income / 2) : 1;
+      else {
+        // fast: start from the best known ratio among the plans we have
+        const minInc = 1;
         let st = res.best, D = res.decision || null;
         (res.alts || []).forEach(q => { if (q.income >= minInc && q.income > 0 && score(q) < score(st)) { st = q; D = null; } });
         dk = { minInc, plan: st, D };
         improveFast(st);
-        until = Date.now() + (task === 'fast' ? costSecs : Math.min(costSecs, 30)) * 1000;
+        until = Date.now() + costSecs * 1000;
         dkStep();
       }
     };
@@ -1239,8 +1222,7 @@
     };
     const dkDone = proven => {
       const p = dk.plan;
-      if (task === 'fast') { improveFast(p); res.proof.fast = proven ? 'proven' : 'open'; }
-      else { res.proof.cheaper = 'done'; setAlt('cheaper', same(p, res.best) ? null : p); improveFast(p); }
+      improveFast(p); res.proof.fast = proven ? 'proven' : 'open';
       proofRefresh(); next();
     };
     worker.onmessage = ev => {
@@ -1253,14 +1235,10 @@
         if (!names) return;
         const { D, p } = plan(m.values);
         if ((task === 'inc' || task === 'cost') && val(p) > val(res.best) + 0.5) { res.best = Object.assign(p, { tag: 'best' }); res.decision = D; improveFast(p); proofRefresh(); }
-        // fast / cheaper: show a better ratio right away (the search goes on with the old λ)
-        if ((task === 'fast' || task === 'cheaper') && dk && p.income >= dk.minInc && p.income > 0 && score(p) < score(dk.plan) - 1e-9) {
-          dk.plan = p; dk.D = D;
-          if (task === 'cheaper') setAlt('cheaper', same(p, res.best) ? null : p);
-          improveFast(p);
-          proofRefresh();
+        // fast: show a better ratio right away (the search goes on with the old λ)
+        if (task === 'fast' && dk && p.income >= dk.minInc && p.income > 0 && score(p) < score(dk.plan) - 1e-9) {
+          dk.plan = p; dk.D = D; improveFast(p); proofRefresh();
         }
-        if (task === 'fewer' && p.income >= res.best.income && stepsV(p) < stepsV(res.best)) { setAlt('fewer', p); proofRefresh(); }
         return;
       }
       if (m.type === 'progress') {
@@ -1271,7 +1249,6 @@
       if (m.type === 'error') {
         res.proof.error = m.message;
         ['inc', 'cost', 'fast'].forEach(k => { if (res.proof[k] !== 'proven') res.proof[k] = 'open'; });
-        ['cheaper', 'fewer'].forEach(k => { res.proof[k] = 'done'; });
         try { worker.terminate(); } catch (e) { /* gone */ } prover = null; proofRefresh(); return;
       }
       if (m.type !== 'done') return;
@@ -1282,13 +1259,7 @@
         else { res.proof.cost = m.optimal ? 'proven' : 'open'; if (isFinite(m.bound)) res.proof.costBound = Math.ceil(m.bound / SC - 1e-6); }
         proofRefresh(); next(); return;
       }
-      if (task === 'fewer') {
-        const p = got && got.p;
-        res.proof.fewer = 'done';
-        setAlt('fewer', p && p.income >= res.best.income && stepsV(p) < stepsV(res.best) ? p : null);
-        proofRefresh(); next(); return;
-      }
-      // fast / cheaper (Dinkelbach)
+      // fast (Dinkelbach)
       const p = got && got.p;
       if (p && p.income >= dk.minInc && m.obj < -1e-6 && score(p) < score(dk.plan) - 1e-9) { dk.plan = p; dk.D = got.D; dkStep(); return; }
       dkDone(m.optimal && m.obj > -1e-6);
@@ -1377,12 +1348,12 @@
     return job.partial ? Object.assign({}, job.partial, { altPending: true, etaMs: job.eta ? job.eta() : null }) : { pending: true, job };
   }
   // v29: the plan options are fixed (ui.alt = tag); a missing one falls back to Best
-  const ALT_TAGS = ['best', 'fast', 'cheaper', 'fewer'];
+  const ALT_TAGS = ['best', 'fast']; // v29: Cheaper / Fewer steps removed on request
   const altOf = (res, tag) => (!tag || tag === 'best' ? res.best
     : (res.alts || []).find(q => q.tag === tag && (tag !== 'fewer' || q.income >= res.best.income)) || null);
   const curPlan = res => (res && !res.pending ? altOf(res, ui.alt) || res.best : null);
   function altsHtml(res) {
-    const q = res.proof || {}, info = { best: 'most ★/turn', fast: 'return on investment', cheaper: '≥ half the ★, cheap', fewer: 'as many ★, fewest steps' };
+    const q = res.proof || {}, info = { best: 'most ★/turn', fast: 'return on investment' };
     const pending = tag => !res.proof || res.altPending || (tag === 'fast' ? q.fast === 'waiting' || q.fast === 'running'
       : res.large && (q[tag] === 'waiting' || q[tag] === 'running'));
     const shown = [];
@@ -1409,7 +1380,7 @@
           (twin ? `<small style="display:block;opacity:.65">same plan as ${TAG[twin.tag]}</small>` : '') + sline;
         shown.push({ tag, p: pl });
       } else if (pending(tag) || stt) body = `<small style="display:block">${stt || '<span class="mk-spin"></span>calculating…'}</small>`;
-      else body = `<small style="display:block;opacity:.75">${tag === 'fast' ? 'Best already pays back fastest' : tag === 'cheaper' ? 'no cheaper plan with ≥ half the ★' : 'no plan with fewer steps'}</small>`;
+      else body = '<small style="display:block;opacity:.75">Best already pays back fastest</small>';
       h += `<button class="mk-alt ${on ? 'on' : ''}" data-alt="${tag}" title="${esc(info[tag])}"${pl ? '' : ' disabled'}>${TAG[tag]}${body}</button>`;
     }
     return h + '</div>';
