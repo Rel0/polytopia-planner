@@ -475,8 +475,10 @@ window.PP = window.PP || {};
     { id: 'market', icon: '🏪', label: 'Market' },
     { id: 'notes', icon: '📝', label: 'Notes' },
   ];
+  // v29: the label tool (training data for the tile detection) only with ?label in the URL
+  try { if (new URLSearchParams(location.search).has('label')) TOOLS.push({ id: 'label', icon: '🏷️', label: 'Label' }); } catch (e) { /* no URL */ }
   const TOOL_IDS = TOOLS.map(t => t.id);
-  const MODE_LABELS = { units: 'Units', cost: 'Costs', draw: 'Draw', market: 'Market', notes: 'Notes', calibrate: 'Grid' };
+  const MODE_LABELS = { units: 'Units', cost: 'Costs', draw: 'Draw', market: 'Market', notes: 'Notes', label: 'Label', calibrate: 'Grid' };
   const toolInfo = id => TOOLS.find(t => t.id === id) || { id, icon: (registry[id] || {}).icon || '🧰', label: (registry[id] || {}).label || MODE_LABELS[id] || id };
   const firstTool = () => TOOL_IDS.find(id => registry[id]) || 'idle';
   // deep link from the landing pages: /?tool=units|cost|market|draw|notes opens that tool (once)

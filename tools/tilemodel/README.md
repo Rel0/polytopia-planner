@@ -14,6 +14,23 @@ of points inside the image. That makes 42 features in total.
 If you change `feat.py`, change `js/tilemodel.js` the same way. Then check that both give the same
 predictions on all labelled tiles (they did: 1633/1633).
 
+## Collecting labels (Label tool)
+
+Open the app with `?label` in the URL (e.g. `https://polytopiaplanner.com/?label`). A 🏷️ **Label** tool appears.
+1. Load a screenshot and confirm the grid. Use ½ or 2× if the diamonds are the wrong size.
+2. Every tile shows the model's guess (yellow; orange outline means unsure). Pick a brush and tap the wrong tiles:
+   - terrain sets the terrain
+   - Crop / Fruit / Metal / Animal / Fish and **Unit on it** toggle extras
+   - buildings toggle
+   - Skip is for tiles hidden by the game's UI
+3. **Export labels (.json)** downloads one file per screenshot: the image, the grid and every tile's label.
+   Collect these files in a folder.
+
+```sh
+python3 tools/tilemodel/from_labels.py ~/labels /tmp/tiledata        # → /tmp/tiledata/dataset.json
+python3 tools/tilemodel/export.py /tmp/tiledata/dataset.json js/tilemodel-data.js
+```
+
 ## Retraining
 
 The training screenshots and labels are **not** in this repo. Game screenshots stay local. The
