@@ -33,6 +33,73 @@ window.PP = window.PP || {};
   //     (2) refinement: w ±1.5 % in 0.05 px (original image px), offsets from the refined phase
   //     (tried: harmonic-sharpened coherence and excluding the map outline – both measured worse);
   //     (3) period guard (w/2, 2w, 2w/3, 3w/2) and a confidence 0…1 (`conf`).
+  // v29: tile width from the fog of war. Every cloud tile carries the same triangle pattern, so the image matches
+  // itself when shifted by one tile vector (±w/2, 0.3·w). For each candidate w: mean |Δgrey| over pixel pairs that
+  // are both cloud; the tile width is a sharp minimum (≈ 0.25–0.5 of the typical difference). Multiples of w match
+  // too → the smallest clear minimum wins. Works on the downscaled image (W×H, sx = original px per pixel).
+  // → { w (original px), conf, ratio, frac } or null (too few clouds / no clear minimum)
+  function cloudPeriod(data, W, H, sx) {
+    const isCloud = new Uint8Array(W * H), grey = new Float32Array(W * H);
+    let nc = 0;
+    for (let i = 0, j = 0; i < W * H; i++, j += 4) {
+      const r = data[j], g = data[j + 1], b = data[j + 2], mx = Math.max(r, g, b), mn = Math.min(r, g, b);
+      grey[i] = 0.299 * r + 0.587 * g + 0.114 * b;
+      if (mx > 175 && b >= r && b >= g - 6 && (mx - mn) < 0.42 * mx && r > 120) { isCloud[i] = 1; nc++; }
+    }
+    const frac = nc / (W * H);
+    if (frac < 0.06) return null;
+    const S = 2; // sample every 2nd pixel
+    const diff = w => {
+      let tot = 0, parts = 0;
+      const iy = Math.round(0.3 * w);
+      for (const sg of [1, -1]) {
+        const ix = Math.round(sg * w / 2);
+        let sum = 0, n = 0;
+        for (let y = 0; y + iy < H; y += S) {
+          const row = y * W, row2 = (y + iy) * W;
+          for (let x = Math.max(0, -ix); x < W && x + ix < W; x += S) {
+            const a = row + x, b = row2 + x + ix;
+            if (isCloud[a] && isCloud[b]) { sum += Math.abs(grey[a] - grey[b]); n++; }
+          }
+        }
+        if (n > 400) { tot += sum / n; parts++; }
+      }
+      return parts ? tot / parts : Infinity;
+    };
+    const lo = Math.max(8, Math.round(14 / sx)), hi = Math.round(Math.min(0.45 * W, H / 0.3 - 4));
+    const curve = [];
+    for (let w = lo; w <= hi; w += 1) curve.push([w, diff(w)]);
+    const fin = curve.map(c => c[1]).filter(v => isFinite(v)).sort((a, b) => a - b);
+    if (fin.length < 10) return null;
+    const med = fin[fin.length >> 1];
+    const mins = [];
+    for (let i = 1; i < curve.length - 1; i++) if (curve[i][1] < curve[i - 1][1] && curve[i][1] <= curve[i + 1][1]) mins.push(curve[i]);
+    if (!mins.length) return null;
+    const bestR = Math.min(...mins.map(m => m[1])) / med;
+    if (bestR > 0.6) return null; // no clear repeat
+    let pick = mins.filter(m => m[1] / med <= bestR + 0.08).sort((a, b) => a[0] - b[0])[0];
+    // a clear minimum at w/2 or w/3 means w is a multiple of the tile (on the downscaled image the longer shift
+    // can even match a bit better, the rounding error being relatively smaller)
+    for (let again = true; again;) {
+      again = false;
+      for (const k of [2, 3]) {
+        const c = mins.filter(m => Math.abs(m[0] - pick[0] / k) <= 0.04 * pick[0] / k + 1).sort((a, b) => a[1] - b[1])[0];
+        if (c && c[1] / med <= Math.max(0.5, pick[1] / med + 0.15)) { pick = c; again = true; break; }
+      }
+    }
+    const ratio = pick[1] / med;
+    // refine: shifting by 3 tiles (3·(±w/2, 0.3·w)) makes a width error 3× more visible; fall back to 2 / 1 tiles
+    // when the image is too small for that
+    let bw = pick[0];
+    for (const m of [3, 2]) {
+      if (0.3 * bw * m >= H - 20 || 0.5 * bw * m >= W - 20) continue;
+      let bd = Infinity, cand = bw;
+      for (let w = pick[0] - 1.5; w <= pick[0] + 1.5; w += 0.1) { const d = diff(w * m); if (d < bd) { bd = d; cand = w; } }
+      if (bd < Infinity) { bw = cand; break; }
+    }
+    return { w: bw * sx, ratio: +ratio.toFixed(2), frac: +frac.toFixed(2), conf: +Math.max(0, Math.min(1, (0.6 - ratio) / 0.35)).toFixed(2) };
+  }
+
   const DARK = 28, DARK_BLOCK = 0.45;   // luminance of "space" black; max dark fraction of a map block
   function detectGrid(src, opts) {
     try {
@@ -52,8 +119,14 @@ window.PP = window.PP || {};
       const B = Math.max(6, Math.round(Math.max(W, H) / 64));
       const bw_ = Math.ceil(W / B), bh_ = Math.ceil(H / B);
       const dark = new Float32Array(bw_ * bh_), cnt = new Float32Array(bw_ * bh_);
-      for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
-        const bi = ((y / B) | 0) * bw_ + ((x / B) | 0); cnt[bi]++; if (g[y * W + x] < DARK) dark[bi]++;
+      // v29: cloud tiles (fog of war) count like space – their triangle pattern repeats at half the tile size and
+      // pulled the period to w/2. Cloud = pale, bluish white (low saturation, bright, blue ≥ red).
+      for (let y = 0, j = 0; y < H; y++) for (let x = 0; x < W; x++, j += 4) {
+        const bi = ((y / B) | 0) * bw_ + ((x / B) | 0); cnt[bi]++;
+        if (g[y * W + x] < DARK) { dark[bi]++; continue; }
+        if (opts.noCloudMask) continue;
+        const r = data[j], gg = data[j + 1], b = data[j + 2], mx = Math.max(r, gg, b), mn = Math.min(r, gg, b);
+        if (mx > 175 && b >= r && b >= gg - 6 && (mx - mn) < 0.42 * mx && r > 120) dark[bi]++;
       }
       const keep = new Uint8Array(bw_ * bh_);
       let kept = 0;
@@ -118,8 +191,15 @@ window.PP = window.PP || {};
         for (const f of fam) sc += abs(Z(f, h)) - abs(Z(f, 2 * h));
         return sc;
       };
-      // candidate tile widths: prototype range 20…250 px, widened to 2.5 %…35 % of the image width
-      const wMin = opts.wMin || Math.min(20, 0.025 * W0), wMax = opts.wMax || Math.max(250, 0.35 * W0);
+      // candidate tile widths: prototype range 20…250 px, widened to 2.5 %…35 % of the image width.
+      // v29: when the screenshot shows enough clouds, their pattern (identical on every cloud tile) gives the tile
+      // width directly – the edge search then only refines it (± 3 %) and finds the offset.
+      let cloud = opts.noCloud ? null : cloudPeriod(data, W, H, sx);
+      if (cloud && cloud.conf < 0.3) cloud = null;
+      // a caller-given range (e.g. the ½ / 2× buttons) wins; the cloud width is used if it lies inside
+      if (cloud && opts.wMin && !(cloud.w >= opts.wMin && cloud.w <= (opts.wMax || Infinity))) cloud = null;
+      let wMin = opts.wMin || Math.min(20, 0.025 * W0), wMax = opts.wMax || Math.max(250, 0.35 * W0);
+      if (cloud) { wMin = cloud.w * 0.97; wMax = cloud.w * 1.03; }
       const step = 0.25 * Math.max(1, W0 / 1000);
       const curve = [];
       let best = -Infinity, bw = 0;
@@ -139,8 +219,9 @@ window.PP = window.PP || {};
       }
       for (let w = bw - step; w <= bw + step; w += step / 10) { const sc = score(w); if (sc > best) { best = sc; bw = w; } }
       // refinement: the coarse step (0.25 px) is too coarse for big tiles → ±1.5 % in 0.05 px (original px)
+      if (cloud) { bw = cloud.w; best = score(bw); } // the cloud width is more precise than the edge refinement
       const coarseW = bw;
-      if (!opts.noRefine) {
+      if (!opts.noRefine && !cloud) {
         const st = 0.05 * Math.max(1, W0 / 1000);
         for (let w = coarseW * 0.985; w <= coarseW * 1.015; w += st) { const sc = score(w); if (sc > best) { best = sc; bw = w; } }
       }
@@ -164,6 +245,8 @@ window.PP = window.PP || {};
       const sat = (v, lo, hi) => Math.max(0, Math.min(1, (v - lo) / (hi - lo)));
       const margin = 1 - Math.max(rival, second) / Math.max(1e-9, best);
       const conf = sane ? +(sat(best, MIN_SCORE, 0.25) * 0.5 + sat(margin, 0.05, 0.5) * 0.3 + sat(zmin, 0.3, 0.8) * 0.2).toFixed(2) : 0;
+      if (cloud) return { w: bw, cx, cy, score: best, ok: true, conf: Math.max(conf, cloud.conf), ms: Math.round(ms), scale: k, cloud,
+        edge: [+e0.toFixed(4), +e1.toFixed(4)], coarseW, margin: +margin.toFixed(3), map: +mapFrac.toFixed(2), masked: useMask };
       return { w: bw, cx, cy, score: best, ok: sane && best >= MIN_SCORE, conf, ms: Math.round(ms), scale: k,
         edge: [+e0.toFixed(4), +e1.toFixed(4)], coarseW, margin: +margin.toFixed(3), map: +mapFrac.toFixed(2), masked: useMask };
     } catch (e) {

@@ -252,6 +252,8 @@ window.PP = window.PP || {};
     } catch (e) { console.warn('imagePixels failed', e); pix = null; }
     return pix;
   }
+  // v29: RGBA pixels of the whole screenshot { src, w, h, data } (cached) – for the tile model
+  PP.board.pixels = () => (S().board === 'image' && img ? imagePixels() : null);
   // ~60 RGB samples from the upper 2/3 of the tile diamond (lower third is often covered by the tile's side/units)
   PP.board.sampleTile = function (c, r) {
     if (S().board !== 'image' || !img) return null;
@@ -1061,6 +1063,24 @@ window.PP = window.PP || {};
     if (det && det.ok) { applyDetected(det); return det; }
     return null;
   }
+  // v29: the most common detection error is a grid at half or double the tile size → one tap fixes it.
+  // The new width is searched again (± 3 %) so the lines also land on the right tile edges (offset).
+  function calScale(f) {
+    const w = PP.grid.params().w * f, lim = calWLimits();
+    if (w < lim.min || w > lim.max) { toast(f > 1 ? 'Tiles can\'t get bigger' : 'Tiles can\'t get smaller'); return; }
+    let det = null;
+    if (img && PP.vision && PP.vision.detectGrid) { try { det = PP.vision.detectGrid(img, { wMin: w * 0.97, wMax: w * 1.03 }); } catch (e) { det = null; } }
+    if (det && det.w > 0) applyDetected(det);
+    else {
+      const at = calAnchorTile(), keep = PP.grid.center(at.c, at.r), g = S().grid;
+      g.ux *= f; g.uy *= f; g.vx *= f; g.vy *= f;
+      g.ox = keep.x - at.c * g.ux - at.r * g.vx; g.oy = keep.y - at.c * g.uy - at.r * g.vy;
+    }
+    commit(); calShowW();
+    toast(f > 1 ? 'Tiles 2× bigger' : 'Tiles half the size');
+  }
+  const SCALE_ROW = '<div class="lbl">Wrong size? One diamond should cover exactly one tile.</div>' +
+    '<div class="btnrow"><button data-cal="half" title="Each diamond covers several tiles">½ Diamonds too big</button><button data-cal="dbl" title="A tile is split into several diamonds">2× Diamonds too small</button></div>';
   const fmt = (v, d) => v.toFixed(d);
   PP.modes.register('calibrate', {
     label: 'Grid',
@@ -1128,6 +1148,7 @@ window.PP = window.PP || {};
         el.innerHTML = `
           <div class="calok"${unsure ? ' style="background:rgba(255,170,0,.14)"' : ''}><b${unsure ? ' style="color:#ffb703"' : ''}>${unsure ? 'Grid detected – not quite sure, please check' : 'Grid detected automatically ✓ – does it fit?'}</b>
             <span>Do the lines sit on the tile edges? Zoom in with two fingers to check.</span></div>
+          ${SCALE_ROW}
           <div class="btnrow big"><button data-cal="tune">✏️ Adjust</button><button class="primary" data-cal="done">✓ Looks good</button></div>`;
       } else if (cal.step === 1 || cal.step === 2) {
         const st = n => (cal.step === n ? 'cur' : cal.step > n ? 'done' : '');
@@ -1152,6 +1173,7 @@ window.PP = window.PP || {};
         el.innerHTML = `
           <div class="row between"><b>📐 Adjust grid</b><span class="muted small">Tile <b id="calW">${fmt(p.w, 1)} px</b></span></div>
           <div class="seg" role="group" aria-label="Fingers move"><button data-cal="fg" class="${gm ? 'on' : ''}">▦ Move grid</button><button data-cal="fm" class="${gm ? '' : 'on'}">🗺 Move map</button></div>
+          ${SCALE_ROW}
           <div class="lbl">Tile size (fine)</div>
           <div class="hprow"><button data-cal="w-" aria-label="smaller">−</button><input id="calWR" type="range" min="${minW}" max="${maxW}" step="${(maxW - minW) / 2000}" value="${clamp(p.w, minW, maxW)}"><button data-cal="w+" aria-label="larger">+</button></div>
           <details class="adv" ${cal.adv ? 'open' : ''}><summary>Advanced</summary>
@@ -1167,6 +1189,7 @@ window.PP = window.PP || {};
       el.onclick = ev => {
         const b = ev.target.closest('button'); if (!b || !b.dataset.cal) return;
         const a = b.dataset.cal, p = PP.grid.params(), at = calAnchorTile();
+        if (a === 'half' || a === 'dbl') { calScale(a === 'dbl' ? 2 : 0.5); return; }
         if (a === 'restart') { calReset(1); refresh(); }
         else if (a === 'tune') { calReset('tune'); refresh(); }
         else if (a === 'done') calDone();

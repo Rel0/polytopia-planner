@@ -179,6 +179,9 @@
   // Objective: V = min(income, incCap)·HUGE − w, w = cost·BIG + actions (mode 'steps': actions·BIG + cost).
   function makeSearch(P, sopts) {
     const mode = sopts.mode || 'cost', incCap = sopts.incCap == null ? Infinity : sopts.incCap;
+    // v29: weight of one ★/turn (default: income first). With incW = λ (w units per ★/turn) the search maximises
+    // λ·income − w – a positive value means a better payback than λ (Dinkelbach, used for the fastest payback)
+    const IW = sopts.incW || HUGE;
     const { C, cells, n, nb, cities, owner, dOK, pField, pProd, canProd, terrTiles, E, fixedU } = P;
     const K = cities.length;
     const wOf = (cost, act) => (mode === 'steps' ? act * BIG + cost : cost * BIG + act);
@@ -359,7 +362,7 @@
       let ub = -Infinity;
       for (let I = 0; I < tot.length; I++) {
         if (tot[I] === Infinity) continue;
-        const v = Math.min(I, incCap) * HUGE - fixedW - tot[I];
+        const v = Math.min(I, incCap) * IW - fixedW - tot[I];
         if (v > ub) ub = v;
       }
       return ub;
@@ -416,7 +419,7 @@
         rem[q] = acc.slice();
       }
       const enc = s => { let h = 0; for (let j = 0; j < J; j++) h = h * 9 + s[j]; return h; };
-      const ubOf = (s, q, w) => { let inc = 0; for (let j = 0; j < J; j++) inc += Math.min(CAP, s[j] + rem[q][j]); return Math.min(inc, incCap) * HUGE - fixedW - w; };
+      const ubOf = (s, q, w) => { let inc = 0; for (let j = 0; j < J; j++) inc += Math.min(CAP, s[j] + rem[q][j]); return Math.min(inc, incCap) * IW - fixedW - w; };
       let states = new Map([[0, { s: new Array(J).fill(0), w: 0, from: null, op: null }]]);
       const hist = track ? [] : null;
       for (let q = 0; q < m; q++) {
@@ -437,7 +440,7 @@
       let bst = null, bv = -Infinity;
       for (const st of states.values()) {
         let inc = 0; for (let j = 0; j < J; j++) inc += st.s[j];
-        const V = Math.min(inc, incCap) * HUGE - fixedW - st.w;
+        const V = Math.min(inc, incCap) * IW - fixedW - st.w;
         if (V > bv) { bv = V; bst = st; }
       }
       if (!bst || bv <= bestV + 0.5) return null;
@@ -570,10 +573,12 @@
     const t0 = Date.now(), P = prepare(cellsIn || [], opts);
     const st = { combos: 0, nodes: 0, leaves: 0 };
     const add = s => { st.combos += s.combos; st.nodes += s.nodes; st.leaves += s.leaves; };
-    const altBudget = opts && opts.altMs != null ? opts.altMs : 2500;
+    const altBudget = opts && opts.altMs != null ? opts.altMs : 5000;
     const alts = !(opts && opts.alts === false);
-    let phase = 0, cur = makeSearch(P, { mode: 'cost' }), bestD = null, bestP = null, I0 = 0, frontier = [], fewD = null, tAlt = 0, Ilev = 0, msBest = 0;
+    let phase = 0, cur = makeSearch(P, { mode: 'cost', incW: opts && opts.incW }), bestD = null, bestP = null, I0 = 0, frontier = [], fewD = null, tAlt = 0, Ilev = 0, msBest = 0;
     const job = { P, done: false, result: null, partial: null, combos: cur.total };
+    // ms until the alternatives are done (they get at most altBudget after the best plan) – null before that
+    job.eta = () => (job.done ? 0 : tAlt ? Math.max(0, tAlt + altBudget - Date.now()) : null);
     const half = () => Math.ceil(I0 / 2);
     const cheaperFound = () => frontier.some(d => !d.inherited);
     const mkResult = altList => ({
@@ -588,8 +593,9 @@
         if (phase === 0) {
           bestD = cur.best;
           // income of the best (V = I·HUGE − w with 0 ≤ w < HUGE)
-          I0 = bestD ? Math.ceil(bestD.V / HUGE) : 0;
-          bestP = bestD && I0 > 0 ? materialize(P, bestD, 'best') : null;
+          if (opts && opts.incW) { bestP = bestD ? materialize(P, bestD, 'best') : null; I0 = bestP ? bestP.income : 0; if (!I0) bestP = null; }
+          else { I0 = bestD ? Math.ceil(bestD.V / HUGE) : 0; bestP = bestD && I0 > 0 ? materialize(P, bestD, 'best') : null; }
+          job.bestDecision = bestD;
           msBest = Date.now() - t0;
           job.partial = mkResult([]);
           tAlt = Date.now();
@@ -601,7 +607,8 @@
         } else if (phase === 2) {
           if (cur && cur.best) frontier.push(cur.best);
           // levels down to half the best income; further down only while nothing cheaper turned up
-          if (Ilev < 1 || (Ilev < half() && cheaperFound()) || Date.now() - tAlt > altBudget) { phase = 9; cur = null; continue; }
+          // v29: all levels down to 1 ★ (the fastest payback can be a small plan), within the time budget
+          if (Ilev < 1 || Date.now() - tAlt > altBudget) { phase = 9; cur = null; continue; }
           const prev = frontier.length ? frontier[frontier.length - 1] : bestD;
           // incumbent: the plan one level up still reaches Ilev
           const pv = prev.V - Math.ceil(prev.V / HUGE) * HUGE + Ilev * HUGE;
@@ -626,6 +633,13 @@
             const pool = ch.some(p => p.income >= half()) ? ch.filter(p => p.income >= half()) : ch;
             pool.sort((a, b) => a.cost / a.income - b.cost / b.income || b.income - a.income);
             if (pool[0]) alt.push(pool[0]);
+            // v29: fastest payback over every income level (cost ÷ ★ per turn; ties: more ★)
+            // whole turns as shown; ties → more ★ per turn
+            const fast = ch.concat([bestP]).filter(q => q.payback != null).sort((a, b) => a.payback - b.payback || b.income - a.income)[0];
+            if (fast && fast !== bestP && fast.payback != null && bestP.payback != null && fast.payback < bestP.payback) {
+              const dup = alt.find(q => q.income === fast.income && q.cost === fast.cost);
+              if (dup) dup.tag = 'fast'; else alt.push(Object.assign(fast, { tag: 'fast' }));
+            }
           }
           job.result = mkResult(alt);
           return true;
@@ -660,7 +674,210 @@
     return { owner: P.owner, cities: P.cities, cells: P.cells, implicit: P.implicit };
   }
 
-  PP.market = { CAP, PROD, WS, WS_KEYS, UNIQUE, PRODS, BLDS, OPT_KEYS, DEF_COST, RANGE, optimize, createJob, solveOnce, prepare, incomeOf, territory, normRegion, inRegion, normCell, costs, fieldPath, prodPath };
+  // ======================================================================== large search (any number of cities)
+  // The exact search multiplies the Market options of all cities – with many cities that is far too much. Here the
+  // cities are re-planned in small groups, each group EXACTLY: the group's territories plus everything within 4 tiles
+  // are cut out, the other cities in there are frozen in their currently planned state (as existing buildings), and
+  // that small board is solved by the exact search. The result goes back into the global plan if the whole plan gets
+  // better (more ★, or as many ★ for less). Groups: every single city, every pair and every triple of neighbouring
+  // cities (territories ≤ 2 tiles apart) – again and again until nothing improves. The best plan so far is always
+  // available (job.partial; job.version counts improvements). Proven optimal when every possible Market has 8 ★.
+  function createLargeJob(cellsIn, opts) {
+    const t0 = Date.now(), P = prepare(cellsIn || [], opts), K = P.cities.length, raw = (cellsIn || []).map(normCell);
+    const budget = opts && opts.largeMs != null ? opts.largeMs : 3000, perWin = opts && opts.winMs != null ? opts.winMs : 3000;
+    const st = { combos: 0, nodes: 0, leaves: 0, windows: 0, improved: 0, skipped: 0 };
+    const { cells, idx, E } = P;
+    const cheb = (a, b) => Math.max(Math.abs(a.c - b.c), Math.abs(a.r - b.r));
+    const tilesOf = P.cities.map((ci, k) => P.terrTiles[k].concat(ci.i >= 0 ? [ci.i] : []));
+    const adj = P.cities.map((_, a) => P.cities.map((__, b) => a !== b && tilesOf[a].some(x => tilesOf[b].some(y => cheb(cells[x], cells[y]) <= 2))));
+    const groups = [[], [], []];
+    for (let a = 0; a < K; a++) groups[0].push([a]);
+    for (let a = 0; a < K; a++) for (let b = a + 1; b < K; b++) if (adj[a][b]) groups[1].push([a, b]);
+    for (let a = 0; a < K; a++) for (let b = a + 1; b < K; b++) for (let c = b + 1; c < K; c++)
+      if ((adj[a][b] ? 1 : 0) + (adj[a][c] ? 1 : 0) + (adj[b][c] ? 1 : 0) >= 2) groups[2].push([a, b, c]);
+    const fixedMk = P.fixedU.filter(f => f.T === 'market').length, ub = CAP * (K + fixedMk);
+    // decisions in the format of the exact search (materialize needs kind / x / tiles / frees)
+    const keepOpt = (k, T) => ({ kind: 'keep', tiles: E[k][T].slice(), frees: [] });
+    const optOf = (k, T, kind, x) => (kind === 'new' ? { kind, x, tiles: [x], frees: E[k][T].slice() } : kind === 'destroy' ? { kind, tiles: [], frees: E[k][T].slice() } : keepOpt(k, T));
+    let cur = { mSel: P.cities.map((_, k) => keepOpt(k, 'market')), stages: [], prods: [] };
+    for (let k = 0; k < K; k++) for (const T of WS) cur.stages.push({ k, T, o: keepOpt(k, T) });
+    const value = p => (p ? p.income * HUGE - (p.cost * BIG + p.actions) : 0);
+    let curP = materialize(P, cur, 'best'), curV = value(curP);
+    let level = 0, gi = 0, sub = null, winStart = 0, swept = false, done = false, msBest = 0, complete = true, quickAlts = [];
+    const job = { P, done: false, result: null, partial: null, combos: 0, large: true, version: 0 };
+    // estimated ms until all four options are there (group search budget + every city alone + the payback search)
+    job.eta = () => (job.done ? 0 : (done ? 0 : Math.max(0, t0 + budget - Date.now())) + (quickDone ? 0 : (K - qi) * cityMs + quickMs));
+    const mk = () => ({ best: curP && curP.income > 0 ? curP : null, alts: quickAlts.slice(), ms: Date.now() - t0, msBest, stats: Object.assign({}, st), opts: P.o,
+      cells: P.cells, owner: P.owner, cities: P.cities.map(ci => ({ c: ci.c, r: ci.r, name: ci.name, implicit: ci.implicit })),
+      decision: cur, large: { cities: K, groups: groups.map(g => g.length), optimal: !!curP && curP.income >= ub, complete, ub } });
+    job.partial = mk();
+    // the small board around a group of cities: group territories as they are, the rest frozen in the current plan
+    function subBoard(win, orig, inPlan) {
+      const fin = new Map(); (orig ? [] : (inPlan || curP).final || []).forEach(f => fin.set(key(f.c, f.r), f.bld));
+      const inWin = i => win.some(k => tilesOf[k].indexOf(i) >= 0);
+      const core = []; win.forEach(k => tilesOf[k].forEach(i => core.push(cells[i])));
+      const out = [];
+      cells.forEach((x, i) => {
+        if (!core.some(y => cheb(x, y) <= 4)) return;
+        const o = raw[i], ci = win.find(k => P.cities[k].i === i);
+        if (ci != null) { out.push({ c: x.c, r: x.r, terrain: 'city', name: o.name }); return; }
+        if (inWin(i)) {
+          const k = P.owner[i], cc = P.cities[k];
+          out.push({ c: x.c, r: x.r, terrain: o.t, res: (o.crop ? ['crop'] : []).concat(o.ore ? ['ore'] : [], o.fruit ? ['fruit'] : []), bld: o.bld, own: key(cc.c, cc.r) });
+          return;
+        }
+        if (o.t === 'city') { out.push({ c: x.c, r: x.r, terrain: 'water', own: '-' }); return; } // another city: blocked
+        const b = orig ? o.bld : fin.has(key(x.c, x.r)) ? fin.get(key(x.c, x.r)) : null;
+        out.push({ c: x.c, r: x.r, terrain: b && BASE[b] ? BASE[b] : o.t, res: (o.crop ? ['crop'] : []).concat(o.ore ? ['ore'] : [], o.fruit ? ['fruit'] : []), bld: b, own: '-' });
+      });
+      return out;
+    }
+    // the exact sub-result → a global decision (cur with the group's choices replaced)
+    function merge(win, sj, base) { return mergeD(win, sj.P, sj.bestDecision, base || cur); }
+    function mergeD(win, SP, D, base) {
+      if (!D) return null;
+      const cur = base;
+      const g = i => idx.get(key(SP.cells[i].c, SP.cells[i].r));
+      const kOf = sk => P.cities.findIndex(ci => ci.c === SP.cities[sk].c && ci.r === SP.cities[sk].r);
+      const n = { mSel: cur.mSel.slice(), stages: cur.stages.slice(), prods: [] };
+      D.mSel.forEach((o, sk) => { const k = kOf(sk); if (win.indexOf(k) >= 0) n.mSel[k] = optOf(k, 'market', o.kind, o.kind === 'new' ? g(o.x) : null); });
+      D.stages.forEach(s => {
+        if (s.k < 0) return;
+        const k = kOf(s.k); if (win.indexOf(k) < 0) return;
+        const at = n.stages.findIndex(q => q.k === k && q.T === s.T);
+        n.stages[at] = { k, T: s.T, o: optOf(k, s.T, s.o.kind, s.o.kind === 'new' ? g(s.o.x) : null) };
+      });
+      const winTile = new Set(); win.forEach(k => P.terrTiles[k].forEach(i => winTile.add(i)));
+      n.prods = cur.prods.filter(q => !winTile.has(q.t)).concat(D.prods.map(q => ({ t: g(q.t), X: q.X })).filter(q => q.t != null));
+      return n;
+    }
+    // ---- v29 quick options: every city alone (exact, all income levels) → fastest payback, cheaper, fewer steps
+    const SCQ = 1000, ratio = p => (p.cost * SCQ + p.actions) / p.income;
+    const base0 = { mSel: cur.mSel.slice(), stages: cur.stages.slice(), prods: [] }; // keep everything
+    const perCity = []; let qi = 0, quickDone = !!(opts && opts.quick === false), cityMs = 150;
+    const quickMs = opts && opts.quickMs != null ? opts.quickMs : 4000;
+    // generators: every heavy search runs in slices of ~25 ms, so the page stays responsive
+    function* runSearch(SP, so) { const sr = makeSearch(SP, so); while (!sr.step(Date.now() + 25)) yield; return sr.best; }
+    function* quickCity(k) {
+      const sb = subBoard([k], true), SP = prepare(sb, opts);
+      const Db = yield* runSearch(SP, { mode: 'cost' }); if (!Db) return null;
+      const pb = materialize(SP, Db, 'x'); if (!(pb.income > 0)) return null;
+      let Dr = Db, pr = pb;
+      for (let L = pb.income - 1; L >= 1; L--) {
+        const D = yield* runSearch(SP, { mode: 'cost', incCap: L }); if (!D) continue;
+        const p = materialize(SP, D, 'x'); if (p.income > 0 && ratio(p) < ratio(pr)) { Dr = D; pr = p; }
+      }
+      const Df = yield* runSearch(SP, { mode: 'steps', incCap: pb.income });
+      return { k, ratio: ratio(pr), SP, raw: { Dr, Db, Df } };
+    }
+    function combine(list, field) {
+      // the chosen per-city decisions on top of "keep everything"
+      let d = base0;
+      for (const c of list) { const SP = c.SP, D = c.raw[field]; if (D) d = mergeD([c.k], SP, D, d); }
+      return d;
+    }
+    // group search maximising λ·★ − w from a start decision (Dinkelbach step); returns the best plan found
+    const wOfP = p => p.cost * BIG + p.actions, rq = p => wOfP(p) / p.income;
+    function* groupImprove(D0, p0, lam, until) {
+      let D = D0, p = p0, v = lam * p0.income - wOfP(p0), improved = true;
+      while (improved && Date.now() < until) {
+        improved = false;
+        for (const lev of [0, 1, 2]) for (const win of groups[lev]) {
+          if (Date.now() > until) return { D, p };
+          const j = createJob(subBoard(win, false, p), Object.assign({}, opts, { alts: false, incW: lam }));
+          if (j.combos > MAX_COMBOS_EXACT) continue;
+          const end = Math.min(until, Date.now() + perWin);
+          let fin = false;
+          while (!(fin = j.step(Math.min(end, Date.now() + 25))) && Date.now() < end) yield;
+          if (!fin) continue;
+          const n = mergeD(win, j.P, j.bestDecision, D); if (!n) continue;
+          const pn = materialize(P, n, 'fast'), vn = lam * pn.income - wOfP(pn);
+          if (pn.income > 0 && vn > v + 0.5) { D = n; p = pn; v = vn; improved = true; }
+        }
+      }
+      return { D, p };
+    }
+    function* quickGen() {
+      for (qi = 0; qi < K; qi++) {
+        const tq = Date.now();
+        let c = null; try { c = yield* quickCity(qi); } catch (e) { c = null; }
+        perCity.push(c); cityMs = (cityMs + (Date.now() - tq)) / 2;
+      }
+      const best = curP; quickAlts = [];
+      if (!best || !(best.income > 0)) return;
+      const cands = [best];
+      // Dinkelbach over the group search: λ = best ratio so far; a plan with λ·★ − cost > 0 pays back faster
+      let D = cur, pl = best, lam = rq(best);
+      const until = Date.now() + quickMs;
+      for (let it = 0; it < 6 && Date.now() < until; it++) {
+        const r = yield* groupImprove(D, pl, lam, until);
+        if (r.p === pl || !(rq(r.p) < lam - 1e-9)) break;
+        D = r.D; pl = r.p; lam = rq(pl); cands.push(pl);
+      }
+      const order = perCity.filter(Boolean).sort((a, b) => a.ratio - b.ratio);
+      // plus: the cities alone, added in the order of their own payback (catches plans without neighbour synergy)
+      for (let n = 1; n <= order.length; n++) {
+        const p = materialize(P, combine(order.slice(0, n), 'Dr'), 'fast');
+        if (p.income > 0) cands.push(p);
+        yield;
+      }
+      let fast = null, cheap = null;
+      const half = Math.ceil(best.income / 2);
+      for (const p of cands) {
+        if (!fast || rq(p) < rq(fast)) fast = p;
+        if (p.income >= half && (!cheap || rq(p) < rq(cheap))) cheap = p;
+      }
+      if (fast && rq(best) <= rq(fast)) fast = null;
+      if (cheap && rq(best) <= rq(cheap)) cheap = null;
+      // fewer steps: every city with its own fewest-steps plan – if that still reaches the best's ★
+      const pf = materialize(P, combine(order, 'Df'), 'fewer');
+      const fewer = pf.income >= best.income && pf.actions * BIG + pf.cost < best.actions * BIG + best.cost ? pf : null;
+      if (fast) quickAlts.push(Object.assign(fast, { tag: 'fast', quick: true }));
+      if (cheap) quickAlts.push(Object.assign({}, cheap, { tag: 'cheaper', quick: true }));
+      if (fewer) quickAlts.push(Object.assign(fewer, { tag: 'fewer', quick: true }));
+    }
+    let gen = null;
+    job.step = function (deadline) {
+      while (done && !quickDone) {
+        if (!gen) gen = quickGen();
+        let r; try { r = gen.next(); } catch (e) { r = { done: true }; quickAlts = []; }
+        if (r.done) { quickDone = true; break; }
+        if (Date.now() > deadline) return false;
+      }
+      if (done && quickDone) { job.done = true; job.result = mk(); job.partial = job.result; return true; }
+      while (!done) {
+        if (!sub) {
+          if (Date.now() - t0 > budget) { done = true; complete = false; break; }
+          if (gi >= groups[level].length) {
+            if (swept) { level = 0; gi = 0; swept = false; continue; } // improvements → once more from single cities
+            if (level >= 2) { done = true; break; }
+            level++; gi = 0; continue;
+          }
+          const win = groups[level][gi++], j = createJob(subBoard(win), Object.assign({}, opts, { alts: false }));
+          st.windows++;
+          if (j.combos > MAX_COMBOS_EXACT) { st.skipped++; complete = false; continue; }
+          sub = { win, j }; winStart = Date.now();
+        }
+        const fin = sub.j.step(Math.min(deadline, winStart + perWin));
+        if (!fin) {
+          if (Date.now() >= winStart + perWin) { st.skipped++; complete = false; sub = null; continue; } // too slow → skip this group
+          return false;
+        }
+        const r = sub.j.result; if (r && r.stats) { st.combos += r.stats.combos; st.nodes += r.stats.nodes; st.leaves += r.stats.leaves; }
+        const n = merge(sub.win, sub.j); sub = null;
+        if (!n) continue;
+        const p = materialize(P, n, 'best'), v = value(p);
+        if (v > curV + 0.5) { cur = n; curP = p; curV = v; swept = true; st.improved++; msBest = Date.now() - t0; job.partial = mk(); job.version++; }
+      }
+      if (!quickDone) { job.partial = mk(); job.version++; return job.step(deadline); }
+      job.done = true; job.result = mk(); job.partial = job.result;
+      return true;
+    };
+    return job;
+  }
+  const MAX_COMBOS_EXACT = 20000;
+
+  PP.market = { CAP, PROD, WS, WS_KEYS, UNIQUE, PRODS, BLDS, OPT_KEYS, DEF_COST, RANGE, HUGE, BIG, optimize, createJob, createLargeJob, materialize, solveOnce, prepare, incomeOf, territory, normRegion, inRegion, normCell, costs, fieldPath, prodPath };
 
 
   // ======================================================================== UI (browser only)
@@ -690,7 +907,7 @@
     return ICON[id] || '▪️';
   }
   const WS_COL = { windmill: '#facc15', forge: '#fb923c', sawmill: '#a3e635' };
-  const CITY_COL = ['#4cc9f0', '#ff70a6', '#b69cff', '#7bd389', '#ff9f43', '#f9f871'];
+  const CITY_COL = ['#4cc9f0', '#ff70a6', '#b69cff', '#7bd389', '#ff9f43', '#f9f871', '#2ec4b6', '#e76f51', '#a0c4ff', '#d4a373', '#ff4d6d', '#c0ca33'];
   const cityCol = k => CITY_COL[(k >= 0 ? k : 0) % CITY_COL.length];
   const TER_B = ['field', 'forest', 'mountain', 'water', 'city'];
   const RES_B = ['crop', 'ore', 'fruit'];
@@ -739,6 +956,8 @@
 
   // terrain suggestion from the screenshot (only on request)
   function suggest(c, r) {
+    const a = autoTerrain(c, r);
+    if (a) return a.terrain;
     try {
       const smp = PP.board && PP.board.sampleTile ? PP.board.sampleTile(c, r) : null;
       const px = smp && (Array.isArray(smp) ? smp : smp.pixels);
@@ -748,6 +967,29 @@
   }
   const TERRAINS = ['field', 'forest', 'mountain', 'water', 'ocean', 'cloud'];
   // effective tile: { c, r, terrain, res, bld, stored, name?, cityId? } – unmarked tiles count as Empty
+  // v29: terrain of an unmarked tile from the screenshot (PP.tilemodel, in the browser) → { terrain, conf, sure }
+  // Cloud / space / foreign cities and villages count as unusable (water). Cached per screenshot + grid.
+  let autoMemo = { sig: '', m: new Map() };
+  function autoTerrain(c, r) {
+    const TM = PP.tilemodel, g = S().grid;
+    if (!TM || !TM.ready || !g || !PP.board || !PP.board.pixels || S().board !== 'image') return null;
+    const P = PP.board.pixels(); if (!P) return null;
+    const sig = [P.w, P.h, g.ox, g.oy, g.ux, g.uy, g.vx, g.vy].map(v => (+v).toFixed(2)).join(',');
+    if (autoMemo.sig !== sig || autoMemo.src !== P.src) autoMemo = { sig, src: P.src, m: new Map() };
+    const k = key(c, r);
+    if (autoMemo.m.has(k)) return autoMemo.m.get(k);
+    const ctr = PP.grid.center(c, r), w = Math.abs(g.ux - g.vx);
+    let out = null;
+    try {
+      const p = TM.classify(P, ctr.x, ctr.y, w);
+      if (p) {
+        const t = /^(field|forest|mountain|water)$/.test(p.terrain) ? p.terrain : 'water';
+        out = { terrain: t, model: p.terrain, conf: p.conf, sure: p.conf >= TM.SURE };
+      }
+    } catch (e) { out = null; }
+    autoMemo.m.set(k, out);
+    return out;
+  }
   function cellAt(c, r) {
     const k = key(c, r), t = S().tiles[k], ce = cityEntry(c, r);
     if ((ce || (t && t.city)) && noCity().indexOf(k) < 0) {
@@ -761,6 +1003,8 @@
       const bld = t.bld ? (BLDS.indexOf(t.bld) >= 0 ? t.bld : 'other') : null;
       return { c, r, terrain: ter, res, bld, other: bld === 'other' ? t.bld : null, stored: true };
     }
+    const a = autoTerrain(c, r);
+    if (a) return { c, r, terrain: a.terrain, res: [], bld: null, stored: false, auto: true, unsure: !a.sure, conf: a.conf };
     return { c, r, terrain: 'field', res: [], bld: null, stored: false };
   }
   // ------------------------------------------------------------------ planning area = territories of the selected cities
@@ -779,9 +1023,10 @@
   // { cities: [{ c, r, rad, name, k }], owner: Map 'c,r' → k, base: Set (inside some radius), ownerOf(c, r), has(c, r) }
   // Base territory: every tile within the city's radius (3×3 / 5×5), nearest selected city wins; foreign city tiles
   // are left out. Edits: 0 removes a base tile, 1 adds a tile (to the nearest selected city).
-  function area() {
+  // grow: 'c,r' of a city whose territory is taken as 5×5 (v29: "what if this city gets Border Growth?")
+  function area(grow) {
     const m = M(), sel = selCities();
-    const cities = sel.map((s, k) => { const ce = cityEntry(s.c, s.r); return { c: s.c, r: s.r, rad: s.rad, name: (ce && ce.name) || '', k, implicit: false }; });
+    const cities = sel.map((s, k) => { const ce = cityEntry(s.c, s.r); return { c: s.c, r: s.r, rad: grow === key(s.c, s.r) ? 2 : s.rad, name: (ce && ce.name) || '', k, implicit: false }; });
     const owner = new Map(), base = new Set(), cand = new Map();
     const cityK = new Map(cities.map(ci => [key(ci.c, ci.r), ci.k]));
     for (const ci of cities) {
@@ -835,44 +1080,340 @@
     }
     return [...out.values()];
   }
-  const LETTERS = 'ABCDEFGHIJKLMNOP';
-  const cityName = (ci, k) => (!ci || ci.implicit ? 'City' : ci.name || 'City ' + LETTERS[k % LETTERS.length]);
+  const cityName = (ci, k) => (!ci || ci.implicit ? 'City' : ci.name || 'City ' + (k < 26 ? String.fromCharCode(65 + k) : k + 1));
   const plural = (n, a, b) => n + ' ' + (n === 1 ? a : b);
 
   // ------------------------------------------------------------------ plan (async job, memoized)
   let cache = null, cacheSig = '', running = null;
-  const MAX_COMBOS = 20000;
+  const MAX_COMBOS = 20000, QUICK_EXACT = 300, EXACT_MS = 30000; // exact search ≤ MAX_COMBOS (≤ EXACT_MS in the background); below QUICK_EXACT right away
   function planSig() {
     const m = M();
     return JSON.stringify([optCells(areaCells()), m.opts]);
+  }
+  // v29 Border Growth check: for every city with a 3×3 territory, the best plan if that city had 5×5 (the others as
+  // they are). Runs in the background after the main plan; { sig, items: [{ k, name, c, r, income, delta, cost }], pending }
+  let growth = null;
+  function growthResult(base) {
+    if (!base || !base.best && !base.cities) return null;
+    const sig = cacheSig;
+    if (growth && growth.sig === sig) return growth;
+    const A = area(), todo = A.cities.filter(ci => ci.rad === 1);
+    growth = { sig, items: [], pending: todo.length > 0, total: todo.length };
+    if (!todo.length) return growth;
+    const g = growth, baseInc = base.best ? base.best.income : 0;
+    let i = 0, job = null;
+    const tick = () => {
+      if (growth !== g) return; // board changed
+      const t0 = Date.now();
+      while (Date.now() - t0 < 24) {
+        if (!job) {
+          if (i >= todo.length) { g.pending = false; if (PP.modes && PP.modes.current === 'market' && ui.step === 3) PP.app.refresh(); return; }
+          const ci = todo[i], cells = optCells(areaCells(area(key(ci.c, ci.r)))), o = Object.assign({}, M().opts, { alts: false });
+          job = createJob(cells, o);
+          if (job.combos > MAX_COMBOS) job = createLargeJob(cells, Object.assign(o, { largeMs: 6000 }));
+          job.ci = ci;
+        }
+        if (job.step(Date.now() + 20)) {
+          const r = job.result, inc = r && r.best ? r.best.income : 0;
+          g.items.push({ k: job.ci.k, c: job.ci.c, r: job.ci.r, name: cityName(job.ci, job.ci.k), income: inc, delta: inc - baseInc, cost: r && r.best ? r.best.cost : 0 });
+          job = null; i++;
+          if (PP.modes && PP.modes.current === 'market' && ui.step === 3) PP.app.refresh();
+        }
+      }
+      setTimeout(tick, 0);
+    };
+    setTimeout(tick, 0);
+    return growth;
+  }
+  function growthHtml(res) {
+    if (!res || res.pending || res.tooBig || res.altPending) return '';
+    const g = growthResult(res); if (!g || !g.total) return '';
+    let h = '<h3>🌱 Border Growth?</h3><div class="mk-note" style="margin-top:0">If one city grows to 5×5 (the others as they are), the best plan earns:</div><div class="mk-grow">';
+    g.items.slice().sort((a, b) => b.delta - a.delta).forEach(it => {
+      const col = it.delta > 0 ? '#7bd389' : 'var(--muted,#9aa5c8)';
+      h += `<div class="mk-bd" style="margin:3px 2px"><b style="color:${cityCol(it.k)}">${esc(it.name)}</b> → 5×5: <b style="color:${col}">${it.delta > 0 ? '+' + it.delta + ' ★/turn' : 'no gain'}</b> <small>(${it.income} ★/turn in total)</small></div>`;
+    });
+    if (g.pending) h += `<div class="mk-note"><span class="mk-spin"></span>checking ${g.items.length + 1} of ${g.total}…</div>`;
+    h += '</div><p class="mk-note">The new ring counts as ' + (S().board === 'image' ? 'detected from the screenshot' : 'Empty') + ' where you haven\'t marked it. Turn a city to 5×5 in ① Cities to plan with it.</p>';
+    return h;
+  }
+  // v29 proof with HiGHS (js/market-worker.js): after the group search (many cities) the plan is checked by a MILP –
+  // first that no plan earns more ★, then that no plan with these ★ is cheaper. Better plans found on the way replace
+  // the shown one. res.proof = { inc: 'proven'|'running'|'open', cost: …, incBound, costBound, gap, secs }
+  let prover = null; // { sig, worker, res }
+  const PROOF_SECS = 300, COST_SECS = 60, COST_MORE_SECS = 600; // income proof · automatic cost proof · on request
+  function stopProver() { if (prover && prover.worker) try { prover.worker.terminate(); } catch (e) { /* gone */ } prover = null; }
+  function proofRefresh() { if (PP.modes && PP.modes.current === 'market' && ui.step === 3) PP.app.refresh(); }
+  // time budget (s) of a worker task – used for the "≤ … s" hints at the plan options
+  const taskBudget = (t, costSecs) => (t === 'inc' ? PROOF_SECS : t === 'cost' || t === 'fast' ? costSecs : Math.min(costSecs, 30));
+  // seconds until the task that refines an option is done (upper bound) – null if nothing is pending for it
+  function etaFor(res, tag) {
+    if (!prover || prover.res !== res || !prover.task) return null;
+    const seq = [prover.task].concat(prover.queue || []);
+    const want = tag === 'best' ? (seq.indexOf('cost') >= 0 ? 'cost' : 'inc') : tag;
+    let t = Math.max(0, (prover.until - Date.now()) / 1000);
+    if (seq[0] === want) return t;
+    for (const k of seq.slice(1)) { t += taskBudget(k, prover.costSecs); if (k === want) return t; }
+    return null;
+  }
+  const fmtEta = sec => (sec == null ? '' : sec < 60 ? '≤ ' + Math.max(1, Math.ceil(sec / 5) * 5) + ' s' : '≤ ' + Math.ceil(sec / 60) + ' min');
+  // Tasks run one after the other in the worker (time-limited each):
+  //   fast    fastest payback (Dinkelbach: min cost − λ·★, λ = best ratio so far; an optimum ≥ 0 proves it)
+  //   cheaper the best payback among plans with at least half the ★ (many cities only – the exact search has its own)
+  //   fewer   as many ★ with the fewest steps (many cities only)
+  //   inc     no plan earns more ★ (many cities only; instant when every Market can reach 8 ★)
+  //   cost    no plan with these ★ is cheaper (many cities only)
+  function startProof(res, sig, costSecs) {
+    if (!res || !res.best) return;
+    costSecs = costSecs || COST_SECS;
+    const prev = res.proof || {};
+    const large = !!res.large;
+    if (!PP.marketMilp || typeof Worker === 'undefined') { res.proof = { inc: large ? (res.large.optimal ? 'proven' : 'open') : 'proven', cost: large ? 'open' : 'proven', exact: !large, fast: 'open', noSolver: true }; return; }
+    stopProver();
+    const P = prepare(optCells(areaCells()), Object.assign({}, M().opts));
+    const pr = prover = { sig, res, t0: Date.now() };
+    const incDone = !large || res.best.income >= res.large.ub || prev.inc === 'proven';
+    res.proof = { inc: incDone ? 'proven' : 'waiting', cost: !large || prev.cost === 'proven' ? 'proven' : 'waiting', fast: prev.fast === 'proven' ? 'proven' : 'waiting',
+      cheaper: large ? 'waiting' : 'done', fewer: large ? 'waiting' : 'done', exact: !large, secs: 0, costSecs };
+    // ?v=STAMP becomes the worker's content hash on release (scripts/stamp-assets.js)
+    let worker;
+    try { worker = pr.worker = new Worker('js/market-worker.js?v=STAMP'); } catch (e) { res.proof.noSolver = true; ['inc', 'cost', 'fast'].forEach(k => { if (res.proof[k] !== 'proven') res.proof[k] = 'open'; }); return; }
+    const SC = PP.marketMilp.SCALE;
+    const val = p => p.income * HUGE - (p.cost * BIG + p.actions);
+    const score = p => (p.cost * SC + p.actions) / p.income;   // fastest payback: ★ cost per ★/turn (steps break ties)
+    const stepsV = p => p.actions * SC + p.cost;                 // fewer steps: steps first, then cost
+    const same = (a, b) => a && b && a.income === b.income && a.cost === b.cost && a.actions === b.actions;
+    const setAlt = (tag, p) => {
+      res.alts = (res.alts || []).filter(q => q.tag !== tag);
+      if (p && p.income > 0) res.alts.push(Object.assign({}, p, { tag }));
+    };
+    let model = null, names = null, stage = null, task = null, until = 0;
+    // the fastest payback is the best ratio of ALL plans we know – any task may find a better one
+    const improveFast = p => {
+      if (!p || !(p.income > 0)) return;
+      if (res.fastPlan && score(p) >= score(res.fastPlan) - 1e-9) return;
+      res.fastPlan = p; setAlt('fast', same(p, res.best) ? null : p);
+      if (res.proof.fast === 'proven') res.proof.fast = 'open'; // (cannot happen: a proven optimum has no better plan)
+    };
+    const plan = values => {
+      const cols = {}; names.forEach((nm, j) => { cols[nm] = { Primal: values[j] }; });
+      const D = model.decode(cols); return { D, p: materialize(P, D, task) };
+    };
+    const send = (spec, secs, startD) => {
+      stage = (stage || 0) + 1; model = PP.marketMilp.build(P, spec); names = null;
+      worker.postMessage({ id: stage, lp: model.lp, start: startD ? model.start(startD) : null, opts: { time_limit: Math.max(5, secs) } });
+    };
+    const left = () => (until - Date.now()) / 1000;
+    const queue = pr.queue = [];
+    pr.costSecs = costSecs;
+    if (res.proof.fast !== 'proven') queue.push('fast');
+    if (large) queue.push('cheaper', 'fewer');
+    if (!incDone) queue.push('inc');
+    if (res.proof.cost !== 'proven') queue.push('cost');
+    let dk = null; // Dinkelbach state { tag, minInc, plan, D }
+    const next = () => {
+      if (prover !== pr) return;
+      task = queue.shift();
+      if (!task) { try { worker.terminate(); } catch (e) { /* gone */ } prover = null; proofRefresh(); return; }
+      res.proof[task] = 'running'; pr.tc = Date.now(); pr.task = task;
+      const B = taskBudget(task, costSecs); pr.until = Date.now() + B * 1000; proofRefresh();
+      if (task === 'inc') { until = Date.now() + PROOF_SECS * 1000; send({ mode: 'income' }, PROOF_SECS, res.decision); }
+      else if (task === 'cost') { until = Date.now() + costSecs * 1000; send({ mode: 'cost', minIncome: res.best.income }, costSecs, res.decision); }
+      else if (task === 'fewer') {
+        until = Date.now() + Math.min(costSecs, 30) * 1000;
+        send({ mode: 'steps', minIncome: res.best.income }, left(), res.decision);
+      } else {
+        // fast / cheaper: start from the best known ratio among the plans we have
+        const minInc = task === 'cheaper' ? Math.ceil(res.best.income / 2) : 1;
+        let st = res.best, D = res.decision || null;
+        (res.alts || []).forEach(q => { if (q.income >= minInc && q.income > 0 && score(q) < score(st)) { st = q; D = null; } });
+        dk = { minInc, plan: st, D };
+        improveFast(st);
+        until = Date.now() + (task === 'fast' ? costSecs : Math.min(costSecs, 30)) * 1000;
+        dkStep();
+      }
+    };
+    const dkStep = () => {
+      if (left() < 3) { dkDone(false); return; }
+      send({ mode: 'ratio', lambda: score(dk.plan) / SC, minIncome: dk.minInc }, left(), dk.D);
+    };
+    const dkDone = proven => {
+      const p = dk.plan;
+      if (task === 'fast') { improveFast(p); res.proof.fast = proven ? 'proven' : 'open'; }
+      else { res.proof.cheaper = 'done'; setAlt('cheaper', same(p, res.best) ? null : p); improveFast(p); }
+      proofRefresh(); next();
+    };
+    worker.onmessage = ev => {
+      if (prover !== pr) return;
+      const m = ev.data || {};
+      if (m.id !== stage) return;
+      res.proof.secs = Math.round((Date.now() - pr.tc) / 1000);
+      if (m.type === 'names') { names = m.names; return; }
+      if (m.type === 'incumbent') {
+        if (!names) return;
+        const { D, p } = plan(m.values);
+        if ((task === 'inc' || task === 'cost') && val(p) > val(res.best) + 0.5) { res.best = Object.assign(p, { tag: 'best' }); res.decision = D; improveFast(p); proofRefresh(); }
+        // fast / cheaper: show a better ratio right away (the search goes on with the old λ)
+        if ((task === 'fast' || task === 'cheaper') && dk && p.income >= dk.minInc && p.income > 0 && score(p) < score(dk.plan) - 1e-9) {
+          dk.plan = p; dk.D = D;
+          if (task === 'cheaper') setAlt('cheaper', same(p, res.best) ? null : p);
+          improveFast(p);
+          proofRefresh();
+        }
+        if (task === 'fewer' && p.income >= res.best.income && stepsV(p) < stepsV(res.best)) { setAlt('fewer', p); proofRefresh(); }
+        return;
+      }
+      if (m.type === 'progress') {
+        if (task === 'inc' && isFinite(m.bound)) res.proof.incBound = Math.floor(m.bound + 1e-6);
+        if (task === 'cost' && isFinite(m.bound)) res.proof.costBound = Math.ceil(m.bound / SC - 1e-6);
+        proofRefresh(); return;
+      }
+      if (m.type === 'error') {
+        res.proof.error = m.message;
+        ['inc', 'cost', 'fast'].forEach(k => { if (res.proof[k] !== 'proven') res.proof[k] = 'open'; });
+        ['cheaper', 'fewer'].forEach(k => { res.proof[k] = 'done'; });
+        try { worker.terminate(); } catch (e) { /* gone */ } prover = null; proofRefresh(); return;
+      }
+      if (m.type !== 'done') return;
+      const got = names ? plan(m.values) : null;
+      if (task === 'inc' || task === 'cost') {
+        if (got && val(got.p) > val(res.best) + 0.5) { res.best = Object.assign(got.p, { tag: 'best' }); res.decision = got.D; improveFast(got.p); }
+        if (task === 'inc') { res.proof.inc = m.optimal ? 'proven' : 'open'; if (!m.optimal && isFinite(m.bound)) res.proof.incBound = Math.floor(m.bound + 1e-6); }
+        else { res.proof.cost = m.optimal ? 'proven' : 'open'; if (isFinite(m.bound)) res.proof.costBound = Math.ceil(m.bound / SC - 1e-6); }
+        proofRefresh(); next(); return;
+      }
+      if (task === 'fewer') {
+        const p = got && got.p;
+        res.proof.fewer = 'done';
+        setAlt('fewer', p && p.income >= res.best.income && stepsV(p) < stepsV(res.best) ? p : null);
+        proofRefresh(); next(); return;
+      }
+      // fast / cheaper (Dinkelbach)
+      const p = got && got.p;
+      if (p && p.income >= dk.minInc && m.obj < -1e-6 && score(p) < score(dk.plan) - 1e-9) { dk.plan = p; dk.D = got.D; dkStep(); return; }
+      dkDone(m.optimal && m.obj > -1e-6);
+    };
+    next();
+  }
+  function proofHtml(res) {
+    if (res && res.exactPending) return '<p class="mk-note"><span class="mk-spin"></span><b>Exact search running…</b> the plans above are quick results; they are replaced by the proven ones as soon as it is done.</p>';
+    const q = res && res.proof; if (!q) return '';
+    const ok = '<b style="color:#7bd389">✓</b>', spin = '<span class="mk-spin"></span>', b = res.best, lines = [];
+    const dur = secs => (secs >= 120 ? Math.round(secs / 60) + ' min' : secs + ' s');
+    if (q.exact) lines.push(`${ok} <b>Most ★ and cheapest proven</b> – the exact search checked every possibility.`);
+    else {
+      if (q.inc === 'proven') lines.push(`${ok} <b>Most ★ proven:</b> no plan earns more than ${b.income} ★/turn.`);
+      else if (q.inc === 'running') lines.push(`${spin}<b>Checking whether more ★ are possible…</b>${q.incBound != null ? ` (at most ${q.incBound} ★/turn)` : ''}`);
+      else if (q.inc === 'waiting') lines.push('⏳ Next: check whether more ★ are possible.');
+      else lines.push(`⚠️ More ★ not ruled out within the time limit${q.incBound != null ? ` – at most ${q.incBound} ★/turn would be possible` : ''}.`);
+      if (q.cost === 'proven') lines.push(`${ok} <b>Cheapest proven:</b> no plan with ${b.income} ★/turn costs less than ${b.cost} ★.`);
+      else if (q.cost === 'waiting') { /* comes later */ }
+      else if (q.cost === 'running') lines.push(`${spin}<b>Checking for a cheaper plan…</b>${q.costBound != null ? ` (cheapest possible ≥ ${Math.max(0, q.costBound)} ★)` : ''}`);
+      else if (q.cost === 'open') lines.push(`Cheapest not proven within ${dur(q.costSecs)} – this is the cheapest plan with ${b.income} ★/turn found so far` +
+        (q.costBound != null ? ` <small>(proven lower limit: ${Math.max(0, q.costBound)} ★ – with many equivalent layouts this limit stays far below the real minimum)</small>` : '') + '.');
+    }
+    const f = res.fastPlan, fTxt = f ? `${plural(f.payback, 'turn', 'turns')} (${f.income} ★/turn for ${f.cost} ★${f === b ? ', the best plan itself' : ' – see “Fastest payback”'})` : '';
+    if (q.fast === 'proven') lines.push(`${ok} <b>Fastest payback proven:</b> ${fTxt}.`);
+    else if (q.fast === 'running') lines.push(`${spin}<b>Checking the fastest payback…</b>${f ? ' best so far ' + fTxt : ''}`);
+    else if (q.fast === 'open') lines.push(`Fastest payback not proven within ${dur(q.costSecs)}${f ? ' – best found: ' + fTxt : ''}.`);
+    if (q.noSolver) lines.push('<small>(the optimality check HiGHS could not start in this browser)</small>');
+    else if ((q.cost === 'open' || q.fast === 'open') && !(q.costSecs >= COST_MORE_SECS) && !prover)
+      lines.push(`<button class="mk-btn sm" data-a="proveMore">🔎 Keep checking (up to ${Math.round(COST_MORE_SECS / 60)} min)</button>`);
+    return `<p class="mk-note">${lines.join('<br>')}${q.secs && prover ? ` <small>· ${q.secs} s</small>` : ''}</p>`;
   }
   function planResult() {
     const m = M(); if (!selCities().length) return null;
     const sig = planSig();
     if (cache && sig === cacheSig) return cache;
-    if (running && running.sig === sig) return running.job.partial ? Object.assign({}, running.job.partial, { altPending: true }) : { pending: true, job: running.job };
-    const job = createJob(optCells(areaCells()), Object.assign({}, m.opts));
-    // the exact search keeps every Market combination (product over the cities) in memory – refuse huge ones
-    if (job.combos > MAX_COMBOS) { running = null; cacheSig = sig; cache = { tooBig: job.combos, best: null, alts: [], cities: [] }; return cache; }
+    if (prover && prover.sig !== sig) stopProver();
+    if (running && running.sig === sig) return running.job.partial ? Object.assign({}, running.job.partial, { altPending: true, etaMs: running.job.eta ? running.job.eta() : null }) : { pending: true, job: running.job };
+    let job = createJob(optCells(areaCells()), Object.assign({}, m.opts)), exact = null;
+    // v29: results first. Tiny problems: the exact search right away. Otherwise the fast group search shows a plan within
+    // milliseconds and quick options within seconds; if the problem is small enough (≤ MAX_COMBOS Market combinations)
+    // the exact search runs afterwards and replaces it with the proven result. More: group search + HiGHS proof.
+    if (job.combos > QUICK_EXACT) {
+      // the exact check only proves the best plan (the options come from the quick search and HiGHS)
+      if (job.combos <= MAX_COMBOS) exact = createJob(optCells(areaCells()), Object.assign({}, m.opts, { alts: false }));
+      job = createLargeJob(optCells(areaCells()), Object.assign({}, m.opts));
+    }
     const run = running = { sig, job };
-    if (job.step(Date.now() + 60)) { running = null; cacheSig = sig; cache = job.result; ui.alt = 0; return cache; }
-    let shown = !!job.partial;
+    // the exact search after the quick one (same board): its result replaces the quick one and starts the proof
+    const runExact = () => {
+      if (!exact) { startProof(cache, sig); return; }
+      cache.exactPending = true;
+      const ex = run.exact = exact, t0 = Date.now(), tickEx = () => {
+        if (cacheSig !== sig || run.exact !== ex) return; // board changed
+        if (!ex.step(Date.now() + 25)) {
+          // some boards take the exact search minutes – after EXACT_MS HiGHS takes over the proof
+          if (Date.now() - t0 > EXACT_MS) { cache.exactPending = false; run.exact = null; startProof(cache, sig); proofRefresh(); return; }
+          setTimeout(tickEx, 0); return;
+        }
+        const r = ex.result;
+        // keep the better plan (the exact one is never worse – but keep quick options it doesn't have)
+        const quickAlts = (cache.alts || []).filter(q => !r.alts.some(a => a.tag === q.tag));
+        r.alts = r.alts.concat(quickAlts);
+        cache = r; ui.alt = ui.alt || 0;
+        startProof(cache, sig);
+        if (PP.modes && PP.modes.current === 'market') PP.app.refresh();
+      };
+      setTimeout(tickEx, 0);
+    };
+    if (job.step(Date.now() + 60)) { running = null; cacheSig = sig; cache = job.result; ui.alt = 0; runExact(); return cache; }
+    let shown = !!job.partial, ver = job.version || 0;
     const tick = () => {
       if (running !== run) return; // abandoned (board changed)
       const done = job.step(Date.now() + 28);
       if (done) {
         running = null; cacheSig = sig; cache = job.result;
-        if (ui.alt > cache.alts.length) ui.alt = 0;
+        runExact();
       } else setTimeout(tick, 0);
-      if (done || (!shown && job.partial)) {
+      const better = job.large && job.version !== ver; ver = job.version || 0;
+      if (done || (!shown && job.partial) || better) {
         const first = !shown; shown = true;
         if (PP.modes && PP.modes.current === 'market') { PP.app.refresh(); if (ui.step === 3 && first) requestAnimationFrame(fitPlan); }
       }
     };
     setTimeout(tick, 0);
-    return job.partial ? Object.assign({}, job.partial, { altPending: true }) : { pending: true, job };
+    return job.partial ? Object.assign({}, job.partial, { altPending: true, etaMs: job.eta ? job.eta() : null }) : { pending: true, job };
   }
-  const curPlan = res => (res && !res.pending ? (ui.alt ? res.alts[ui.alt - 1] : res.best) || res.best : null);
+  // v29: the plan options are fixed (ui.alt = tag); a missing one falls back to Best
+  const ALT_TAGS = ['best', 'fast', 'cheaper', 'fewer'];
+  const altOf = (res, tag) => (!tag || tag === 'best' ? res.best
+    : (res.alts || []).find(q => q.tag === tag && (tag !== 'fewer' || q.income >= res.best.income)) || null);
+  const curPlan = res => (res && !res.pending ? altOf(res, ui.alt) || res.best : null);
+  function altsHtml(res) {
+    const q = res.proof || {}, info = { best: 'most ★/turn', fast: 'return on investment', cheaper: '≥ half the ★, cheap', fewer: 'as many ★, fewest steps' };
+    const pending = tag => !res.proof || res.altPending || (tag === 'fast' ? q.fast === 'waiting' || q.fast === 'running'
+      : res.large && (q[tag] === 'waiting' || q[tag] === 'running'));
+    const shown = [];
+    // state of an option: still searching (with time), quick result being improved, final or proven
+    const status = (tag, pl) => {
+      if (res.exactPending) return pl ? '<span class="mk-spin"></span>quick result · exact check running' : '<span class="mk-spin"></span>exact check running';
+      if (res.altPending) return `<span class="mk-spin"></span>${pl && tag === 'best' ? 'quick result · ' : 'calculating… '}${fmtEta(res.etaMs != null ? res.etaMs / 1000 : null)}`;
+      const eta = etaFor(res, tag);
+      if (eta != null) return `<span class="mk-spin"></span>${pl ? 'quick result · improving ' : 'calculating… '}${fmtEta(eta)}`;
+      if (!pl) return '';
+      if (tag === 'best') return q.exact || (q.inc === 'proven' && q.cost === 'proven') ? '✓ proven best' : q.inc === 'proven' ? '✓ most ★ proven' : 'final';
+      if (tag === 'fast') return q.fast === 'proven' ? '✓ proven fastest' : 'final · not proven';
+      return 'final';
+    };
+    let h = '<div class="mk-alts">';
+    for (const tag of ALT_TAGS) {
+      const pl = altOf(res, tag), on = (ui.alt || 'best') === tag, stt = status(tag, pl);
+      const sline = stt ? `<small style="display:block;opacity:.75;font-size:10.5px">${stt}</small>` : '';
+      let body;
+      if (pl) {
+        const twin = shown.find(x => x.p.income === pl.income && x.p.cost === pl.cost && x.p.actions === pl.actions);
+        body = `<b>${pl.income} ★/turn</b>${pl.cost} ★ · ${plural(pl.actions, 'step', 'steps')}` +
+          (pl.payback ? `<small style="display:block;opacity:.8">pays back in ${plural(pl.payback, 'turn', 'turns')}</small>` : '') +
+          (twin ? `<small style="display:block;opacity:.65">same plan as ${TAG[twin.tag]}</small>` : '') + sline;
+        shown.push({ tag, p: pl });
+      } else if (pending(tag) || stt) body = `<small style="display:block">${stt || '<span class="mk-spin"></span>calculating…'}</small>`;
+      else body = `<small style="display:block;opacity:.75">${tag === 'fast' ? 'Best already pays back fastest' : tag === 'cheaper' ? 'no cheaper plan with ≥ half the ★' : 'no plan with fewer steps'}</small>`;
+      h += `<button class="mk-alt ${on ? 'on' : ''}" data-alt="${tag}" title="${esc(info[tag])}"${pl ? '' : ' disabled'}>${TAG[tag]}${body}</button>`;
+    }
+    return h + '</div>';
+  }
 
   // ------------------------------------------------------------------ cities (shared PP.state.cities)
   function sideOf(color) {
@@ -930,7 +1471,6 @@
     detectedList().forEach(d => { if (!cityEntry(d.c, d.r) && sideOf(detColor(d)) === 'me') add(d.c, d.r); });
     return out;
   }
-  const MAX_CITIES = 6;
   // select a city tile (creates the city entry if the app did not know it)
   function selectCity(c, r, rad) {
     const m = M();
@@ -945,7 +1485,6 @@
     if (!s) s = { c, r, rad: 1 };
     if (rad) s.rad = rad;
     if (m.cities.indexOf(s) < 0) {
-      if (selCities().length >= MAX_CITIES) { toast('At most ' + MAX_CITIES + ' cities at once'); return null; }
       m.cities = m.cities.filter(x => !(x.c === c && x.r === r)).concat(s);
     }
     m.touched = true;
@@ -1124,7 +1663,7 @@
         return selCities().length ? 'Tap more cities · tap a city again: 3×3 → 5×5 → off' : 'Tap your own cities (the city tile) to plan their Markets';
       }
       if (ui.step === 2) return ui.brush ? 'Tap or drag: ' + nm(ui.brush) + ' (tap again = remove)' : 'Pick a brush, then tap tiles';
-      return 'Tap a tile for details';
+      return 'Tap a Market to see what feeds it · tap any tile for details';
     },
     onEnter() {
       const m = M();
@@ -1218,7 +1757,8 @@
 .mk .mk-key .mk-btn{margin:0;width:auto;min-height:40px;padding:6px 10px;font-size:13px;flex:none}
 .mk .mk-spin{display:inline-block;width:16px;height:16px;border:2.5px solid rgba(255,255,255,.25);border-top-color:var(--accent,#4cc9f0);border-radius:50%;animation:mkspin .8s linear infinite;vertical-align:-3px;margin-right:6px}
 @keyframes mkspin{to{transform:rotate(360deg)}}
-.mk .mk-alts{display:flex;gap:5px;margin:6px 0 2px}
+.mk .mk-alts{display:grid;grid-template-columns:1fr 1fr;gap:5px;margin:6px 0 2px}
+.mk .mk-alt:disabled{opacity:.6;cursor:default}
 .mk .mk-alt{flex:1;min-width:0;border:1px solid var(--line,#33406e);background:var(--panel2,#252e52);color:var(--text,#e8ecf8);border-radius:10px;padding:4px 3px;font-size:11.5px;line-height:1.25;text-align:center;min-height:44px}
 .mk .mk-alt b{display:block;font-size:13.5px;color:var(--gold,#ffd166)}
 .mk .mk-alt.on{border-color:var(--accent,#4cc9f0);box-shadow:inset 0 0 0 1px var(--accent,#4cc9f0)}
@@ -1272,7 +1812,7 @@
     return '<div class="mk-steps">' + [[1, '① Cities'], [2, '② What’s here'], [3, '③ Plan']].map(([s, l]) =>
       `<button data-step="${s}" class="${s === ui.step ? 'on' : ''}" ${s !== 1 && !has ? 'disabled' : ''}>${l}</button>`).join('') + '</div>';
   }
-  const TAG = { best: 'Best', fewer: 'Fewer steps', cheaper: 'Cheaper' };
+  const TAG = { best: 'Best', fewer: 'Fewer steps', cheaper: 'Cheaper', fast: 'Fastest payback (ROI)' };
   function keyLine(p, res) {
     if (res && res.pending) return '<span class="mk-spin"></span><b>Searching all plans…</b> <small>exact search</small>';
     if (res && res.tooBig) return '<b>Too many possibilities</b> <small>– see below</small>';
@@ -1298,7 +1838,7 @@
       if (nEd) h += `<button class="mk-btn sm" data-a="resetBorders">↺ Reset borders (${nEd})</button>`;
       h += '</div>';
       const ko = knownOwn();
-      if (ko.length && selCities().length < MAX_CITIES) h += `<button class="mk-btn sm" data-a="addKnown">＋ Add my ${plural(ko.length, 'city', 'cities')}: ${ko.slice(0, 4).map(q => esc(cityLabel(q.c, q.r))).join(', ')}${ko.length > 4 ? ' …' : ''}</button>`;
+      if (ko.length) h += `<button class="mk-btn sm" data-a="addKnown">＋ Add my ${plural(ko.length, 'city', 'cities')}: ${ko.slice(0, 4).map(q => esc(cityLabel(q.c, q.r))).join(', ')}${ko.length > 4 ? ' …' : ''}</button>`;
       if (A.cities.length) h += `<button class="mk-btn pri" data-step="2">Next: ② What’s here ▶</button>`;
       h += '</div>';
       h += '<p class="mk-note">Only tiles inside these territories are planned – Markets, workshops and Farms, Mines, Lumber Huts are built there only. Where territories overlap, a tile belongs to the nearest city.</p>';
@@ -1306,7 +1846,7 @@
       const bt = id => `<button data-brush="${id}" class="${ui.brush === id ? 'on' : ''} ${TER_B.indexOf(id) >= 0 ? 't' : RES_B.indexOf(id) >= 0 ? 'rs' : 'b'}" title="${esc(nm(id))}"><span>${iconHtml(id, 21)}</span>${BRUSH_LABEL[id]}</button>`;
       h += `<div data-peek="tiles">${stepsHtml()}<div class="mk-pal">` + TER_B.concat(RES_B).map(bt).join('') + BLD_B.map(bt).join('') +
         '<button class="go" data-step="3" title="Show the plan"><span>▶</span>Plan</button></div>' +
-        `<div class="mk-note" style="margin:3px 0 0;font-size:11.5px">${ui.brush ? '<b>' + esc(nm(ui.brush)) + '</b> – tap or drag over tiles, tap again to remove. ' : ''}Unmarked tiles count as Empty.</div></div>`;
+        `<div class="mk-note" style="margin:3px 0 0;font-size:11.5px">${ui.brush ? '<b>' + esc(nm(ui.brush)) + '</b> – tap or drag over tiles, tap again to remove. ' : ''}${autoNote()}</div></div>`;
       h += citiesHtml();
       h += countsHtml();
       h += '<p class="mk-note">Mark the board <b>as it is now</b>: terrain (<b>Empty</b>, Forest, Mountain, Water = anything unusable), resources (<b>Crop (for Farm)</b>, Metal, Fruit) and existing buildings. Only the territories of the cities from step ① are shown (coloured outline) – change them there.</p>';
@@ -1316,11 +1856,7 @@
       const added = p && p.actions && planAdded(p);
       h += `<div data-peek="plan:${ui.alt}:${ui.sel ? ui.sel.c + '/' + ui.sel.r : ''}:${res && res.pending ? 'p' : 'd'}">${stepsHtml()}<div class="mk-key"><div class="t">${keyLine(p, res)}</div>` +
         (p && p.actions ? `<button class="mk-btn ${added ? 'ok' : 'pri'}" data-a="${added ? 'fromPlan' : 'toPlan'}">${added ? '✓ In plan' : '➕ Cost plan'}</button>` : '') + '</div>';
-      if (p && (res.alts.length || res.altPending)) {
-        h += '<div class="mk-alts">' + [res.best].concat(res.alts).map((q, i) =>
-          `<button class="mk-alt ${i === ui.alt ? 'on' : ''}" data-alt="${i}">${TAG[q.tag]}<b>${q.income} ★/turn</b>${q.cost} ★ · ${plural(q.actions, 'step', 'steps')}</button>`).join('') +
-          (res.altPending ? '<div class="mk-alt" style="display:flex;align-items:center;justify-content:center;color:var(--muted,#9aa5c8)"><span class="mk-spin"></span>alternatives…</div>' : '') + '</div>';
-      }
+      if (p) h += altsHtml(res);
       h += (ui.sel && p ? selLine(p, ui.sel.c, ui.sel.r) : '') + '</div>';
       h += '<h3>Allowed actions</h3><div class="mk-opts">' + OPT_KEYS.map(k => {
         const [ic, lab, sub] = OPT_LABEL[k];
@@ -1331,15 +1867,36 @@
         return `<button class="mk-opt ${m.opts[k] ? 'on' : ''}" data-opt="${k}" title="Uncheck if you don't have ${esc(tech)} – existing ${esc(nm(k))}s still count"><span class="bx">${m.opts[k] ? '✓' : ''}</span><span>${iconHtml(k, 16)} ${esc(nm(k))}<small>${esc(tech)}</small></span></button>`;
       }).join('') + '</div>';
       if (!WS_KEYS.some(k => m.opts[k])) h += '<p class="mk-note" style="margin-top:2px">No new workshops – the plan only uses the Windmills, Forges and Sawmills already on the board.</p>';
+      const au = autoStats();
+      if (au.unsure) h += `<p class="mk-note" style="color:#ffb703">⚠️ ${plural(au.unsure, 'tile', 'tiles')} in your territory ${au.unsure === 1 ? 'was' : 'were'} not detected with certainty (?). The plan uses the best guess – check ${au.unsure === 1 ? 'it' : 'them'} in step ② if it matters.</p>`;
       if (p) h += planHtml(p, res);
+      if (p) h += growthHtml(res);
       else if (res && res.tooBig) h += `<p class="mk-note" style="color:var(--warn,#ffaa00)">Too many possibilities for the exact search (${res.tooBig.toLocaleString('en')} Market combinations). Mark the tiles in step ② (unmarked tiles count as Empty, so every one is a possible Market site) or plan fewer cities at once.</p>`;
       else if (res && !res.pending) h += '<p class="mk-note">No Market can earn anything here. A Market needs an Empty tile of a city’s territory next to a Windmill, Forge or Sawmill site – and those need Farms, Mines or Lumber Huts (or tiles that can become one) next to them. Check the tiles in step ② and the allowed actions.</p>';
-      if (res && !res.pending && !res.altPending && !res.tooBig) h += `<p class="mk-note">Exact search: ${plural(res.cities.filter(c => !c.implicit).length, 'city', 'cities')} · ${res.stats.combos} Market combinations · ${res.stats.nodes} layouts · ${res.stats.leaves} producer optimizations · best plan in ${res.msBest} ms, all ${res.ms} ms.</p>`;
+      if (res && !res.pending && !res.altPending) h += proofHtml(res);
+      if (res && res.large) {
+        const L = res.large, n = plural(L.cities, 'city', 'cities');
+        h += `<p class="mk-note">${res.altPending ? '<span class="mk-spin"></span><b>Still improving…</b> the plan below is the best so far. ' : ''}` +
+          `Large search (${n}): planned in groups of 1–3 neighbouring cities, each group exactly, until no group can be improved · ${res.stats.windows} groups checked` +
+          (res.altPending ? '' : L.optimal ? ' · <b>every Market at 8 ★ – the most ★ possible</b>' : L.complete ? ' · no group of up to 3 neighbouring cities can do better' : ' · time limit reached – best plan found') + '.</p>';
+      } else if (res && !res.pending && !res.altPending && !res.tooBig) h += `<p class="mk-note">Exact search: ${plural(res.cities.filter(c => !c.implicit).length, 'city', 'cities')} · ${res.stats.combos} Market combinations · ${res.stats.nodes} layouts · ${res.stats.leaves} producer optimizations · best plan in ${res.msBest} ms, all ${res.ms} ms.</p>`;
     }
     h += '</div>';
     el.innerHTML = h;
     el.firstChild.addEventListener('click', onClick);
     el.firstChild.addEventListener('change', onChange);
+  }
+  // v29: what the screenshot detection did for the planned tiles
+  function autoStats() {
+    let auto = 0, unsure = 0;
+    for (const x of areaCells()) { if (x.terrain === 'city' || x.stored) continue; if (x.auto) auto++; if (x.unsure) unsure++; }
+    return { auto, unsure };
+  }
+  function autoNote() {
+    const a = autoStats();
+    if (!a.auto) return 'Unmarked tiles count as Empty.';
+    return 'Terrain is detected from the screenshot' + (a.unsure ? ' – <b style="color:#ffb703">' + plural(a.unsure, 'tile', 'tiles') + ' with ?</b>: not sure, please check (tap = mark it yourself)' : ' ✓') +
+      '. Mark resources (Crop, Metal, Fruit) and buildings yourself.';
   }
   function chipsHtml(A) {
     if (!A.cities.length) return '';
@@ -1384,6 +1941,7 @@
     h += ': ';
     const tp = p.tiles.find(t => t.c === c && t.r === r);
     const b = p.buildings.find(v => v.c === c && v.r === r);
+    if (b && b.item === 'market') h += '<small style="color:#ffd166">✨ highlighted: this Market, its workshops and their producers</small> · ';
     if (tp) h += tp.steps.map(s => `<b>${s.no}</b> ${esc(stepName(s))}`).join(' → ') + (b ? ' · ' + bldText(b, p) : '');
     else if (b) h += bldText(b, p);
     else {
@@ -1458,7 +2016,7 @@
       return;
     }
     if (d.brush) { ui.brush = ui.brush === d.brush ? null : d.brush; PP.app.refresh(); return; }
-    if (d.alt) { ui.alt = +d.alt; ui.sel = null; PP.app.refresh(); requestAnimationFrame(fitPlan); return; }
+    if (d.alt) { ui.alt = d.alt === 'best' ? 0 : d.alt; ui.sel = null; PP.app.refresh(); requestAnimationFrame(fitPlan); return; }
     if (d.opt) { m.opts[d.opt] = !m.opts[d.opt]; ui.alt = 0; PP.app.commit(); return; }
     if (d.go) {
       const [c, r] = d.go.split(',').map(Number);
@@ -1485,6 +2043,7 @@
       PP.app.commit(); requestAnimationFrame(fitRegion);
       toast(n ? plural(n, 'city', 'cities') + ' added' : 'Nothing added'); return;
     }
+    if (a === 'proveMore') { const r = planResult(); if (r && r.best) { startProof(r, cacheSig, COST_MORE_SECS); PP.app.refresh(); } return; }
     if (a === 'suggest') { const n = suggestAll(); toast(n ? n + ' tiles suggested – please check them' : 'Nothing to suggest (all tiles marked)'); PP.app.commit(); return; }
     if (a === 'clearTiles') {
       for (const x of areaCells()) if (x.terrain !== 'city') delete S().tiles[key(x.c, x.r)];
@@ -1594,7 +2153,11 @@
       for (const x of areaCells(A)) {
         if (x.terrain === 'city') continue;
         diamondPath(ctx, x.c, x.r, 0.94);
-        if (!x.stored) { ctx.lineWidth = 1.2; ctx.strokeStyle = 'rgba(255,255,255,.45)'; ctx.setLineDash([3, 3]); ctx.stroke(); ctx.setLineDash([]); continue; }
+        if (!x.stored) {
+          if (x.auto && !x.unsure) { ctx.globalAlpha = 0.6; ctx.fillStyle = TER_FILL[x.terrain] || TER_FILL.water; ctx.fill(); ctx.globalAlpha = 1; }
+          ctx.lineWidth = x.unsure ? 1.8 : 1.2; ctx.strokeStyle = x.unsure ? 'rgba(255,183,3,.9)' : 'rgba(255,255,255,.45)';
+          ctx.setLineDash([3, 3]); ctx.stroke(); ctx.setLineDash([]); continue;
+        }
         ctx.fillStyle = TER_FILL[x.terrain] || TER_FILL.water; ctx.fill();
         ctx.lineWidth = 1.4; ctx.strokeStyle = 'rgba(255,255,255,.55)'; ctx.stroke();
       }
@@ -1648,7 +2211,16 @@
     ctx.save();
     if (ui.step === 2) {
       for (const x of areaCells()) {
-        if (x.terrain === 'city' || !x.stored) continue;
+        if (x.terrain === 'city') continue;
+        if (!x.stored) {
+          const q = PP.board.tileToScreen(x.c, x.r); if (!vis(q)) continue;
+          if (x.unsure) {
+            disc(ctx, q.x, q.y, big * 0.42, 'rgba(40,28,0,.82)', '#ffb703', 1.5);
+            ctx.save(); ctx.font = `bold ${Math.round(big * 0.58)}px system-ui,sans-serif`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+            ctx.fillStyle = '#ffd166'; ctx.fillText('?', q.x, q.y + 1); ctx.restore();
+          } else if (x.auto && x.terrain !== 'field') drawIcon(ctx, x.terrain, q.x, q.y, big * 0.7, 0.75);
+          continue;
+        }
         const q = PP.board.tileToScreen(x.c, x.r); if (!vis(q)) continue;
         if (x.bld) {
           const R = big * 0.62, U = UNIQUE.indexOf(x.bld) >= 0;
@@ -1672,20 +2244,36 @@
     ctx.restore();
   }
   const ACT_GLYPH = { destroy: '💥', fruit: '🍒', plant: '🌱', clear: '🪓', burn: '🔥' };
+  // v29: a tapped Market of the plan → { set of 'c,r' (Market, its workshops, their producers), market }
+  function focusOf(p) {
+    if (!p || !ui.sel) return null;
+    const m = p.markets.find(q => q.c === ui.sel.c && q.r === ui.sel.r);
+    if (!m) return null;
+    const F = new Set([key(m.c, m.r)]);
+    for (const f of m.feeders) {
+      F.add(key(f.c, f.r));
+      const w = p.workshops.find(q => q.c === f.c && q.r === f.r);
+      if (w) w.producers.forEach(pr => F.add(key(pr.c, pr.r)));
+    }
+    return { F, m };
+  }
   function drawPlan(ctx, D, p, u, big) {
+    const foc = focusOf(p), dim = (c, r) => (foc && !foc.F.has(key(c, r)) ? 0.16 : 1);
     // workshop → counted producers (thin, dashed, workshop colour)
     for (const w of p.workshops) {
       const wp = PP.board.tileToScreen(w.c, w.r);
       for (const pr of w.producers) {
         const q = PP.board.tileToScreen(pr.c, pr.r);
         ctx.beginPath(); ctx.moveTo(wp.x, wp.y); ctx.lineTo(q.x, q.y);
-        ctx.lineWidth = clamp(u * 0.04, 1.2, 2.4); ctx.strokeStyle = WS_COL[w.item]; ctx.globalAlpha = 0.85; ctx.setLineDash([4, 3]); ctx.stroke(); ctx.setLineDash([]);
+        const on = foc && foc.F.has(key(w.c, w.r));
+        ctx.lineWidth = clamp(u * (on ? 0.07 : 0.04), 1.2, on ? 4 : 2.4); ctx.strokeStyle = WS_COL[w.item]; ctx.globalAlpha = foc ? (on ? 1 : 0.12) : 0.85; ctx.setLineDash([4, 3]); ctx.stroke(); ctx.setLineDash([]);
         ctx.globalAlpha = 1;
       }
     }
     // Market → workshops (thick, city colour)
     for (const m of p.markets) {
       const mp = PP.board.tileToScreen(m.c, m.r);
+      ctx.globalAlpha = foc && foc.m !== m ? 0.15 : 1;
       for (const w of m.feeders) {
         const wp = PP.board.tileToScreen(w.c, w.r);
         ctx.beginPath(); ctx.moveTo(mp.x, mp.y); ctx.lineTo(wp.x, wp.y);
@@ -1693,6 +2281,7 @@
         ctx.lineWidth = clamp(u * 0.1, 2, 6); ctx.strokeStyle = cityCol(m.city); ctx.stroke();
       }
     }
+    ctx.globalAlpha = 1;
     const pill = (x, y, txt, bg, s) => { if (D && D.pill) D.pill(ctx, x, y, txt, bg, s); };
     const fs = clamp(u * 0.2, 9, 13), rad = clamp(u * 0.15, 6.5, 11);
     // producers that are used (existing or new)
@@ -1701,19 +2290,24 @@
       const k = key(pr.c, pr.r); if (prodSeen.has(k)) continue; prodSeen.add(k);
       if (p.tiles.some(t => t.c === pr.c && t.r === pr.r)) continue;
       const q = PP.board.tileToScreen(pr.c, pr.r);
+      ctx.globalAlpha = dim(pr.c, pr.r);
       disc(ctx, q.x, q.y, big * 0.42, 'rgba(10,14,30,.6)', WS_COL[w.item], 1.3);
-      drawIcon(ctx, pr.item, q.x, q.y, big * 0.62);
+      drawIcon(ctx, pr.item, q.x, q.y, big * 0.62, ctx.globalAlpha);
+      ctx.globalAlpha = 1;
     }
-    for (const m of p.markets) { diamondPath(ctx, m.c, m.r, 0.98); ctx.lineWidth = 3; ctx.strokeStyle = cityCol(m.city); ctx.stroke(); }
+    for (const m of p.markets) { ctx.globalAlpha = dim(m.c, m.r); diamondPath(ctx, m.c, m.r, 0.98); ctx.lineWidth = 3; ctx.strokeStyle = cityCol(m.city); ctx.stroke(); ctx.globalAlpha = 1; }
     // tiles with steps: final building (or 💥 if only destroyed); existing buildings that count: ✓
     const bAt = new Map(p.buildings.map(b => [key(b.c, b.r), b]));
     const later = [], pills = [];
     for (const t of p.tiles) {
-      const q = PP.board.tileToScreen(t.c, t.r), col = cityCol(t.city), b = bAt.get(key(t.c, t.r));
+      const q = PP.board.tileToScreen(t.c, t.r), col = cityCol(t.city), b = bAt.get(key(t.c, t.r)), a = dim(t.c, t.r);
       const R = big * (b ? 0.7 : 0.5);
+      ctx.globalAlpha = a;
       disc(ctx, q.x, q.y, R, 'rgba(25,30,55,.88)', col, 2.2, [4, 2]);
-      if (t.item) drawIcon(ctx, t.item, q.x, q.y, big * (b ? 1.0 : 0.72)); else emoji(ctx, '💥', q.x, q.y, big * 0.6);
+      if (t.item) drawIcon(ctx, t.item, q.x, q.y, big * (b ? 1.0 : 0.72), a); else emoji(ctx, '💥', q.x, q.y, big * 0.6, a);
+      ctx.globalAlpha = 1;
       const nos = t.steps.map(s => s.no);
+      if (a < 1) continue;
       later.push(() => numBadge(ctx, nos.length > 2 ? nos[0] + '–' + nos[nos.length - 1] : nos.join('·'), q.x - R * 0.8, q.y - R * 0.9, rad, col, '#0b0f1f'));
       const gl = t.steps.map(s => ACT_GLYPH[s.item]).filter(Boolean);
       if (gl.length) later.push(() => {
@@ -1727,14 +2321,28 @@
       });
     }
     for (const b of p.buildings) {
-      const q = PP.board.tileToScreen(b.c, b.r), R = big * 0.7;
+      const q = PP.board.tileToScreen(b.c, b.r), R = big * 0.7, a = dim(b.c, b.r);
       if (!b.isNew) {
+        ctx.globalAlpha = a;
         disc(ctx, q.x, q.y, R, 'rgba(10,14,30,.7)', 'rgba(255,255,255,.85)', 1.8);
-        drawIcon(ctx, b.item, q.x, q.y, big * 1.0);
-        later.push(() => numBadge(ctx, '✓', q.x - R * 0.8, q.y - R * 0.9, rad * 0.9, '#e8ecf8', '#0b6b4f'));
+        drawIcon(ctx, b.item, q.x, q.y, big * 1.0, a);
+        ctx.globalAlpha = 1;
+        if (a === 1) later.push(() => numBadge(ctx, '✓', q.x - R * 0.8, q.y - R * 0.9, rad * 0.9, '#e8ecf8', '#0b6b4f'));
       }
+      if (a < 1) continue;
       if (b.item === 'market') pills.push(() => pill(q.x, q.y + R + fs * 0.7, b.income + ' ★/turn', 'rgba(150,100,0,.97)', fs));
       else pills.push(() => pill(q.x, q.y + R + fs * 0.55, 'Lv' + b.level, 'rgba(6,120,90,.95)', fs * 0.92));
+    }
+    // the focused Market and everything that feeds it: glowing outlines on top
+    if (foc) {
+      ctx.save();
+      for (const k of foc.F) {
+        const [c, r] = k.split(',').map(Number), isM = c === foc.m.c && r === foc.m.r;
+        diamondPath(ctx, c, r, isM ? 1.02 : 0.96);
+        ctx.shadowColor = isM ? '#ffd166' : '#fff'; ctx.shadowBlur = clamp(u * 0.3, 6, 16);
+        ctx.lineWidth = isM ? 3.5 : 2.2; ctx.strokeStyle = isM ? '#ffd166' : 'rgba(255,255,255,.95)'; ctx.stroke();
+      }
+      ctx.restore();
     }
     later.forEach(f => f());
     pills.forEach(f => f());

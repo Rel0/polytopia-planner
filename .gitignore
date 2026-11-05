@@ -6,3 +6,4 @@ deploy.env
 old/
 .DS_Store
 .claude/
+__pycache__/

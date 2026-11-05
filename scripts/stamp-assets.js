@@ -33,5 +33,22 @@ for (const html of htmlFiles) {
   });
   if (out !== src) fs.writeFileSync(html, out);
 }
+// JS files may reference other files as '<path>?v=STAMP' (e.g. the Market worker) → same content hash
+(function walkJs(dir) {
+  for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
+    const p = path.join(dir, e.name);
+    if (e.isDirectory()) { if (e.name !== 'vendor') walkJs(p); continue; }
+    if (!e.name.endsWith('.js')) continue;
+    const src = fs.readFileSync(p, 'utf8');
+    if (src.indexOf('?v=STAMP') < 0) continue;
+    const out = src.replace(/(['"])([\w./-]+)\?v=STAMP\1/g, (m, q, url) => {
+      const file = path.join(root, url);
+      if (!fs.existsSync(file)) { missing++; console.warn('stamp-assets: missing ' + url + ' (in ' + path.relative(root, p) + ')'); return m; }
+      changed++;
+      return q + url + '?v=' + hashOf(file) + q;
+    });
+    fs.writeFileSync(p, out);
+  }
+})(root);
 console.log('stamp-assets: ' + changed + ' references in ' + htmlFiles.length + ' HTML files' + (missing ? ', ' + missing + ' missing' : ''));
 if (missing) process.exit(1);
