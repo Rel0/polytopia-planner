@@ -1018,7 +1018,8 @@
   // grow: 'c,r' of a city whose territory is taken as 5×5 (v29: "what if this city gets Border Growth?")
   function area(grow) {
     const m = M(), sel = selCities();
-    const cities = sel.map((s, k) => { const ce = cityEntry(s.c, s.r); return { c: s.c, r: s.r, rad: grow === key(s.c, s.r) ? 2 : s.rad, name: (ce && ce.name) || '', k, implicit: false }; });
+    const grows = k => (grow instanceof Set ? grow.has(k) : grow === k);
+    const cities = sel.map((s, k) => { const ce = cityEntry(s.c, s.r); return { c: s.c, r: s.r, rad: grows(key(s.c, s.r)) ? 2 : s.rad, name: (ce && ce.name) || '', k, implicit: false }; });
     const owner = new Map(), base = new Set(), cand = new Map();
     const cityK = new Map(cities.map(ci => [key(ci.c, ci.r), ci.k]));
     for (const ci of cities) {
@@ -1084,50 +1085,168 @@
   }
   // v29 Border Growth check: for every city with a 3×3 territory, the best plan if that city had 5×5 (the others as
   // they are). Runs in the background after the main plan; { sig, items: [{ k, name, c, r, income, delta, cost }], pending }
-  let growth = null;
-  function growthResult(base) {
-    if (!base || !base.best && !base.cities) return null;
-    const sig = cacheSig;
-    if (growth && growth.sig === sig) return growth;
-    const A = area(), todo = A.cities.filter(ci => ci.rad === 1);
-    growth = { sig, items: [], pending: todo.length > 0, total: todo.length };
-    if (!todo.length) return growth;
-    const g = growth, baseInc = base.best ? base.best.income : 0;
-    let i = 0, job = null;
-    const tick = () => {
-      if (growth !== g) return; // board changed
-      const t0 = Date.now();
-      while (Date.now() - t0 < 24) {
-        if (!job) {
-          if (i >= todo.length) { g.pending = false; if (PP.modes && PP.modes.current === 'market' && ui.step === 3) PP.app.refresh(); return; }
-          const ci = todo[i], cells = optCells(areaCells(area(key(ci.c, ci.r)))), o = Object.assign({}, M().opts, { alts: false });
-          job = createJob(cells, o);
-          if (job.combos > MAX_COMBOS) job = createLargeJob(cells, Object.assign(o, { largeMs: 6000 }));
-          job.ci = ci;
-        }
-        if (job.step(Date.now() + 20)) {
-          const r = job.result, inc = r && r.best ? r.best.income : 0;
-          g.items.push({ k: job.ci.k, c: job.ci.c, r: job.ci.r, name: cityName(job.ci, job.ci.k), income: inc, delta: inc - baseInc, cost: r && r.best ? r.best.cost : 0 });
-          job = null; i++;
-          if (PP.modes && PP.modes.current === 'market' && ui.step === 3) PP.app.refresh();
-        }
-      }
-      setTimeout(tick, 0);
-    };
-    setTimeout(tick, 0);
-    return growth;
+  // v29 Border Growth check – only on request (button). Greedy over combinations: start from the plan as it is, add the
+  // city whose growth to 5×5 brings the most ★ TOGETHER with the ones already chosen, repeat. Plus "all of them" to
+  // catch synergies the steps miss. Each configuration is solved like the main plan (exact or group search).
+  // growth = { sig, state: 'running'|'done', steps: [{ key, name, k, income, cost, gain }], all: { income, cost }, base, done, total }
+  let growth = null, growthAuto = false;
+  const GROW_PROOF_SECS = 10, GROW_COST_SECS = 5; // HiGHS time per Border Growth plan (alone usually a few seconds)
+  const growSolves = n => 2 * n; // base + every city alone + adding them one by one (the first step = the best city alone)
+  const growthNow = () => (growth && growth.sig === cacheSig ? growth : null);
+  // one configuration: group search / exact search first, then HiGHS proves the maximum ★ (same model as the main proof),
+  // so the numbers are the same on every run. → { income, cost, proven }
+  function growthWorker(g) {
+    if (g.worker !== undefined) return g.worker;
+    g.worker = null;
+    if (PP.marketMilp && typeof Worker !== 'undefined') try { g.worker = new Worker('js/market-worker.js?v=STAMP'); } catch (e) { g.worker = null; }
+    return g.worker;
   }
-  function growthHtml(res) {
-    if (!res || res.pending || res.tooBig || res.altPending) return '';
-    const g = growthResult(res); if (!g || !g.total) return '';
-    let h = '<h3>🌱 Border Growth?</h3><div class="mk-note" style="margin-top:0">If one city grows to 5×5 (the others as they are), the best plan earns:</div><div class="mk-grow">';
-    g.items.slice().sort((a, b) => b.delta - a.delta).forEach(it => {
-      const col = it.delta > 0 ? '#7bd389' : 'var(--muted,#9aa5c8)';
-      h += `<div class="mk-bd" style="margin:3px 2px"><b style="color:${cityCol(it.k)}">${esc(it.name)}</b> → 5×5: <b style="color:${col}">${it.delta > 0 ? '+' + it.delta + ' ★/turn' : 'no gain'}</b> <small>(${it.income} ★/turn in total)</small></div>`;
+  function runJob(g, job) {
+    return new Promise(done => {
+      const step = () => { if (growth !== g) return done(null); if (job.step(Date.now() + 20)) done(job.result); else setTimeout(step, 0); };
+      setTimeout(step, 0);
     });
-    if (g.pending) h += `<div class="mk-note"><span class="mk-spin"></span>checking ${g.items.length + 1} of ${g.total}…</div>`;
-    h += '</div><p class="mk-note">The new ring counts as ' + (S().board === 'image' ? 'detected from the screenshot' : 'Empty') + ' where you haven\'t marked it. Turn a city to 5×5 in ① Cities to plan with it.</p>';
-    return h;
+  }
+  // HiGHS in the Border Growth worker. spec = { mode: 'income' } or { mode: 'cost', minIncome } → { p, D, optimal, bound } | null
+  function milpRun(g, P, spec, D, secs) {
+    const w = growthWorker(g);
+    if (!w) return Promise.resolve(null);
+    return new Promise(done => {
+      const model = PP.marketMilp.build(P, spec), id = (g.msg = (g.msg || 0) + 1);
+      let names = null;
+      w.onmessage = ev => {
+        const m = ev.data || {};
+        if (m.id !== id) return;
+        if (m.type === 'names') { names = m.names; return; }
+        if (m.type === 'error') return done(null);
+        if (m.type !== 'done') return;
+        let p = null, d = null;
+        if (names) { const cols = {}; names.forEach((nm, k) => { cols[nm] = { Primal: m.values[k] }; }); d = model.decode(cols); p = materialize(P, d, 'inc'); }
+        done({ p, D: d, optimal: !!m.optimal, bound: isFinite(m.bound) ? Math.floor(m.bound + 1e-6) : null });
+      };
+      w.postMessage({ id, lp: model.lp, start: D ? model.start(D) : null, opts: { time_limit: secs } });
+    });
+  }
+  // one configuration: quick search, then HiGHS proves the maximum ★ (same model as the main proof). If HiGHS finds
+  // more ★ than the search, a short cost run makes the cost of that plan comparable. → { income, cost, proven }
+  async function solveGrowCfg(g, set) {
+    const cells = optCells(areaCells(area(set))), o = Object.assign({}, M().opts, { alts: false });
+    let job = createJob(cells, o);
+    if (job.combos > QUICK_EXACT) job = createLargeJob(cells, Object.assign(o, { largeMs: 3000, quick: false }));
+    const r = await runJob(g, job);
+    if (growth !== g || !r) return null;
+    const b = r.best;
+    let out = { income: b ? b.income : 0, cost: b ? b.cost : 0, proven: !r.large || !!(b && b.income >= r.large.ub) };
+    if (out.proven) return out;
+    const P = prepare(cells, Object.assign({}, M().opts));
+    const pr = await milpRun(g, P, { mode: 'income' }, r.decision, GROW_PROOF_SECS);
+    if (growth !== g) return null;
+    if (!pr) return out;
+    out.proven = pr.optimal;
+    if (pr.p && pr.p.income > out.income) {
+      out.income = pr.p.income; out.cost = pr.p.cost;
+      const pc = await milpRun(g, P, { mode: 'cost', minIncome: out.income }, pr.D, GROW_COST_SECS);
+      if (growth !== g) return null;
+      if (pc && pc.p && pc.p.income >= out.income && pc.p.cost < out.cost) out.cost = pc.p.cost;
+    }
+    return out;
+  }
+  // Which cities should grow? 1) every city alone, 2) all of them added one by one in the order of their gain alone,
+  // each together with the ones before it – so pairs that only pay off together show up too. 2n plans for n cities.
+  function startGrowth(res) {
+    if (!res || !res.best) return;
+    const A = area(), cand = A.cities.filter(ci => ci.rad === 1).map(ci => ({ key: key(ci.c, ci.r), name: cityName(ci, ci.k), k: ci.k, c: ci.c, r: ci.r }));
+    if (!cand.length) return;
+    stopGrowth();
+    const n = cand.length, total = growSolves(n);
+    const g = growth = { sig: cacheSig, state: 'running', steps: [], alone: {}, byKey: {}, done: 0, total, t0: Date.now(), open: 0 };
+    const memo = new Map(), cfgKey = set => [...set].sort().join('|');
+    const refresh = () => { if (growth === g && PP.modes && PP.modes.current === 'market') PP.app.refresh(); };
+    const solve = async set => {
+      const k = cfgKey(set);
+      if (!memo.has(k)) { const v = await solveGrowCfg(g, set); if (!v) return null; if (!v.proven) g.open++; memo.set(k, v); g.done++; refresh(); }
+      return memo.get(k);
+    };
+    (async () => {
+      // the proof of the main plan uses the same CPU – wait until it is done (each check is much faster alone)
+      while (prover && growth === g) { g.waiting = true; refresh(); await new Promise(r => setTimeout(r, 500)); }
+      if (growth !== g) return;
+      g.waiting = false; g.t0 = Date.now();
+      const base = await solve(new Set());
+      if (!base) return;
+      g.base = base;
+      for (const c of cand) {
+        const r = await solve(new Set([c.key]));
+        if (!r) return;
+        g.alone[c.key] = { gain: Math.max(0, r.income - base.income), dcost: r.cost - base.cost };
+        refresh();
+      }
+      const order = cand.slice().sort((a, b) => g.alone[b.key].gain - g.alone[a.key].gain || g.alone[a.key].dcost - g.alone[b.key].dcost);
+      const chosen = new Set();
+      let cur = base;
+      for (const c of order) {
+        chosen.add(c.key);
+        const r = await solve(new Set(chosen));
+        if (!r) return;
+        const gain = r.income - cur.income;
+        g.steps.push({ key: c.key, name: c.name, k: c.k, income: r.income, cost: r.cost, gain: Math.max(0, gain), dcost: r.cost - cur.cost, proven: r.proven });
+        g.byKey[c.key] = { delta: Math.max(0, gain), order: g.steps.length };
+        if (gain > 0) cur = r; else chosen.delete(c.key); // no gain → this city stays 3×3
+        refresh();
+      }
+      g.state = 'done'; g.ms = Date.now() - g.t0;
+      if (g.worker) try { g.worker.terminate(); } catch (e) { /* gone */ }
+      refresh();
+    })();
+  }
+  function stopGrowth() { if (growth && growth.worker) try { growth.worker.terminate(); } catch (e) { /* gone */ } growth = null; }
+  function growthHtml(res) {
+    if (!res || res.pending || res.tooBig || res.altPending || !res.best) return '';
+    const A = area(), small = A.cities.filter(ci => ci.rad === 1), grown = A.cities.filter(ci => ci.rad === 2);
+    const box = inner => '<div class="mk-grow" style="margin:10px 0 4px;padding:8px 10px;border:1px solid var(--line,#33406e);border-radius:10px;background:rgba(123,211,137,.06)">' +
+      '<div style="font-weight:700;margin-bottom:4px">🌱 Should cities take Border Growth?</div>' + inner + '</div>';
+    // cities set to 5×5 count as already grown and are not checked – say so clearly and offer to check them all
+    const allBtn = grown.length ? `<div class="mk-note" style="margin:6px 0 0">${grown.length === A.cities.length ? 'All cities are' : plural(grown.length, 'city is', 'cities are')} set to 5×5 and count as already grown` +
+      ` (${grown.map(ci => esc(cityName(ci, ci.k))).join(', ')}).</div><button class="mk-btn" data-a="growthAll" style="margin-top:4px;width:100%">🌱 Check all ${A.cities.length} cities from 3×3</button>` : '';
+    if (growthAuto && !growthNow()) { growthAuto = false; setTimeout(() => { startGrowth(planResult()); PP.app.refresh(); }, 0); }
+    if (!small.length) return box(allBtn.replace('margin:6px 0 0', 'margin:0'));
+    const g = growthNow();
+    const n = small.length, solves = growSolves(n);
+    if (!g) {
+      const est = Math.max(5, Math.round(solves * (res.large ? 6 : 1.5)));
+      return box(`<div class="mk-note" style="margin:0 0 6px">${n === 1 ? 'Tests whether the last city with 3×3 should grow to 5×5.' : `Tests which of the ${n} cities with 3×3 should grow to 5×5 – first each city alone, then together, so cities that only pay off together are found too.`}</div>` +
+        `<button class="mk-btn" data-a="growth" style="width:100%">🌱 Check Border Growth <small style="opacity:.75">(${plural(solves, 'plan', 'plans')} · about ${est < 90 ? est + ' s' : Math.round(est / 60) + ' min'})</small></button>` + allBtn);
+    }
+    const nm = (k, name) => `<b style="color:${cityCol(k)}">${esc(name)}</b>`;
+    const costTxt = (dc, gain) => dc > 0 ? 'builds +' + dc + ' ★' + (gain > 0 ? ', pays back in ' + plural(Math.ceil(dc / gain), 'turn', 'turns') : '') : dc < 0 ? 'plan gets ' + -dc + ' ★ cheaper' : 'no extra cost';
+    let h = '';
+    const worth = g.steps.filter(s => s.gain > 0), sum = worth.reduce((a, s) => a + s.gain, 0);
+    if (g.state === 'done') {
+      h += worth.length
+        ? `<div class="mk-bd" style="margin:0 0 6px;font-size:1.05em">👉 <b>Take Border Growth in ${worth.map(s => nm(s.k, s.name)).join(', ')}</b>: <b style="color:#7bd389">+${sum} ★/turn</b> <small>(${g.base.income} → ${g.base.income + sum})</small></div>`
+        : '<div class="mk-bd" style="margin:0 0 6px">👉 <b>No city gains anything for the Markets from Border Growth</b> – take the other reward.</div>';
+    }
+    if (g.steps.length) {
+      h += '<div class="mk-note" style="margin:0 0 4px">Adding the cities one by one (each together with the ✅ ones before it):</div>';
+      g.steps.forEach(st => {
+        const al = g.alone[st.key];
+        h += `<div class="mk-bd" style="margin:3px 0">${st.gain > 0 ? '✅' : '➖'} ${nm(st.k, st.name)}: ` +
+          (st.gain > 0 ? `<b style="color:#7bd389">+${st.gain} ★/turn</b> <small>· ${costTxt(st.dcost, st.gain)}</small>` : 'no extra ★ – keep 3×3, take the other reward') +
+          (al && al.gain !== st.gain ? ` <small style="opacity:.7">(alone ${al.gain > 0 ? '+' + al.gain : '+0'})</small>` : '') + '</div>';
+      });
+    } else if (Object.keys(g.alone).length) {
+      h += '<div class="mk-note" style="margin:0 0 4px">Each city alone:</div>';
+      small.forEach(ci => { const al = g.alone[key(ci.c, ci.r)]; if (al) h += `<div class="mk-bd" style="margin:3px 0">${nm(ci.k, cityName(ci, ci.k))}: ${al.gain > 0 ? '<b style="color:#7bd389">+' + al.gain + ' ★/turn</b>' : '+0'}</div>`; });
+    }
+    if (g.state === 'running' && g.waiting) h += '<div class="mk-note" style="margin:4px 0"><span class="mk-spin"></span>starts as soon as the check of the plan above is done…</div>';
+    else if (g.state === 'running') h += `<div class="mk-note" style="margin:4px 0"><span class="mk-spin"></span>checking plan ${Math.min(g.done + 1, g.total)} of ${g.total}…</div>`;
+    else {
+      if (worth.length) h += `<button class="mk-btn" data-a="growthApply" style="margin-top:6px;width:100%">Plan with 5×5 for ${worth.map(s => esc(s.name)).join(', ')}</button>`;
+      h += `<p class="mk-note" style="margin:6px 0 0">${g.ms ? 'Checked in ' + Math.round(g.ms / 1000) + ' s. ' : ''}` +
+        (g.open ? `<b style="color:#ffb703">${plural(g.open, 'plan', 'plans')} of ${g.done} not proven within ${GROW_PROOF_SECS} s</b> – the numbers there are the best found. ` : '✓ Every ★/turn number is proven to be the maximum for that combination. ') + `The new ring counts as ${S().board === 'image' ? 'detected from the screenshot' : 'Empty'} where you haven't marked it.</p>`;
+    }
+    if (g.state !== 'running') h += allBtn;
+    return box(h);
   }
   // v29 proof with HiGHS (js/market-worker.js): after the group search (many cities) the plan is checked by a MILP –
   // first that no plan earns more ★, then that no plan with these ★ is cheaper. Better plans found on the way replace
@@ -1840,10 +1959,10 @@
         return `<button class="mk-opt ${m.opts[k] ? 'on' : ''}" data-opt="${k}" title="Uncheck if you don't have ${esc(tech)} – existing ${esc(nm(k))}s still count"><span class="bx">${m.opts[k] ? '✓' : ''}</span><span>${iconHtml(k, 16)} ${esc(nm(k))}<small>${esc(tech)}</small></span></button>`;
       }).join('') + '</div>';
       if (!WS_KEYS.some(k => m.opts[k])) h += '<p class="mk-note" style="margin-top:2px">No new workshops – the plan only uses the Windmills, Forges and Sawmills already on the board.</p>';
+      if (p) h += growthHtml(res);
       const au = autoStats();
       if (au.unsure) h += `<p class="mk-note" style="color:#ffb703">⚠️ ${plural(au.unsure, 'tile', 'tiles')} in your territory ${au.unsure === 1 ? 'was' : 'were'} not detected with certainty (?). The plan uses the best guess – check ${au.unsure === 1 ? 'it' : 'them'} in step ② if it matters.</p>`;
       if (p) h += planHtml(p, res);
-      if (p) h += growthHtml(res);
       else if (res && res.tooBig) h += `<p class="mk-note" style="color:var(--warn,#ffaa00)">Too many possibilities for the exact search (${res.tooBig.toLocaleString('en')} Market combinations). Mark the tiles in step ② (unmarked tiles count as Empty, so every one is a possible Market site) or plan fewer cities at once.</p>`;
       else if (res && !res.pending) h += '<p class="mk-note">No Market can earn anything here. A Market needs an Empty tile of a city’s territory next to a Windmill, Forge or Sawmill site – and those need Farms, Mines or Lumber Huts (or tiles that can become one) next to them. Check the tiles in step ② and the allowed actions.</p>';
       if (res && !res.pending && !res.altPending) h += proofHtml(res);
@@ -1875,7 +1994,9 @@
     if (!A.cities.length) return '';
     return '<div class="mk-chips">' + A.cities.map((ci, k) => {
       const n = [...A.owner.values()].filter(o => o === k).length - 1, at = ci.c + ',' + ci.r;
-      return `<div class="mk-chip" style="--cc:${cityCol(k)}"><span class="dot"></span><span class="nmx">${esc(cityName(ci, k))}<small>${ci.c}/${ci.r} · ${n} tiles</small></span>` +
+      const gi = ci.rad === 1 && growthNow() ? growthNow().byKey[at] : null;
+      const gtxt = gi ? (gi.delta > 0 ? ` · <b style="color:#7bd389">🌱 5×5: +${gi.delta} ★</b>` : ' · 🌱 5×5: no gain') : '';
+      return `<div class="mk-chip" style="--cc:${cityCol(k)}"><span class="dot"></span><span class="nmx">${esc(cityName(ci, k))}<small>${ci.c}/${ci.r} · ${n} tiles${gtxt}</small></span>` +
         `<span class="seg"><button data-rad="${at},1" class="${ci.rad === 1 ? 'on' : ''}">3×3</button><button data-rad="${at},2" class="${ci.rad === 2 ? 'on' : ''}">5×5</button></span>` +
         `<button class="x" data-unsel="${at}" title="Remove" aria-label="Remove ${esc(cityName(ci, k))}">✕</button></div>`;
     }).join('') + '</div>';
@@ -2015,6 +2136,14 @@
       for (const q of knownOwn()) if (selectCity(q.c, q.r)) n++;
       PP.app.commit(); requestAnimationFrame(fitRegion);
       toast(n ? plural(n, 'city', 'cities') + ' added' : 'Nothing added'); return;
+    }
+    if (a === 'growth') { const r = planResult(); if (r && r.best) { startGrowth(r); PP.app.refresh(); } return; }
+    if (a === 'growthAll') { M().cities.forEach(sc => { sc.rad = 1; }); stopGrowth(); growthAuto = true; M().touched = true; ui.alt = 0; PP.app.commit(); return; }
+    if (a === 'growthApply') {
+      const g = growthNow(); if (!g) return;
+      const keys = new Set(g.steps.filter(s => s.gain > 0).map(s => s.key));
+      M().cities.forEach(sc => { if (keys.has(key(sc.c, sc.r))) sc.rad = 2; });
+      M().touched = true; ui.alt = 0; PP.app.commit(); toast(plural(keys.size, 'city', 'cities') + ' now planned with 5×5'); return;
     }
     if (a === 'proveMore') { const r = planResult(); if (r && r.best) { startProof(r, cacheSig, COST_MORE_SECS); PP.app.refresh(); } return; }
     if (a === 'suggest') { const n = suggestAll(); toast(n ? n + ' tiles suggested – please check them' : 'Nothing to suggest (all tiles marked)'); PP.app.commit(); return; }
@@ -2157,6 +2286,14 @@
         D.pill(ctx, q.x, y, name, hexA(cityCol(k), 0.9), fs);
         ctx.save(); ctx.font = `bold ${fs}px system-ui,sans-serif`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
         ctx.fillStyle = '#0b0f1f'; ctx.fillText(name, q.x, y + 1); ctx.restore();
+        // v29: Border Growth worth it for this city?
+        const gi = growthNow() && growthNow().byKey[key(ci.c, ci.r)];
+        if (gi && gi.delta > 0) {
+          const gt = '🌱 +' + gi.delta + '★ with 5×5', gy = y + fs * 1.45;
+          D.pill(ctx, q.x, gy, gt, 'rgba(30,110,60,.95)', fs * 0.9);
+          ctx.save(); ctx.font = `bold ${fs * 0.9}px system-ui,sans-serif`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+          ctx.fillStyle = '#eafff0'; ctx.fillText(gt, q.x, gy + 1); ctx.restore();
+        }
       }
     });
   }
