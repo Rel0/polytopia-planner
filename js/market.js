@@ -898,6 +898,9 @@
   }
   const WS_COL = { windmill: '#facc15', forge: '#fb923c', sawmill: '#a3e635' };
   const CITY_COL = ['#4cc9f0', '#ff70a6', '#b69cff', '#7bd389', '#ff9f43', '#f9f871', '#2ec4b6', '#e76f51', '#a0c4ff', '#d4a373', '#ff4d6d', '#c0ca33'];
+  // "built" marks: deep emerald + diagonal hatching – no city, workshop, Market or level colour is anywhere near it
+  const BUILT_COL = '#16a34a', BUILT_FILL = 'rgba(22,163,74,.5)', BUILT_DARK = 'rgba(8,60,28,.95)';
+  const ACT_COL = '#3ddc84'; // what the ✓ Built button acts on
   const cityCol = k => CITY_COL[(k >= 0 ? k : 0) % CITY_COL.length];
   const TER_B = ['field', 'forest', 'mountain', 'water', 'city'];
   const RES_B = ['crop', 'ore', 'fruit'];
@@ -919,6 +922,8 @@
     if (!st.market || typeof st.market !== 'object') st.market = {};
     const m = st.market;
     if (!m.opts || typeof m.opts !== 'object') m.opts = {};
+    // steps the player has marked as built (checklist only – the plan is not computed again): { 'c,r:item': 1 }
+    if (!m.done || typeof m.done !== 'object' || Array.isArray(m.done)) m.done = {};
     for (const k of OPT_KEYS.concat(WS_KEYS)) if (typeof m.opts[k] !== 'boolean') m.opts[k] = true;
     if (!st.tiles || typeof st.tiles !== 'object' || Array.isArray(st.tiles)) st.tiles = {};
     if (!Array.isArray(st.cities)) st.cities = [];
@@ -926,7 +931,7 @@
     // A v16 rectangle → the cities inside it with the old territory (radius 2). (Not deleted: core would re-add null.)
     if (m.region !== false) {
       const reg = normRegion(m.region);
-      m.cities = []; m.edits = {}; m.touched = false;
+      m.cities = []; m.edits = {}; m.done = {}; m.touched = false;
       if (reg) {
         st.cities.forEach(ci => { if (ci && inRegion(reg, ci.c, ci.r) && noCity().indexOf(key(ci.c, ci.r)) < 0) m.cities.push({ c: ci.c, r: ci.r, rad: 2 }); });
         m.touched = true;
@@ -1083,8 +1088,6 @@
     const m = M();
     return JSON.stringify([optCells(areaCells()), m.opts]);
   }
-  // v29 Border Growth check: for every city with a 3×3 territory, the best plan if that city had 5×5 (the others as
-  // they are). Runs in the background after the main plan; { sig, items: [{ k, name, c, r, income, delta, cost }], pending }
   // v29 Border Growth check – only on request (button). Greedy over combinations: start from the plan as it is, add the
   // city whose growth to 5×5 brings the most ★ TOGETHER with the ones already chosen, repeat. Plus "all of them" to
   // catch synergies the steps miss. Each configuration is solved like the main plan (exact or group search).
@@ -1749,6 +1752,8 @@
   }
   const mode = {
     label: 'Market', icon: '🏪',
+    mapAct: () => mapActHtml(),
+    mapActClick,
     hint() {
       if (ui.step === 1 || !selCities().length) {
         if (ui.borders) return 'Tap a tile next to the territory to add it, a territory tile to remove it (drag for several)';
@@ -1874,6 +1879,15 @@
 .mk ol.mk-list li .tx small{color:var(--muted,#9aa5c8)}
 .mk ol.mk-list li .co{font-weight:700;white-space:nowrap}
 .mk ol.mk-list li.sel{background:rgba(76,201,240,.12)}
+.mk ol.mk-list li .ck{flex:none;width:24px;height:24px;border-radius:6px;border:2px solid rgba(255,255,255,.35);background:transparent;color:#0b0f1f;font-weight:900;font-size:14px;line-height:1;padding:0;cursor:pointer;display:flex;align-items:center;justify-content:center}
+.mk ol.mk-list li.done .ck{background:#16a34a;border-color:#16a34a;color:#fff}
+.mk ol.mk-list li.done{background:rgba(22,163,74,.18);box-shadow:inset 4px 0 0 #16a34a}
+.mk ol.mk-list li.done .tx{opacity:.8}
+.mk ol.mk-list li .bt{flex:none;background:#16a34a;color:#fff;font-weight:900;font-size:11px;border-radius:8px;padding:3px 7px;white-space:nowrap}
+.mk .mk-prog{display:flex;align-items:center;gap:8px;font-size:12.5px;margin:2px 0 4px;color:var(--muted,#9aa5c8)}
+.mk .mk-prog .bar{flex:none;width:90px;height:7px;border-radius:4px;background:rgba(255,255,255,.12);overflow:hidden}
+.mk .mk-prog .bar i{display:block;height:100%;background:#16a34a}
+.mk .mk-prog.all{color:#16a34a;font-weight:700}
 .mk ol.mk-list li.none{color:var(--muted,#9aa5c8);font-size:12.5px}
 .mk ol.mk-list li.tot{font-weight:700;border-bottom:0}
 .mk ol.mk-list li.tot .co{color:var(--gold,#ffd166)}
@@ -2036,7 +2050,10 @@
     const tp = p.tiles.find(t => t.c === c && t.r === r);
     const b = p.buildings.find(v => v.c === c && v.r === r);
     if (b && b.item === 'market') h += '<small style="color:#ffd166">✨ highlighted: this Market, its workshops and their producers</small> · ';
-    if (tp) h += tp.steps.map(s => `<b>${s.no}</b> ${esc(stepName(s))}`).join(' → ') + (b ? ' · ' + bldText(b, p) : '');
+    if (tp) {
+      const all = tp.steps.every(isDone);
+      h += (all ? `<b style="color:${BUILT_COL}">✓ BUILT</b> · ` : '') + tp.steps.map(s => `${isDone(s) ? '✅' : ''}<b>${s.no}</b> ${esc(stepName(s))}`).join(' → ') + (b ? ' · ' + bldText(b, p) : '');
+    }
     else if (b) h += bldText(b, p);
     else {
       const ws = p.workshops.find(w => w.producers.some(q => q.c === c && q.r === r));
@@ -2056,6 +2073,49 @@
     if (other.length) h += ` <small>· ${b.feeds.length > other.length ? 'also ' : ''}feeds ${other.map(mm => esc(groupName(p, mm.city)) + '’s Market').join(', ')}</small>`;
     return h;
   }
+  const doneKey = s => s.c + ',' + s.r + ':' + s.item;
+  const isDone = s => !!M().done[doneKey(s)];
+  let doneSeq = Date.now(); // marks store when they were set → "undo" takes back the latest
+  // what the ✓ Built bar on the map acts on: the tapped tile (all its steps), else the next step that is not built yet
+  function actTarget(p) {
+    if (!p || !p.steps.length) return null;
+    if (ui.sel) { // a tapped tile: only that tile – never silently something else
+      const tp = p.tiles.find(t => t.c === ui.sel.c && t.r === ui.sel.r);
+      return tp ? { steps: tp.steps, c: tp.c, r: tp.r, tile: true } : { steps: [], c: ui.sel.c, r: ui.sel.r, tile: true, none: true };
+    }
+    const nx = p.steps.find(s => !isDone(s));
+    return nx ? { steps: [nx], c: nx.c, r: nx.r, tile: false } : null;
+  }
+  const actOnSel = () => { const p = curPlan(planResult()); return !!(p && ui.sel && p.tiles.some(t => t.c === ui.sel.c && t.r === ui.sel.r)); };
+  function mapActHtml() {
+    if (ui.step !== 3) return '';
+    const res = planResult(), p = curPlan(res);
+    if (!p || !p.steps.length) return '';
+    const n = p.steps.length, nDone = p.steps.filter(isDone).length, anyDone = Object.keys(M().done).length > 0;
+    const undo = `<button class="ma-undo" data-ma="undo" title="Undo the last ✓" aria-label="Undo the last ✓" ${anyDone ? '' : 'disabled'}>↶</button>`;
+    const t = actTarget(p), cnt = `${nDone}/${n} built`;
+    if (!t) return undo + `<span class="ma-tx">🎉 <b>All ${n} steps built</b><br><small>The Markets earn ${p.income} ★/turn</small></span>`;
+    if (t.none) return undo + `<span class="ma-tx">📍 <b>${t.c}/${t.r}</b>: nothing to build here<br><small>Tap a numbered tile · tap this tile again for the next step</small></span><button class="ma-ok" disabled>✓ Built</button>`;
+    const all = t.steps.every(isDone), s0 = t.steps[0];
+    const nos = t.steps.map(s => `<span class="no" style="background:${cityCol(s.city)}">${s.no}</span>`).join('');
+    const what = t.steps.map(s => esc(stepName(s))).join(' → ');
+    return undo + `<span class="ma-tx">${t.tile ? '' : '<small>Next:</small> '}${nos}${what}<br><small>${s0.c}/${s0.r} · ${cnt}</small></span>` +
+      (all ? '<button class="ma-un" data-ma="toggle">Not built</button>' : '<button class="ma-ok" data-ma="toggle">✓ Built</button>');
+  }
+  function mapActClick(ev) {
+    const b = ev.target.closest('button[data-ma]'); if (!b || b.disabled) return;
+    const m = M(), p = curPlan(planResult());
+    if (b.dataset.ma === 'undo') {
+      let last = null; for (const k in m.done) if (!last || m.done[k] > m.done[last]) last = k;
+      if (last) { delete m.done[last]; PP.app.commit(); }
+      return;
+    }
+    const t = actTarget(p); if (!t || t.none) return;
+    const all = t.steps.every(isDone);
+    t.steps.forEach(s => { if (all) delete m.done[doneKey(s)]; else m.done[doneKey(s)] = ++doneSeq; });
+    if (t.tile && !all) ui.sel = null; // back to "Next step"
+    PP.app.commit();
+  }
   function planHtml(p, res) {
     const multi = p.groups.length > 1;
     let h = '<h3>Markets</h3>';
@@ -2070,9 +2130,15 @@
       h += '</ol>';
     }
     if (p.steps.length) {
-      h += '<h3>Build order</h3><ol class="mk-list">';
-      h += p.steps.map(s => `<li data-go="${s.c},${s.r}" class="${ui.sel && ui.sel.c === s.c && ui.sel.r === s.r ? 'sel' : ''}"><span class="no" style="background:${cityCol(s.city)}">${s.no}</span><span class="ic">${iconHtml(s.item === 'fruit' ? 'fruit' : s.item, 18)}</span><span class="tx">${esc(stepName(s))} <small>· ${s.c}/${s.r}${p.groups.length > 1 ? ' · ' + esc(groupName(p, s.city)) : ''}</small></span><span class="co">${s.cost > 0 ? s.cost + ' ★' : s.cost < 0 ? '+' + (-s.cost) + ' ★' : '0 ★'}</span></li>`).join('');
+      const nDone = p.steps.filter(isDone).length, left = p.steps.filter(s => !isDone(s)).reduce((a, s) => a + s.cost, 0);
+      h += '<h3>Build order</h3>';
+      h += nDone === p.steps.length
+        ? '<div class="mk-prog all">🎉 All steps built – the Markets earn ' + p.income + ' ★/turn.</div>'
+        : `<div class="mk-prog"><div class="bar"><i style="width:${Math.round(100 * nDone / p.steps.length)}%"></i></div><span>${nDone ? `<b>${nDone}</b> of ${p.steps.length} built · ${left} ★ to go` : 'Tick ☐ when a step is built in the game'}</span></div>`;
+      h += '<ol class="mk-list">';
+      h += p.steps.map(s => `<li data-go="${s.c},${s.r}" class="${ui.sel && ui.sel.c === s.c && ui.sel.r === s.r ? 'sel' : ''}${isDone(s) ? ' done' : ''}"><button class="ck" data-done="${doneKey(s)}" title="${isDone(s) ? 'Built – tap to undo' : 'Mark as built'}" aria-label="${isDone(s) ? 'Built – tap to undo' : 'Mark as built'}">${isDone(s) ? '✓' : ''}</button><span class="no" style="background:${cityCol(s.city)}">${s.no}</span><span class="ic">${iconHtml(s.item === 'fruit' ? 'fruit' : s.item, 18)}</span><span class="tx">${esc(stepName(s))} <small>· ${s.c}/${s.r}${p.groups.length > 1 ? ' · ' + esc(groupName(p, s.city)) : ''}</small></span>${isDone(s) ? '<span class="bt">✓ BUILT</span>' : `<span class="co">${s.cost > 0 ? s.cost + ' ★' : s.cost < 0 ? '+' + (-s.cost) + ' ★' : '0 ★'}</span>`}</li>`).join('');
       h += '</ol>';
+      if (nDone) h += '<button class="mk-btn" data-a="clearDone" style="margin:0 0 6px">Clear all ✓ marks</button>';
     }
     h += `<ol class="mk-list"><li class="tot"><span class="tx">Total: ${p.income} ★/turn · ${plural(p.actions, 'step', 'steps')}${p.payback ? ' · pays off in ' + plural(p.payback, 'turn', 'turns') : ''}</span><span class="co">${p.cost} ★</span></li></ol>`;
     const owned = (S().build && Array.isArray(S().build.owned)) ? S().build.owned : [];
@@ -2112,6 +2178,7 @@
     if (d.brush) { ui.brush = ui.brush === d.brush ? null : d.brush; PP.app.refresh(); return; }
     if (d.alt) { ui.alt = d.alt === 'best' ? 0 : d.alt; ui.sel = null; PP.app.refresh(); requestAnimationFrame(fitPlan); return; }
     if (d.opt) { m.opts[d.opt] = !m.opts[d.opt]; ui.alt = 0; PP.app.commit(); return; }
+    if (d.done) { if (m.done[d.done]) delete m.done[d.done]; else m.done[d.done] = ++doneSeq; PP.app.commit(); return; }
     if (d.go) {
       const [c, r] = d.go.split(',').map(Number);
       ui.sel = ui.sel && ui.sel.c === c && ui.sel.r === r ? null : { c, r };
@@ -2151,6 +2218,7 @@
       for (const x of areaCells()) if (x.terrain !== 'city') delete S().tiles[key(x.c, x.r)];
       toast('Marks cleared (cities stay)'); PP.app.commit(); return;
     }
+    if (a === 'clearDone') { m.done = {}; PP.app.commit(); return; }
     if (a === 'toPlan') {
       const p = curPlan(planResult()); if (!p) return;
       addToPlan(p);
@@ -2355,8 +2423,15 @@
       const res = planResult(), p = curPlan(res);
       drawCities(ctx, D, u, big, true);
       if (p) drawPlan(ctx, D, p, u, big);
+      // the tile the ✓ Built button acts on: green outline with a glow (same green as the bar's edge)
+      const t = p ? actTarget(p) : null;
+      if (t && !t.none) {
+        ctx.save(); diamondPath(ctx, t.c, t.r, 1.06);
+        ctx.shadowColor = ACT_COL; ctx.shadowBlur = clamp(u * 0.3, 6, 14);
+        ctx.lineWidth = clamp(u * 0.08, 3, 5.5); ctx.strokeStyle = ACT_COL; ctx.stroke(); ctx.restore();
+      }
     }
-    if (ui.sel) { diamondPath(ctx, ui.sel.c, ui.sel.r, 1); ctx.lineWidth = 2.5; ctx.strokeStyle = '#fff'; ctx.setLineDash([4, 3]); ctx.stroke(); ctx.setLineDash([]); }
+    if (ui.sel && !(ui.step === 3 && actOnSel())) { diamondPath(ctx, ui.sel.c, ui.sel.r, 1); ctx.lineWidth = 2.5; ctx.strokeStyle = '#fff'; ctx.setLineDash([4, 3]); ctx.stroke(); ctx.setLineDash([]); }
     ctx.restore();
   }
   const ACT_GLYPH = { destroy: '💥', fruit: '🍒', plant: '🌱', clear: '🪓', burn: '🔥' };
@@ -2417,15 +2492,26 @@
     const later = [], pills = [];
     for (const t of p.tiles) {
       const q = PP.board.tileToScreen(t.c, t.r), col = cityCol(t.city), b = bAt.get(key(t.c, t.r)), a = dim(t.c, t.r);
-      const R = big * (b ? 0.7 : 0.5);
+      const R = big * (b ? 0.7 : 0.5), allDone = t.steps.every(isDone);
       ctx.globalAlpha = a;
-      disc(ctx, q.x, q.y, R, 'rgba(25,30,55,.88)', col, 2.2, [4, 2]);
+      if (allDone) { // built: the whole tile green with a strong outline
+        // emerald fill + white diagonal hatching + white inner edge: nothing else on the map is hatched
+        ctx.save(); diamondPath(ctx, t.c, t.r, 0.94); ctx.fillStyle = BUILT_FILL; ctx.fill(); ctx.clip();
+        const hw = u * 1.2, step = Math.max(5, u * 0.14);
+        ctx.beginPath(); for (let d = -hw; d <= hw; d += step) { ctx.moveTo(q.x + d - hw, q.y + hw); ctx.lineTo(q.x + d + hw, q.y - hw); }
+        ctx.lineWidth = Math.max(1.2, u * 0.03); ctx.strokeStyle = 'rgba(255,255,255,.28)'; ctx.stroke(); ctx.restore();
+        diamondPath(ctx, t.c, t.r, 0.94); ctx.lineWidth = clamp(u * 0.08, 3, 5.5); ctx.strokeStyle = BUILT_COL; ctx.stroke();
+        diamondPath(ctx, t.c, t.r, 0.86); ctx.lineWidth = 1.5; ctx.strokeStyle = 'rgba(255,255,255,.8)'; ctx.stroke();
+      }
+      disc(ctx, q.x, q.y, R, allDone ? BUILT_DARK : 'rgba(25,30,55,.88)', allDone ? BUILT_COL : col, allDone ? 3 : 2.2, allDone ? null : [4, 2]);
       if (t.item) drawIcon(ctx, t.item, q.x, q.y, big * (b ? 1.0 : 0.72), a); else emoji(ctx, '💥', q.x, q.y, big * 0.6, a);
       ctx.globalAlpha = 1;
-      const nos = t.steps.map(s => s.no);
+      const open = t.steps.filter(s => !isDone(s)), nos = open.map(s => s.no);
       if (a < 1) continue;
+      // built (ticked) steps: green ✓ instead of the step numbers
+      if (allDone) { later.push(() => numBadge(ctx, '✓', q.x - R * 0.8, q.y - R * 0.9, rad * 1.25, BUILT_COL, '#fff')); continue; }
       later.push(() => numBadge(ctx, nos.length > 2 ? nos[0] + '–' + nos[nos.length - 1] : nos.join('·'), q.x - R * 0.8, q.y - R * 0.9, rad, col, '#0b0f1f'));
-      const gl = t.steps.map(s => ACT_GLYPH[s.item]).filter(Boolean);
+      const gl = open.map(s => ACT_GLYPH[s.item]).filter(Boolean);
       if (gl.length) later.push(() => {
         const gs = clamp(u * 0.18, 9, 13), tx = gl.join('');
         ctx.save(); ctx.font = `${gs}px ${EMOJI_FONT}`;

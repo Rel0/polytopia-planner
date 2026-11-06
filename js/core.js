@@ -200,7 +200,7 @@ window.PP = window.PP || {};
     // v6: set to false by a tool (UNITS) that draws the unit coins itself (core then draws no unit markers)
     drawUnits: true,
   };
-  function visibleRect() {
+  function visibleRect(noAct) {
     let x0 = 0, x1 = cw, y0 = 0, y1 = ch;
     if (!stage) return { x: 0, y: 0, w: cw, h: ch };
     const sr = stage.getBoundingClientRect();
@@ -215,6 +215,9 @@ window.PP = window.PP || {};
     }
     const fl = $('#float');
     if (fl && !fl.hidden) { const fr = fl.getBoundingClientRect(); if (fr.height) y1 = Math.max(60, Math.min(y1, fr.top - sr.top)); }
+    // the mode's action bar on the map (Market: "✓ Built") sits at the bottom of the free part – keep the map above it
+    const ma = noAct ? null : $('#mapAct');
+    if (ma && !ma.hidden) { const mr = ma.getBoundingClientRect(); if (mr.height) y1 = Math.max(60, Math.min(y1, mr.top - sr.top - 4)); }
     return { x: x0, y: y0, w: x1 - x0, h: y1 - y0 };
   }
 
@@ -572,7 +575,15 @@ window.PP = window.PP || {};
     if (typeof h === 'function') { try { h = h(); } catch (e) { h = ''; } }
     if (el.textContent !== (h || '')) el.textContent = h || '';
     el.hidden = !h || !S().board;
-    if (!el.hidden) placeHint();
+    // v30: a mode may show an action bar on the map (always at the same spot, usable with the panel collapsed)
+    const ma = $('#mapAct');
+    if (ma) {
+      let a = curMode().mapAct;
+      if (typeof a === 'function') { try { a = a(); } catch (e) { a = ''; reportError(e, 'mapAct'); } }
+      if (ma._h !== (a || '')) { ma._h = a || ''; ma.innerHTML = ma._h; }
+      ma.hidden = !a || !S().board;
+    }
+    placeHint();
   }
   function updateRail() {
     const rail = $('#railTools'); if (!rail) return;
@@ -705,13 +716,22 @@ window.PP = window.PP || {};
   }
   // hint pill: bottom-centre of the visible map part
   function placeHint() {
+    const ma = $('#mapAct');
+    if (ma && !ma.hidden) {
+      // always at the same height: the bottom of the map (phone: just above the panel's grab tab, on top of the panel)
+      const sheet = isSheet(), vr = sheet ? { x: 0, w: cw } : visibleRect(true);
+      ma.style.left = (vr.x + vr.w / 2) + 'px';
+      ma.style.width = Math.max(200, Math.min(440, vr.w - 16)) + 'px';
+      ma.style.bottom = (sheet && drawerEl && !drawerEl.hidden ? 46 : 10) + 'px';
+    }
+    document.body.classList.toggle('mapact', !!(ma && !ma.hidden));
     const el = $('#hint'); if (!el || el.hidden) return;
     const vr = visibleRect();
     el.style.left = (vr.x + vr.w / 2) + 'px';
     el.style.maxWidth = Math.max(120, vr.w - 16) + 'px';
     // bottom sheet: keep clear of its grab tab (sticks out ~40 px above the sheet)
     const tabGap = isSheet() && drawerEl && !drawerEl.hidden ? 46 : 10;
-    el.style.bottom = (ch - (vr.y + vr.h) + tabGap) + 'px';
+    el.style.bottom = (ch - (vr.y + vr.h) + (ma && !ma.hidden ? 4 : tabGap)) + 'px';
     el.style.visibility = vr.w < 150 ? 'hidden' : '';
   }
 
@@ -1389,6 +1409,8 @@ window.PP = window.PP || {};
   function bindDom() {
     cv = $('#cv'); ctx = cv.getContext('2d'); stage = $('#stage');
     cv.addEventListener('pointerdown', onDown);
+    const ma = $('#mapAct');
+    if (ma) ma.addEventListener('click', e => { const m = curMode(); if (m && m.mapActClick) try { m.mapActClick(e); } catch (er) { reportError(er, 'mapAct'); } });
     cv.addEventListener('pointermove', onMove);
     cv.addEventListener('pointerup', onUp);
     cv.addEventListener('pointercancel', onUp);
