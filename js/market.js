@@ -1207,10 +1207,15 @@
     const better = (a, sa, b, sb) => !b || a.income > b.income || (a.income === b.income && (a.cost < b.cost || (a.cost === b.cost && sa.size < sb.size)));
     const near = (a, b) => Math.max(Math.abs(a.c - b.c), Math.abs(a.r - b.r)) <= 5;
     (async () => {
-      // the proof of the main plan uses the same CPU – wait until it is done (each check is much faster alone)
-      while (prover && growth === g) { g.waiting = true; refresh(); await new Promise(r => setTimeout(r, 500)); }
-      if (growth !== g) return;
-      g.waiting = false; g.t0 = Date.now();
+      // the proof of the main plan needs the same CPU (each check is ~4× slower next to it) → pause it, go on afterwards
+      if (prover) {
+        const pr = prover;
+        g.paused = { res: pr.res, sig: pr.sig, costSecs: pr.costSecs || COST_SECS };
+        stopProver();
+        ['inc', 'cost', 'fast'].forEach(k => { if (pr.res.proof && (pr.res.proof[k] === 'running' || pr.res.proof[k] === 'waiting')) pr.res.proof[k] = 'waiting'; });
+        if (pr.res.proof) pr.res.proof.paused = true;
+      }
+      g.t0 = Date.now();
       const base = await solve(new Set()); if (!base) return;
       g.base = base;
       let bestSet = new Set(), bestR = base;
@@ -1279,10 +1284,22 @@
       g.byKey = {}; g.cities.forEach(ci => { g.byKey[ci.key] = ci; });
       g.state = 'done'; g.ms = Date.now() - g.t0;
       if (g.worker) try { g.worker.terminate(); } catch (e) { /* gone */ }
+      resumeProof(g);
       refresh();
     })();
   }
-  function stopGrowth() { if (growth && growth.worker) try { growth.worker.terminate(); } catch (e) { /* gone */ } growth = null; }
+  function resumeProof(g) {
+    const pz = g && g.paused; if (!pz) return;
+    g.paused = null;
+    if (pz.res.proof) pz.res.proof.paused = false;
+    if (pz.sig === cacheSig && cache === pz.res && !prover) startProof(pz.res, pz.sig, pz.costSecs, true);
+  }
+  function stopGrowth() {
+    const g = growth;
+    if (g && g.worker) try { g.worker.terminate(); } catch (e) { /* gone */ }
+    growth = null;
+    if (g && g.state !== 'done') resumeProof(g);
+  }
   function growthHtml(res) {
     if (!res || res.pending || res.tooBig || res.altPending || !res.best) return '';
     const A = area(), small = A.cities.filter(ci => ci.rad === 1), grown = A.cities.filter(ci => ci.rad === 2);
@@ -1301,12 +1318,12 @@
       return box(`<div class="mk-note" style="margin:0 0 6px">${n === 1 ? 'Tests whether the last city with 3×3 should grow to 5×5.' :
         n <= GROW_ALL_MAX ? `Tests every combination of the ${n} cities with 3×3 – so cities that only pay off together are found too.` :
         `Tests which of the ${n} cities with 3×3 should grow – alone, step by step together, then swapping neighbours until nothing gets better.`}</div>` + ringWarn +
+        (prover ? '<div class="mk-note" style="margin:0 0 6px">The check of the plan above is paused meanwhile and goes on by itself afterwards.</div>' : '') +
         `<button class="mk-btn pri" data-a="growth" style="width:100%">🌱 Check Border Growth <small style="opacity:.8">(${n <= GROW_ALL_MAX ? '' : 'about '}${plural(solves, 'plan', 'plans')} · about ${est < 90 ? est + ' s' : Math.round(est / 60) + ' min'})</small></button>` + allBtn);
     }
     if (g.state === 'running') {
       const pct = Math.min(100, Math.round(100 * g.done / Math.max(1, g.total)));
-      return box(g.waiting ? '<div class="mk-note"><span class="mk-spin"></span>starts as soon as the check of the plan above is done…</div>'
-        : `<div class="mk-prog"><div class="bar"><i style="width:${pct}%;background:#7bd389"></i></div><span><span class="mk-spin"></span>checking plan ${Math.min(g.done + 1, g.total)} of ${g.exhaustive ? '' : '≈'}${g.total}…</span></div>`);
+      return box(`<div class="mk-prog"><div class="bar"><i style="width:${pct}%;background:#7bd389"></i></div><span><span class="mk-spin"></span>checking plan ${Math.min(g.done + 1, g.total)} of ${g.exhaustive ? '' : '≈'}${g.total}…</span></div>`);
     }
     const nm = (k, name) => `<b style="color:${cityCol(k)}">${esc(name)}</b>`;
     const take = g.cities.filter(c => c.take).sort((a, b) => b.gain - a.gain), skip = g.cities.filter(c => !c.take).sort((a, b) => b.alone - a.alone);
@@ -1364,7 +1381,8 @@
   //   fast    fastest payback (Dinkelbach: min cost − λ·★, λ = best ratio so far; an optimum ≥ 0 proves it)
   //   inc     no plan earns more ★ (many cities only; instant when every Market can reach 8 ★)
   //   cost    no plan with these ★ is cheaper (many cities only)
-  function startProof(res, sig, costSecs) {
+  // resume = true: after a pause (Border Growth check) – parts that already ended ('proven' or timed out) are kept
+  function startProof(res, sig, costSecs, resume) {
     if (!res || !res.best) return;
     costSecs = costSecs || COST_SECS;
     const prev = res.proof || {};
@@ -1376,6 +1394,7 @@
     const incDone = !large || res.best.income >= res.large.ub || prev.inc === 'proven';
     res.proof = { inc: incDone ? 'proven' : 'waiting', cost: !large || prev.cost === 'proven' ? 'proven' : 'waiting', fast: prev.fast === 'proven' ? 'proven' : 'waiting',
       exact: !large, secs: 0, costSecs };
+    if (resume) ['inc', 'cost', 'fast'].forEach(k => { if (prev[k] === 'open') res.proof[k] = 'open'; ['incBound', 'costBound'].forEach(b => { if (prev[b] != null) res.proof[b] = prev[b]; }); });
     // ?v=STAMP becomes the worker's content hash on release (scripts/stamp-assets.js)
     let worker;
     try { worker = pr.worker = new Worker('js/market-worker.js?v=STAMP'); } catch (e) { res.proof.noSolver = true; ['inc', 'cost', 'fast'].forEach(k => { if (res.proof[k] !== 'proven') res.proof[k] = 'open'; }); return; }
@@ -1406,9 +1425,9 @@
     const left = () => (until - Date.now()) / 1000;
     const queue = pr.queue = [];
     pr.costSecs = costSecs;
-    if (res.proof.fast !== 'proven') queue.push('fast');
-    if (!incDone) queue.push('inc');
-    if (res.proof.cost !== 'proven') queue.push('cost');
+    if (res.proof.fast === 'waiting') queue.push('fast');
+    if (res.proof.inc === 'waiting') queue.push('inc');
+    if (res.proof.cost === 'waiting') queue.push('cost');
     let dk = null; // Dinkelbach state { tag, minInc, plan, D }
     const next = () => {
       if (prover !== pr) return;
@@ -1482,6 +1501,7 @@
   function proofHtml(res) {
     if (res && res.exactPending) return '<p class="mk-note"><span class="mk-spin"></span><b>Exact search running…</b> the plans above are quick results; they are replaced by the proven ones as soon as it is done.</p>';
     const q = res && res.proof; if (!q) return '';
+    if (q.paused) return '<p class="mk-note">⏸ <b>Check of the plan paused</b> while Border Growth is checked – it goes on by itself afterwards.</p>';
     const ok = '<b style="color:#7bd389">✓</b>', spin = '<span class="mk-spin"></span>', b = res.best, lines = [];
     const dur = secs => (secs >= 120 ? Math.round(secs / 60) + ' min' : secs + ' s');
     if (q.exact) lines.push(`${ok} <b>Most ★ and cheapest proven</b> – the exact search checked every possibility.`);
@@ -1510,6 +1530,7 @@
     const sig = planSig();
     if (cache && sig === cacheSig) return cache;
     if (prover && prover.sig !== sig) stopProver();
+    if (growth && growth.sig !== sig) stopGrowth(); // board changed → that check is worthless
     if (running && running.sig === sig) return running.job.partial ? Object.assign({}, running.job.partial, { altPending: true, etaMs: running.job.eta ? running.job.eta() : null }) : { pending: true, job: running.job };
     let job = createJob(optCells(areaCells()), Object.assign({}, m.opts)), exact = null;
     // v29: results first. Tiny problems: the exact search right away. Otherwise the fast group search shows a plan within
