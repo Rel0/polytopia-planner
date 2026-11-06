@@ -47,3 +47,34 @@ def block(px, inside):
 def features(a,x,y,w):
     p1,i1=sample(a,x,y,w,'dia'); p2,i2=sample(a,x,y,w,'col')
     return np.array(block(p1,i1)+block(p2,i2),dtype=np.float32)
+
+# ---- v2: ring features – only the outer band of the tile diamond, without its top corner. A unit standing on the
+# tile covers the centre and rises above it; the ring stays visible, so the terrain under units can still be told.
+NR = 18
+def _ring_grid():
+    i = (np.arange(NR) + 0.5) / NR - 0.5
+    P, Q = np.meshgrid(i, i)
+    return P, Q, (np.maximum(np.abs(P), np.abs(Q)) >= 0.28) & (P + Q > -0.45)
+_RP, _RQ, _RM = _ring_grid()
+def ring_features(a, x, y, w):
+    H, W = a.shape[:2]; h = 0.6 * w
+    dx = (_RP - _RQ) * w / 2 * 0.92; dy = (_RP + _RQ) * h / 2 * 0.92
+    fx, fy = x + dx, y + dy
+    inside = (fx >= 0) & (fx < W) & (fy >= 0) & (fy < H) & _RM
+    xs = np.clip(fx.astype(int), 0, W - 1); ys = np.clip(fy.astype(int), 0, H - 1)
+    hh, s, v = hsv(a[ys, xs].astype(np.float32))
+    tot = max(1, inside.sum()); f = []
+    col = (s > 0.25) & (v > 0.15) & inside
+    for k in range(12): f.append((col & (hh >= k * 30) & (hh < (k + 1) * 30)).sum() / tot)
+    f.append(((s < 0.18) & (v > 0.8) & inside).sum() / tot)
+    f.append(((s < 0.25) & (v > 0.35) & (v <= 0.8) & inside).sum() / tot)
+    f.append(((v < 0.2) & inside).sum() / tot)
+    vi = v[inside] if inside.any() else v.ravel(); si = s[inside] if inside.any() else s.ravel()
+    f += [vi.mean(), vi.std(), si.mean()]
+    m1 = inside[:, 1:] & inside[:, :-1]; m2 = inside[1:, :] & inside[:-1, :]
+    dv = (np.abs(np.diff(v, axis=1))[m1].mean() if m1.any() else 0) + (np.abs(np.diff(v, axis=0))[m2].mean() if m2.any() else 0)
+    f.append(dv); f.append(inside.sum() / _RM.sum())
+    return np.array(f, dtype=np.float32)
+def all_features(a, x, y, w):
+    """features of the v2 models: diamond + column (42) + ring (20) = 62"""
+    return np.concatenate([features(a, x, y, w), ring_features(a, x, y, w)])

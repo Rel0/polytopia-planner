@@ -49,17 +49,28 @@ tile centre and `w` is the tile width, as found by `PP.vision.detectGrid`.
 python3 tools/tilemodel/export.py dataset.json js/tilemodel-data.js   # needs numpy, pillow, scikit-learn
 ```
 
-## Accuracy (Nov 2026, 9 phone screenshots, 5 tribes)
+## Accuracy (v2, Nov 2026)
 
-Measured leave-one-screenshot-out, i.e. always on a screenshot the model has never seen:
+Training data: 1,215 hand-labelled tiles from 16 screenshots (about 12 tribes; 85 tiles with a unit), plus
+automatically labelled cloud and space tiles.
 
-| | Accuracy |
-|---|---|
-| Land tiles overall (field / forest / mountain / water / city) | 91 % |
-| Tiles with confidence ≥ 0.6 (≈ 70 % of land tiles) | 98.7 % |
+Measured leave-one-screenshot-out. Almost every screenshot shows a different tribe, so each test is mostly
+"a tribe the model has never seen":
 
-Tiles below 0.6 confidence are shown with a "?" so the user can check them.
+| | v1 model | v2 model |
+|---|---|---|
+| land tiles (field / forest / mountain / water / city) | 58 % | 80 % |
+| land tiles with a unit on them | 47 % | 78 % |
+| tiles with confidence ≥ 0.6 (57 % of land tiles) | | 93 % |
 
-For comparison, the old colour rules (`PP.vision.classifyTile`) reach 82 % on the same tiles, with the
-correct grid. Tribes that appear in only one screenshot score lower (74–80 %). More tribes in the
-training data give the biggest gain.
+Resources (v2):
+
+| | all | sure (≥ 0.7) |
+|---|---|---|
+| metal on mountains | 93 % | 98 % (55 % of mountains) |
+| crop / fruit on fields | 75 % | 99.5 % (35 % of fields) |
+
+The app fills in a resource only when the model is sure about it.
+
+The ring features are what helps with units: a unit covers the centre of its tile, while the outer band of the
+diamond stays visible. More screenshots per tribe, labelled with the Label tool, are the biggest lever from here.

@@ -974,7 +974,9 @@
       const p = TM.classify(P, ctr.x, ctr.y, w);
       if (p) {
         const t = /^(field|forest|mountain|water)$/.test(p.terrain) ? p.terrain : 'water';
-        out = { terrain: t, model: p.terrain, conf: p.conf, sure: p.conf >= TM.SURE };
+        // v2 models: a resource is only filled in when the model is sure about it (crop / fruit on fields, metal on mountains)
+        const rs = p.res && p.resConf >= (TM.RES_SURE || 0.7) ? (p.res === 'metal' ? 'ore' : p.res) : null;
+        out = { terrain: t, model: p.terrain, conf: p.conf, sure: p.conf >= TM.SURE, res: rs && RES_TER[rs] === t ? [rs] : [] };
       }
     } catch (e) { out = null; }
     autoMemo.m.set(k, out);
@@ -994,7 +996,7 @@
       return { c, r, terrain: ter, res, bld, other: bld === 'other' ? t.bld : null, stored: true };
     }
     const a = autoTerrain(c, r);
-    if (a) return { c, r, terrain: a.terrain, res: [], bld: null, stored: false, auto: true, unsure: !a.sure, conf: a.conf };
+    if (a) return { c, r, terrain: a.terrain, res: a.res || [], bld: null, stored: false, auto: true, unsure: !a.sure, conf: a.conf };
     return { c, r, terrain: 'field', res: [], bld: null, stored: false };
   }
   // ------------------------------------------------------------------ planning area = territories of the selected cities
@@ -1867,7 +1869,7 @@
     const a = autoStats();
     if (!a.auto) return 'Unmarked tiles count as Empty.';
     return 'Terrain is detected from the screenshot' + (a.unsure ? ' – <b style="color:#ffb703">' + plural(a.unsure, 'tile', 'tiles') + ' with ?</b>: not sure, please check (tap = mark it yourself)' : ' ✓') +
-      '. Mark resources (Crop, Metal, Fruit) and buildings yourself.';
+      '. Crop, Metal and Fruit are filled in where the detection is sure – mark the others and the buildings yourself.';
   }
   function chipsHtml(A) {
     if (!A.cities.length) return '';
@@ -2190,6 +2192,12 @@
             ctx.save(); ctx.font = `bold ${Math.round(big * 0.58)}px system-ui,sans-serif`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
             ctx.fillStyle = '#ffd166'; ctx.fillText('?', q.x, q.y + 1); ctx.restore();
           } else if (x.auto && x.terrain !== 'field') drawIcon(ctx, x.terrain, q.x, q.y, big * 0.7, 0.75);
+          // resources the detection is sure about
+          (x.res || []).forEach((rs, i) => {
+            const rx = q.x + big * (0.5 + i * 0.5), ry = q.y + big * 0.3;
+            disc(ctx, rx, ry, big * 0.28, 'rgba(10,14,30,.7)', 'rgba(255,255,255,.55)', 1, [3, 2]);
+            drawIcon(ctx, rs, rx, ry, big * 0.44, 0.9);
+          });
           continue;
         }
         const q = PP.board.tileToScreen(x.c, x.r); if (!vis(q)) continue;
