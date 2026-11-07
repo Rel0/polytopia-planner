@@ -17,7 +17,7 @@ window.PP = window.PP || {};
     const mx = Math.max(r, g, b), mn = Math.min(r, g, b), d = mx - mn;
     let h = 0;
     if (d > 1e-6) {
-      if (mx === r) h = ((60 * ((g - b) / d)) % 360 + 360) % 360;
+      if (mx === r) { h = (60 * ((g - b) / d)) % 360; if (h < 0) h += 360; } // like Python's %, no extra rounding
       else if (mx === g) h = 60 * ((b - r) / d) + 120;
       else h = 60 * ((r - g) / d) + 240;
     }
@@ -144,6 +144,75 @@ window.PP = window.PP || {};
     return { cls: F.classes[best], conf: +(acc[best] / sum).toFixed(3), probs };
   }
 
+  // ---------------------------------------------------------------- v3 city name plate (feat.plate_features)
+  const PX = 48, PY = 24;
+  function plateFeatures(P, x, y, w) {
+    const n = PX * PY, H = new Float64Array(n), S = new Float64Array(n), V = new Float64Array(n);
+    const T = new Uint8Array(n), D = new Uint8Array(n), Sa = new Uint8Array(n);
+    for (let j = 0; j < PY; j++) {
+      const gy = -0.35 * w + (j + 0.5) / PY * 0.6 * w;
+      for (let i = 0; i < PX; i++) {
+        const gx = ((i + 0.5) / PX - 0.5) * 1.1 * w, k = j * PX + i, t = px(P, x + gx, y + gy);
+        H[k] = t[0]; S[k] = t[1]; V[k] = t[2];
+        T[k] = t[1] < 0.25 && t[2] > 0.85 ? 1 : 0; D[k] = t[2] < 0.3 ? 1 : 0; Sa[k] = t[1] > 0.3 && t[2] > 0.3 ? 1 : 0;
+      }
+    }
+    const tw = new Float64Array(PY), td = new Float64Array(PY), ts = new Float64Array(PY), tt = new Float64Array(PY);
+    let sT = 0, sD = 0, sS = 0, sv = 0, sv2 = 0;
+    for (let j = 0; j < PY; j++) {
+      let a = 0, b = 0, c = 0, e = 0;
+      for (let i = 0; i < PX; i++) { const k = j * PX + i; a += T[k]; b += D[k]; c += Sa[k]; sv += V[k]; sv2 += V[k] * V[k]; if (i) e += Math.abs(T[k] - T[k - 1]); }
+      tw[j] = a / PX; td[j] = b / PX; ts[j] = c / PX; tt[j] = e / (PX - 1); sT += a; sD += b; sS += c;
+    }
+    const sm = new Float64Array(PY);
+    for (let j = 0; j < PY; j++) sm[j] = ((j ? tt[j - 1] : 0) + tt[j] + (j < PY - 1 ? tt[j + 1] : 0)) / 3;
+    let k = 0; for (let j = 1; j < PY; j++) if (sm[j] > sm[k]) k = j;
+    const lo = Math.max(0, k - 2), hi = Math.min(PY, k + 3);
+    let nc = 0, ci = 0, tdB = 0, tsB = 0;
+    for (let i = 0; i < PX; i++) { let any = 0; for (let j = lo; j < hi; j++) if (T[j * PX + i]) { any = 1; break; } if (any) { nc++; ci += i; } }
+    for (let j = lo; j < hi; j++) { tdB += td[j]; tsB += ts[j]; }
+    const width = nc / PX, cen = nc ? Math.abs(ci / nc / (PX - 1) - 0.5) : 0.5;
+    let rs = 0, rn = 0;
+    for (let j = 0; j < Math.max(0, k - 4); j++) { rs += sm[j]; rn++; }
+    for (let j = k + 5; j < PY; j++) { rs += sm[j]; rn++; }
+    const contrast = sm[k] - (rn ? rs / rn : 0);
+    let nrows = 0; if (sm[k] > 0) for (let j = 0; j < PY; j++) if (sm[j] > 0.5 * sm[k]) nrows++;
+    let bar = 0, bartt = 0, bj = -1;
+    for (let j = Math.min(PY, k + 2); j < Math.min(PY, k + 9); j++) if (bj < 0 || tw[j] > bar) { bar = tw[j]; bj = j; }
+    if (bj >= 0) bartt = tt[bj]; else bar = 0;
+    const hist = new Float64Array(12); let sb = 0;
+    for (let j = lo; j < hi; j++) for (let i = 0; i < PX; i++) {
+      const q = j * PX + i; if (!Sa[q]) continue; sb++;
+      const b = Math.floor(H[q] / 30); if (b >= 0 && b < 12) hist[b]++;
+    }
+    let hm = 0; for (let b = 0; b < 12; b++) if (hist[b] > hm) hm = hist[b];
+    const conc = hm / Math.max(1, sb);
+    const vm = sv / n, vs = Math.sqrt(Math.max(0, sv2 / n - vm * vm));
+    // plate box edges (rows r → r+1 in the central 60 % of the width)
+    const c0 = Math.floor(PX / 5), c1 = PX - Math.floor(PX / 5);
+    const rowStat = (j, sign) => { let m = 0, f = 0; for (let i = c0; i < c1; i++) { const dv = V[(j + 1) * PX + i] - V[j * PX + i]; m += dv; if (sign < 0 ? dv < -0.05 : dv > 0.05) f++; } return [m / (c1 - c0), f / (c1 - c0)]; };
+    let eu = 0, fu = 0, ed = 0, fd = 0, fu0 = true, fd0 = true;
+    for (let j = Math.max(0, k - 6); j < k; j++) { const r2 = rowStat(j, -1); if (fu0 || r2[0] < eu) eu = r2[0]; if (fu0 || r2[1] > fu) fu = r2[1]; fu0 = false; }
+    for (let j = k; j < Math.min(PY - 1, k + 7); j++) { const r2 = rowStat(j, 1); if (fd0 || r2[0] > ed) ed = r2[0]; if (fd0 || r2[1] > fd) fd = r2[1]; fd0 = false; }
+    // strokes in the left / middle / right third of the text band
+    const a3 = Math.floor(PX / 3), b3 = Math.floor(2 * PX / 3);
+    let l = 0, ln = 0, m = 0, mn = 0, r = 0, rn2 = 0;
+    for (let j = lo; j < hi; j++) for (let i = 0; i < PX - 1; i++) {
+      const dd = Math.abs(T[j * PX + i + 1] - T[j * PX + i]);
+      if (i < a3) { l += dd; ln++; } else if (i < b3) { m += dd; mn++; } else { r += dd; rn2++; }
+    }
+    const l3 = ln ? l / ln : 0, m3 = mn ? m / mn : 0, r3 = rn2 ? r / rn2 : 0;
+    return [sm[k], tw[k], tdB / (hi - lo), tsB / (hi - lo), width, cen, contrast, nrows, bar, bartt, conc,
+      k / PY, sT / n, sD / n, sS / n, vm, vs, eu, ed, fu, fd, l3, m3, r3, Math.min(l3, r3) / (m3 + 1e-3), Math.abs(l3 - r3)];
+  }
+  // probability that (x, y) is the centre of a city tile (its name plate) – PP.CITY_MODEL (tools/tilemodel/city.py)
+  function cityProb(P, x, y, w) {
+    const M = PP.CITY_MODEL;
+    if (!P || !P.data || !(w > 6) || !M || !M.trees) return null;
+    const f = features(P, x, y, w).concat(plateFeatures(P, x, y, w));
+    return forest(M, f).probs['1'] || 0;
+  }
+
   function classify(P, x, y, w) {
     const M = PP.TILE_MODEL;
     if (!P || !P.data || !(w > 6) || !M || !M.terrain) return null;
@@ -155,5 +224,6 @@ window.PP = window.PP || {};
   }
 
   // terrain below SURE is shown as "please check"; resources are only filled in at RES_SURE or above
-  PP.tilemodel = { classify, features, forest, SURE: 0.6, RES_SURE: 0.7, get ready() { return !!(PP.TILE_MODEL && PP.TILE_MODEL.terrain); } };
+  PP.tilemodel = { classify, features, plateFeatures, cityProb, forest, SURE: 0.6, RES_SURE: 0.7, CITY_SURE: 0.5,
+    get ready() { return !!(PP.TILE_MODEL && PP.TILE_MODEL.terrain); }, get cityReady() { return !!(PP.CITY_MODEL && PP.CITY_MODEL.trees); } };
 })(window.PP);

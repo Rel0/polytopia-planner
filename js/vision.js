@@ -777,8 +777,75 @@ window.PP = window.PP || {};
 
   const gridW = g => Math.hypot(g.ux - g.vx, g.uy - g.vy);
   const NORM_W = 76;
+  // v34: learned city detector (PP.tilemodel.cityProb – name plate + tile, tools/tilemodel/city.py) on every tile of the
+  // grid; a city only where its tile beats all 8 neighbours (a plate also reaches into the tiles next to it).
+  // Old plate finder (per tribe colour) still runs: it gives the plate colour / progress bar and helps borderline tiles.
+  const CITY_TH = 0.5, CITY_TH_OLD = 0.3; // leave-one-screenshot-out with the neighbour check: 50/61 cities, 4 false alarms
+  function modelCities(src, grid, tribes) {
+    const TM = PP.tilemodel; if (!TM || !TM.cityReady || !TM.cityProb) return null;
+    const I = imageData(src); if (!I) return null;
+    const P = { w: I.W, h: I.H, data: I.d }, w = gridW(grid), g = grid, det = g.ux * g.vy - g.vx * g.uy || 1e-9;
+    if (!(w > 8)) return null;
+    const toCR = (x, y) => { const dx = x - g.ox, dy = y - g.oy; return [(dx * g.vy - g.vx * dy) / det, (g.ux * dy - g.uy * dx) / det]; };
+    const cs = [], rs = [];
+    [[0, 0], [P.w, 0], [0, P.h], [P.w, P.h]].forEach(q => { const t = toCR(q[0], q[1]); cs.push(t[0]); rs.push(t[1]); });
+    const c0 = Math.floor(Math.min(...cs)) - 1, c1 = Math.ceil(Math.max(...cs)) + 1, r0 = Math.floor(Math.min(...rs)) - 1, r1 = Math.ceil(Math.max(...rs)) + 1;
+    const prob = new Map(), K = (c, r) => c + ',' + r;
+    for (let c = c0; c <= c1; c++) for (let r = r0; r <= r1; r++) {
+      const x = g.ox + c * g.ux + r * g.vx, y = g.oy + c * g.uy + r * g.vy;
+      if (x < 0.3 * w || y < 0.25 * w || x > P.w - 0.3 * w || y > P.h - 0.25 * w) continue; // plate would be cut off
+      if (y < 0.06 * P.h || y > 0.9 * P.h) continue;                                          // game UI (top bar, buttons)
+      const p = TM.cityProb(P, x, y, w); if (p != null) prob.set(K(c, r), { c, r, x, y, p });
+    }
+    const out = [];
+    prob.forEach(t => {
+      for (let dc = -1; dc <= 1; dc++) for (let dr = -1; dr <= 1; dr++) {
+        if (!dc && !dr) continue;
+        const o = prob.get(K(t.c + dc, t.r + dr));
+        if (o && (o.p > t.p || (o.p === t.p && (o.c < t.c || (o.c === t.c && o.r < t.r))))) return;
+      }
+      out.push(t);
+    });
+    return out;
+  }
+  // average colour of the coloured pixels in the plate band (just below the text centre … above)
+  function plateColor(I, x, y, w) {
+    let n = 0, sr = 0, sg = 0, sb = 0;
+    for (let yy = Math.round(y - 0.12 * w); yy <= Math.round(y + 0.06 * w); yy += 2) for (let xx = Math.round(x - 0.4 * w); xx <= Math.round(x + 0.4 * w); xx += 2) {
+      if (xx < 0 || yy < 0 || xx >= I.W || yy >= I.H) continue;
+      const k = (yy * I.W + xx) * 4, r = I.d[k], gg = I.d[k + 1], b = I.d[k + 2], mx = Math.max(r, gg, b), mn = Math.min(r, gg, b);
+      if (mx > 70 && (mx - mn) / mx > 0.3) { n++; sr += r; sg += gg; sb += b; }
+    }
+    return n ? [sr / n, sg / n, sb / n].map(Math.round) : null;
+  }
   // → [{ c, r, color (tribe colour), plate (fill colour), conf, x, y, bar }]
   function detectCities(src, grid, tribes) {
+    const t0 = performance.now();
+    let old = [];
+    try { old = detectCitiesOld(src, grid, tribes); } catch (e) { old = []; }
+    let mc = null;
+    try { mc = modelCities(src, grid, tribes); } catch (e) { console.warn('city model failed', e); mc = null; }
+    if (!mc) return old; // no model loaded → the plate finder alone
+    const I = imageData(src), w = gridW(grid), out = [], seen = new Set();
+    const oldAt = new Map(old.map(o => [o.c + ',' + o.r, o]));
+    const hueOf = c => hsv(c[0], c[1], c[2]);
+    mc.forEach(t => {
+      const k = t.c + ',' + t.r, o = oldAt.get(k);
+      if (t.p < (o ? CITY_TH_OLD : CITY_TH)) return;
+      let color = o ? o.color : null, plate = o ? o.plate : plateColor(I, t.x, t.y, w);
+      if (!color && plate) {
+        // the nearest known tribe colour by hue (plates are lighter than unit badges)
+        const ph = hueOf(plate)[0]; let best = null, bd = 30;
+        (tribes || []).forEach(T => { const th = hueOf(T)[0]; let dh = Math.abs(th - ph); if (dh > 180) dh = 360 - dh; if (dh < bd) { bd = dh; best = T; } });
+        color = best ? best.slice(0, 3) : plate;
+      }
+      seen.add(k);
+      out.push({ c: t.c, r: t.r, color, plate, conf: +Math.min(0.95, t.p).toFixed(2), x: Math.round(t.x), y: Math.round(t.y - 0.1 * w), bar: o ? o.bar : false, via: 'model', moved: t.moved || 0 });
+    });
+    detectCities.last = { ms: Math.round(performance.now() - t0), model: mc.length, old: old.length, cities: out.length };
+    return out;
+  }
+  function detectCitiesOld(src, grid, tribes) {
     const t0 = performance.now();
     try {
       const W0 = src.naturalWidth || src.width, H0 = src.naturalHeight || src.height;
@@ -802,9 +869,7 @@ window.PP = window.PP || {};
         const key = cc + ',' + rr, o = seen.get(key);
         if (!o || o.conf < it.conf) seen.set(key, it);
       });
-      const out = [...seen.values()];
-      detectCities.last = { ms: Math.round(performance.now() - t0), plates: plates.length };
-      return out;
+      return [...seen.values()];
     } catch (e) { console.warn('detectCities failed', e); return []; }
   }
 

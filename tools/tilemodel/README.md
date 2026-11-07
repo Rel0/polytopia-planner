@@ -74,3 +74,42 @@ The app fills in a resource only when the model is sure about it.
 
 The ring features are what helps with units: a unit covers the centre of its tile, while the outer band of the
 diamond stays visible. More screenshots per tribe, labelled with the Label tool, are the biggest lever from here.
+
+## City detector (v3, Nov 2026)
+
+Every city, own or enemy, has a **name plate** centred on its tile: white italic text with a dark shadow on a
+half-transparent box in the tribe colour (own cities also have a light progress bar). Villages have no plate. The old plate finder in
+`js/vision.js` only searched the colours of tribes whose units had already been detected, so it missed most plates
+(6 of 48 labelled cities).
+
+`city.py` trains a separate detector (extra trees) on the 62 tile features plus 26 plate features
+(`feat.plate_features`, ported 1:1 to `PP.tilemodel.plateFeatures`). The plate features work like this:
+- A fine lattice is sampled around the tile centre.
+- The row with the strongest white "strokes" is found, and everything else is measured from there: shadow, colour,
+  text width and centring, the box edges above and below, and the progress bar.
+- So a plate a little higher or lower looks the same to the model.
+
+`detectCities` runs it on every tile of the grid. A city only counts where its tile beats all 8 neighbours,
+because a plate also reaches into the tiles next to it. The top and bottom game UI is skipped.
+
+```sh
+python3 tools/tilemodel/city.py dataset.json,dataset_city_extra.json js/citymodel-data.js
+```
+
+The extra file holds cities and non-cities that were checked by hand. The 8 neighbour tiles of every city are added
+as non-cities. Big cities rise into the tile above, and without these negatives that tile could win the neighbour
+check, so the city ended up one tile too high.
+
+Leave-one-screenshot-out, 61 cities on 25 screenshots. The neighbour check is done like in the app, including the
+neighbour tiles:
+
+| threshold | cities found | false alarms (of 1520 other labelled tiles) |
+|---|---|---|
+| 0.45 | 54 / 61 | 9 |
+| 0.5 (used) | 50 / 61 | 4 |
+| 0.6 | 46 / 61 | 2 |
+
+On the training screenshots, 59 of 61 cities land on the right tile and none is a tile too high.
+
+Python and the browser give the same plate features: 377 of 377 tiles. Both compute the plate HSV in float64 and
+the row smoothing in the same order.
