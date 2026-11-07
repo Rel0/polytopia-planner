@@ -881,7 +881,7 @@ window.PP = window.PP || {};
     if (!cb.active || cb.attackers.length < 2) return '';
     return '<div class="un-sort"><span>Sort attackers</span><div>' + SORTS.map(function (x) {
       return '<button data-un="sort" data-v="' + x[0] + '" class="' + (p.sortBy === x[0] ? 'on' : '') + '" aria-pressed="' + (p.sortBy === x[0]) + '">' + x[1] + '</button>';
-    }).join('') + '</div>' + (p.sortBy ? '<small>Order is kept sorted automatically · tap again for your own order</small>' : '<small>Tap order = attack order</small>') + '</div>';
+    }).join('') + '</div></div>';
   }
   function bestOrder() {
     var cb = sel(), t = byId(cb.active), list = cb.attackers.map(byId).filter(Boolean);
@@ -1019,8 +1019,8 @@ window.PP = window.PP || {};
     var b = '<button class="un-seqb' + (S && S.show && S.state === 'done' ? ' on' : '') + '" data-un="seq">⚔️ ' + (S && S.state === 'done' ? (S.show ? 'Hide best attack sequence' : 'Show best attack sequence') : 'Best attack sequence') +
       ' <small>(' + nA + ' attacker' + (nA > 1 ? 's' : '') + ' → ' + nT + ' target' + (nT > 1 ? 's' : '') + ')</small></button>';
     if (!S) return b;
-    if (S.state === 'too') return b + '<div class="un-seq"><small>Too many for an exact search: at most ' + SEQ_MAX_A + ' attackers and ' + SEQ_MAX_T + ' targets (now ' + S.nA + ' and ' + S.nT + ').</small></div>';
-    if (S.state === 'running') return b + '<div class="un-seq"><div class="bar"><i style="width:' + S.pct + '%"></i></div><small>Trying every order and split… ' + S.pct + '%</small></div>';
+    if (S.state === 'too') return b + '<div class="un-seq"><small>⚠ Too many: at most ' + SEQ_MAX_A + ' attackers and ' + SEQ_MAX_T + ' targets</small></div>';
+    if (S.state === 'running') return b + '<div class="un-seq"><div class="bar"><i style="width:' + S.pct + '%"></i></div><small>Calculating… ' + S.pct + '%</small></div>';
     if (!S.show) return b;
     var w = words(), h = '<div class="un-seq">', T = S.tot;
     h += '<div class="sum">' + (T.kills ? '☠ <b>' + T.kills + ' of ' + S.nT + '</b> ' + (S.nT > 1 ? 'targets' : 'target') + ' defeated' : 'No target can be defeated') +
@@ -1040,7 +1040,7 @@ window.PP = window.PP || {};
       h += '</div>';
     });
     if (S.free.length) h += '<div class="free">Not needed: ' + S.free.map(function (a) { return esc(U(a.type).name); }).join(', ') + '</div>';
-    h += '<small class="nt">' + (S.ms != null ? 'Checked in ' + (S.ms < 1000 ? S.ms + ' ms' : Math.round(S.ms / 100) / 10 + ' s') + '. ' : '') + 'Splash damage on another target is not carried over between targets.</small></div>';
+    h += '</div>';
     return b + h;
   }
 
@@ -1222,8 +1222,7 @@ window.PP = window.PP || {};
     h += '<h4><span>Damage calculator</span>' + (nA || cb.targets.length ? '<button data-un="clear">Clear selection</button>' : '') + '</h4>';
     if (!nA && !t) {
       var w0 = words();
-      h += '<div class="un-how"><span class="un-n">1</span> Tap <b>' + w0.att + '</b> (tap order = attack order)<br>' +
-        '<span class="un-n t">2</span> Tap <b>' + w0.tgt + '</b> – several are fine</div>';
+      h += '<div class="un-how"><span class="un-n">1</span> <b>' + w0.att + '</b> · <span class="un-n t">2</span> <b>' + w0.tgt + '</b></div>';
       return h;
     }
     // target tabs
@@ -1248,7 +1247,7 @@ window.PP = window.PP || {};
       '<div class="un-ctl"><span style="min-width:44px">HP</span>' + hpCtl(t, 'hp') + statusChips(t) + '</div>' +
       '<div class="un-ctl" style="display:block"><span>Defense bonus</span>' + bonusHtml(t) + '</div>';
     if (!res || !res.steps.length) {
-      h += '<div class="un-empty">Tap ' + words().att + ' – this shows how much damage each one deals and takes back.</div></div>';
+      h += '<div class="un-empty">Now tap ' + words().att + '</div></div>';
       return h;
     }
     h += '<div class="un-tbl">';
@@ -1507,10 +1506,10 @@ window.PP = window.PP || {};
       if (u) {
         h += detailHtml(u);
         h += '<div class="un-next"><span>Next unit</span>' + sideHtml(p) + '</div>' + paletteHtml();
-        h += '<div class="un-how">Tap an empty tile = place <b>' + esc(U(p.brush).name) + '</b> · ✓ = choose another type</div>';
+
       }
-      else if (p.eraser) h += '<div class="un-how">🧽 <b>Eraser on:</b> tap units to delete them.</div>';
-      else h += '<div class="un-how">Tap a tile = place <b>' + esc(U(p.brush).name) + '</b> (' + (p.side === 'enemy' ? 'Enemy' : 'Mine') + ') · tap a unit = edit · drag a unit = move' +
+      else if (p.eraser) h += '<div class="un-how">🧽 <b>Eraser on</b></div>';
+      else h += '<div class="un-how"><b>' + esc(U(p.brush).name) + '</b> (' + (p.side === 'enemy' ? 'Enemy' : 'Mine') + ')' +
         '<small class="un-stat">' + esc(statLine(p.brush)) + '</small></div>';
       h += autoHtml();
     } else {

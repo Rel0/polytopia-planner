@@ -312,9 +312,6 @@ window.PP = window.PP || {};
           <button data-act="undo" ${canUndo() ? '' : 'disabled'}>↶ Undo</button>
           <button data-act="clear" class="dw-danger" ${n ? '' : 'disabled'}>🗑️ Clear all</button>
         </div>
-        <p class="dw-note">${p.eraser ? 'Eraser: tap an arrow, cross or ring to remove it.'
-          : p.shape === 'arrow' ? 'Drag with one finger from tile to tile – the arrow snaps to the tile center. Tap an arrow to delete it. Use two fingers to move/zoom the map.'
-            : `Tap a tile to place a ${p.shape === 'cross' ? 'cross' : 'ring'}; tap again to remove it.`}</p>
       </div>`;
     el.onclick = ev => {
       const b = ev.target.closest('button'); if (!b || !el.contains(b) || b.disabled) return;

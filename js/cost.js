@@ -920,9 +920,7 @@ window.PP = window.PP || {};
       var b = B(), keys = [];
       b.placements.forEach(function (p) { var k = tkey(p.c, p.r); if (keys.indexOf(k) < 0) keys.push(k); });
       var mine = cities().filter(function (x) { return x.side === 'me' && cityAt(x.c, x.r) === x; });
-      return '<div class="cs-empty"><big>👆</big><b>Tap a tile on the map</b><br>' +
-        '<span class="cs-note">A ring shows only what is possible on that tile, with name and cost. ' +
-        'Tap = plan (the ring closes), tap again = remove. A new tile first asks for the terrain; to change it tap <b>⌂ Home</b> in the middle. Tap your <b>city</b> to train a unit.</span></div>' +
+      return '<div class="cs-empty"><big>👆</big><b>Tap a tile or a city on the map</b></div>' +
         (mine.length ? '<div class="cs-h">Your cities</div><div class="cs-chips">' + mine.map(function (ci) {
           return '<button class="cs-chip sm" data-tile="' + tkey(ci.c, ci.r) + '">🏠 ' + esc(cityLabel(ci)) + '</button>';
         }).join('') + '</div>' : '') +
@@ -977,7 +975,6 @@ window.PP = window.PP || {};
           (fl.res.length ? ' with ' + fl.res.map(function (x) { return RES(x) ? RES(x).icon + ' ' + resName(x) : x; }).join(', ') : '') + '</div>';
       }
     } else {
-      html += '<p class="cs-note">Pick what to build in the ring around the tile.</p>';
     }
     return html;
   }
@@ -996,7 +993,7 @@ window.PP = window.PP || {};
       '<button class="cs-x" data-act="unsel" aria-label="Deselect">✕</button></div>';
     html += sideSeg(ci);
     if (ci.side !== 'me') {
-      html += '<p class="cs-note">' + (ci.side === 'enemy' ? 'Enemy city – nothing to train here.' : 'Tap <b>Mine</b> to train units here.') + '</p>';
+      if (ci.side === 'enemy') html += '<p class="cs-note">Enemy city</p>';
       return html + '<div class="cs-foot"><input class="cs-name" data-cname="1" placeholder="Name (optional)" value="' + esc(ci.name || '') + '">' +
         '<button class="cs-sm" data-act="nocity">Not a city</button></div>';
     }
@@ -1026,7 +1023,6 @@ window.PP = window.PP || {};
   function renderUnits(e) {
     var b = B(), U = PP.UNITS || {};
     var html = '<div class="cs-h"><span>Train units</span></div>';
-    if (cities().some(function (x) { return x.side === 'me'; })) html += '<p class="cs-note">Tip: tap one of your cities on the map to train a unit there.</p>';
     html += trainList(b.unitCounts).map(function (k) {
       return unitRow(k, b.unitCounts[k] || 0, 'u:' + k, e);
     }).join('');
@@ -1038,7 +1034,6 @@ window.PP = window.PP || {};
     var html = '<div class="cs-seg"><button data-tmode="plan" class="' + (techMode === 'plan' ? 'on' : '') + '">★ Buy</button>' +
       '<button data-tmode="owned" class="' + (techMode === 'owned' ? 'on' : '') + '">✓ I have</button></div>';
     html += '<div class="cs-row" style="justify-content:space-between">' + stepper('cities', cityCount(), false, 'Own cities') + '</div>';
-    if (!b.owned.length) html += '<p class="cs-note">Tip: first mark under “✓ I have” what you have already researched.</p>';
     var tiers = [];
     (PP.TECHS || []).forEach(function (t) { if (tiers.indexOf(t.tier) < 0) tiers.push(t.tier); });
     tiers.sort();
@@ -1050,7 +1045,6 @@ window.PP = window.PP || {};
           return '<button class="cs-tc ' + cls + '" data-tech="' + t.id + '">' + (owned ? '✓ ' : planned ? '★ ' : '') + esc(t.name) + '</button>';
         }).join('') + '</div>';
     });
-    html += '<p class="cs-note">Cost: tier × cities + 4 ★, with ' + esc(techName('philosophy')) + ' −33%.</p>';
     return html;
   }
 
@@ -1059,7 +1053,7 @@ window.PP = window.PP || {};
     var groups = {}, order = [];
     b.placements.forEach(function (p) { var k = tkey(p.c, p.r); if (!groups[k]) { groups[k] = { c: p.c, r: p.r }; order.push(k); } });
     if (!e.lines.length && !order.length) {
-      return '<div class="cs-empty"><big>📋</big>Nothing planned yet.<br><span class="cs-note">Tap tiles, train units or pick techs.</span></div>';
+      return '<div class="cs-empty"><big>📋</big>Nothing planned yet</div>';
     }
     (e.warnings || []).forEach(function (w) { html += '<p class="cs-warn' + (/^Short by/.test(w) ? ' bad' : '') + '">⚠️ ' + esc(w) + '</p>'; });
     if (order.length) {

@@ -920,7 +920,7 @@ window.PP = window.PP || {};
         <button class="toggle ${u.vet ? 'on' : ''}" data-vet="1">★ Veteran (+5 max HP)</button>
         <div class="lbl">Defense bonus</div>
         <div class="seg">${BONI.map(b => `<button data-bonus="${b.v}" class="${(u.bonus || 1) === b.v ? 'on' : ''}">${b.label}</button>`).join('')}</div>
-        <p class="note">If the unit stands in a city, ×1.5 applies automatically (×4 with City Wall).</p>`;
+`;
     } else {
       const ci = e.city;
       ci.level = clamp(ci.level || 1, 1, 8); ci.pop = clamp(ci.pop || 0, 0, ci.level);
@@ -1030,7 +1030,7 @@ window.PP = window.PP || {};
       <div class="ugrid quick">${Object.entries(UNITS()).map(([k, d]) => `
         <button data-qtype="${k}" class="${k === lastType ? 'on' : ''}"><span>${d.icon}</span>${esc(d.name)}
         <small>⚔${d.atk} 🛡${d.def}${d.rng > 1 ? ' 🎯' + d.rng : ''}</small></button>`).join('')}</div>
-      <p class="note">Tap a type to place the unit. Details later: long-press.</p>`;
+`;
     PP.ui.openSheet(html, quickClick, null, () => { qu = null; });
   }
   function quickClick(ev, b) {
@@ -1125,7 +1125,7 @@ window.PP = window.PP || {};
     commit(); calShowW();
     toast(f > 1 ? 'Tiles 2× bigger' : 'Tiles half the size');
   }
-  const SCALE_ROW = '<div class="lbl">Wrong size? One diamond should cover exactly one tile.</div>' +
+  const SCALE_ROW = '<div class="lbl">Wrong size?</div>' +
     '<div class="btnrow"><button data-cal="half" title="Each diamond covers several tiles">½ Diamonds too big</button><button data-cal="dbl" title="A tile is split into several diamonds">2× Diamonds too small</button></div>';
   const fmt = (v, d) => v.toFixed(d);
   PP.modes.register('calibrate', {
@@ -1192,8 +1192,7 @@ window.PP = window.PP || {};
       if (cal.step === 'auto') {
         const unsure = lastDetect && lastDetect.conf != null && lastDetect.conf < 0.6;
         el.innerHTML = `
-          <div class="calok"${unsure ? ' style="background:rgba(255,170,0,.14)"' : ''}><b${unsure ? ' style="color:#ffb703"' : ''}>${unsure ? 'Grid detected – not quite sure, please check' : 'Grid detected automatically ✓ – does it fit?'}</b>
-            <span>Do the lines sit on the tile edges? Zoom in with two fingers to check.</span></div>
+          <div class="calok"${unsure ? ' style="background:rgba(255,170,0,.14)"' : ''}><b${unsure ? ' style="color:#ffb703"' : ''}>${unsure ? 'Grid detected – not quite sure, please check' : 'Grid detected automatically ✓ – does it fit?'}</b></div>
           ${SCALE_ROW}
           <div class="btnrow big"><button data-cal="tune">✏️ Adjust</button><button class="primary" data-cal="done">✓ Looks good</button></div>`;
       } else if (cal.step === 1 || cal.step === 2) {
@@ -1212,7 +1211,6 @@ window.PP = window.PP || {};
             <li class="${st(2)}"><b>2</b><span>Tap the <b>center of the tile to its right</b> (same height).</span></li>
           </ol>
           ${fig}
-          <p class="note">Tip: zoom in with two fingers first, then tap precisely. One finger moves the map.</p>
           <div class="btnrow">${cal.step === 2 ? '<button data-cal="restart">↺ Restart</button>' : ''}<button data-cal="tune">Skip</button></div>`;
       } else {
         const p = PP.grid.params(), lim = calWLimits(), minW = lim.min, maxW = lim.max, gm = cal.fingers === 'grid';
@@ -1225,7 +1223,6 @@ window.PP = window.PP || {};
           <details class="adv" ${cal.adv ? 'open' : ''}><summary>Advanced</summary>
             <div class="lbl">Height/width ratio <b id="calR">${fmt(p.ratio, 3)}</b></div>
             <div class="hprow"><input id="calRR" type="range" min="0.45" max="0.8" step="0.005" value="${clamp(p.ratio, 0.45, 0.8)}"><button data-cal="r0">0.6</button></div>
-            <p class="note">Polytopia always uses 0.6 – only change it if the grid doesn't fit otherwise.</p>
             <div class="btnrow"><button data-cal="restart">📏 Measure with 2 taps</button></div>
           </details>
           <div class="btnrow">${isImg ? '<button data-cal="auto">↺ Reset to auto</button>' : '<button data-cal="restart">📏 2 Taps</button>'}<button class="primary" data-cal="done">✓ Done</button></div>`;
@@ -1534,8 +1531,7 @@ window.PP = window.PP || {};
       if (!al.open) {
         el.innerHTML = `<div class="btnrow big" style="margin-top:0"><button data-al="open" style="flex:0 0 auto;padding:9px 12px">⌃ Options</button>` +
           `<button class="primary" data-al="ok">✓ Fits – use the new screenshot</button></div>`;
-      } else el.innerHTML = `<div class="btnrow" style="margin-top:0"><button data-al="open">⌄ Hide options</button></div><div class="calok"${al.sure ? '' : ' style="background:rgba(255,170,0,.14)"'}><b>${al.sure ? 'New screenshot laid over the old one – check it' : 'Please lay the new screenshot onto the old one'}</b>
-          <span>Drag it so the map matches the old one underneath. Bigger / smaller: two fingers or the buttons.</span></div>
+      } else el.innerHTML = `<div class="btnrow" style="margin-top:0"><button data-al="open">⌄ Hide options</button></div><div class="calok"${al.sure ? '' : ' style="background:rgba(255,170,0,.14)"'}><b>${al.sure ? 'New screenshot laid over the old one – check it' : 'Please lay the new screenshot onto the old one'}</b></div>
         <div class="lbl">Fingers move:</div>
         <div class="btnrow"><button data-al="f" data-v="shot" class="${al.fingers !== 'map' ? 'primary' : ''}">🖼️ New screenshot</button><button data-al="f" data-v="map" class="${al.fingers === 'map' ? 'primary' : ''}">🗺️ Map (zoom to check)</button></div>
         <div class="lbl">Size: ${Math.round(al.s * 100)} %</div>
@@ -1566,7 +1562,7 @@ window.PP = window.PP || {};
         PP.ui.openSheet(`<div class="sheethead"><b>New screenshot</b><button class="x" data-m="x" aria-label="Close">✕</button></div>
           <div class="menu"><button data-m="upd">🔄 Update this game <span>keep my marks</span></button>
           <button data-m="new">🆕 New game <span>start over</span></button></div>
-          <p class="note">Update: the new screenshot is laid over the old one – you check or adjust where it sits, then cities, units, marked tiles and plans stay on their tiles.</p>`,
+`,
         (ev, b) => {
           if (!b) return;
           const m = b.dataset.m; PP.ui.closeSheet();
@@ -1606,7 +1602,7 @@ window.PP = window.PP || {};
         <button data-m="privacy">🔒 Privacy</button>
         <button data-m="clear" class="danger">🗑️ Clear everything</button>
       </div>
-      <p class="note">Units, drawings and plans are saved automatically on this device. Game values from the community wiki – may differ depending on the game version.</p>
+      <p class="note">Saved on this device · game values from the community wiki</p>
       <p class="note">Unofficial fan tool – not affiliated with or endorsed by Midjiwan AB. “The Battle of Polytopia” is a trademark of Midjiwan AB. All icons are original drawings.</p>`,
     (ev, b) => {
       if (!b) return;

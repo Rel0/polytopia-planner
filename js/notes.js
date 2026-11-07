@@ -286,7 +286,7 @@ window.PP = window.PP || {};
       ${showHint ? `<div class="nt-msg${ui.voiceMsg && ok ? ' soft' : ''}">${esc(showHint)}</div>` : ''}
     </div>`;
     h += '<div class="nt-list">';
-    if (!list.length) h += '<p class="nt-empty">Plan your turn: add <b>Move 1</b>, <b>Move 2</b> … by typing or with 🎤. Tick moves off as you play them.</p>';
+    if (!list.length) h += '<p class="nt-empty">No moves yet</p>';
     list.forEach((n, i) => {
       const lk = linked(n), isSel = n.id === ui.sel, isLink = n.id === ui.linking;
       h += `<div class="nt-item${n.done ? ' done' : ''}${isSel ? ' sel' : ''}" data-id="${n.id}">
@@ -308,8 +308,7 @@ window.PP = window.PP || {};
         <button data-nt="undo" ${hist.length ? '' : 'disabled'}>↶ Undo</button>
         <button data-nt="cleardone" ${list.some(n => n.done) ? '' : 'disabled'}>Clear done</button>
         <button data-nt="clear" class="danger" ${list.length ? '' : 'disabled'}>🗑️ Clear all</button>
-      </div>
-      <p class="nt-note">${ok ? '🎤 speaks one move; select a move first to add to it instead. ' : ''}Tap <b>📍</b> then a tile to pin a move to the map. Enter adds the move, Shift+Enter makes a new line.</p>`;
+      </div>`;
     el.innerHTML = h;
     el.querySelectorAll('.nt-txt').forEach(grow);
 

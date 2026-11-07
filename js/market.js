@@ -1429,7 +1429,7 @@
       const est = Math.max(5, Math.round(solves * (res.large ? 6 : 1.5)));
       let h = '<div class="gw-menu"><div class="gw-mh"><b>🔬 Which techs do you have?</b><button class="lnk" data-a="techMenu">close ▴</button></div><div class="gw-pick">';
       h += TECH_PICK.map(id => { const on = owned.has(id); return `<button class="${on ? 'on' : ''}" data-tech="${id}" style="--cc:${on ? '#06d6a0' : '#5a6488'}" aria-pressed="${on}"><span class="bx">${on ? '✓' : ''}</span>${esc(techName(id))}</button>`; }).join('');
-      h += `</div><div class="mk-note" style="margin:6px 0">Same list as in 💰 Costs. Tech prices for ${plural(techCityCount(), 'city', 'cities')}.</div>`;
+      h += '</div>';
       h += cand.length ? `<button class="mk-btn pri" data-a="tech">▶ Start <small style="opacity:.8">(about ${plural(solves, 'plan', 'plans')} · about ${est < 90 ? est + ' s' : Math.round(est / 60) + ' min'})</small></button>`
         : '<div class="mk-note">You have every tech the Markets need.</div>';
       return h + '</div>';
@@ -1456,8 +1456,7 @@
     h += rows.map(r => `<div class="gw-card ${r.gain > 0 ? 'take' : 'skip'}" style="--cc:${r.gain > 0 ? '#7bd389' : '#5a6488'}"><div class="gw-h">${nm(r.id)}${extra(r.add, r.id)}` +
       `<span class="gw-v">${r.gain > 0 ? '+' + r.gain + ' ★/turn' : 'no gain'}</span></div>` +
       `<div class="gw-d"><small>${esc(TECH_UNLOCKS[r.id] || '')} · techs ${r.tcost} ★${r.gain > 0 ? ' + building ' + Math.max(0, r.dcost) + ' ★ · ' + pay(r.gain, r.tcost + Math.max(0, r.dcost)) : ''}</small></div></div>`).join('');
-    h += `<p class="mk-note" style="margin:8px 0 0">Only Market income counts (not units, population or score). Tech prices for ${plural(techCityCount(), 'city', 'cities')}. ` +
-      (g.open ? `<b style="color:#ffb703">${plural(g.open, 'plan', 'plans')} not proven within ${GROW_PROOF_SECS} s</b>. ` : 'Every ★/turn number is proven. ') + (g.ms ? Math.round(g.ms / 1000) + ' s.' : '') + '</p>';
+    if (g.open) h += `<p class="mk-note" style="margin:8px 0 0;color:#ffb703">⚠ ${plural(g.open, 'plan', 'plans')} not proven</p>`;
     h += '<button class="mk-btn sm" data-a="techAgain" style="margin-top:8px">↻ Change my techs and check again</button>';
     return box(h);
   }
@@ -1474,8 +1473,7 @@
     const A = area(), small = A.cities.filter(ci => ci.rad === 1), grown = A.cities.filter(ci => ci.rad === 2);
     const box = inner => '<div class="mk-grow"><div class="gw-t">🌱 Border Growth – which cities should take it?</div>' + inner + '</div>';
     // cities set to 5×5 count as already grown and are not checked – say so clearly and offer to check them all
-    const allBtn = grown.length ? `<div class="mk-note" style="margin:8px 0 0">${grown.length === A.cities.length ? 'All cities are' : plural(grown.length, 'city is', 'cities are')} set to 5×5 and count as already grown` +
-      ` (${grown.map(ci => esc(cityName(ci, ci.k))).join(', ')}).</div><button class="mk-btn" data-a="growthAll" style="margin-top:4px;width:100%">🌱 Check all ${A.cities.length} cities from 3×3</button>` : '';
+    const allBtn = grown.length ? `<button class="mk-btn" data-a="growthAll" style="margin-top:8px;width:100%">🌱 Check all ${A.cities.length} cities from 3×3</button>` : '';
     if (growthAuto && !growthNow()) { growthAuto = false; setTimeout(() => { startGrowth(planResult()); PP.app.refresh(); }, 0); }
     if (!small.length) return box(allBtn.replace('margin:8px 0 0', 'margin:0'));
     const g = growthNow(), rs = ringStats(), skip = growSkip();
@@ -1488,7 +1486,7 @@
       const est = Math.max(5, Math.round(solves * (res.large ? 6 : 1.5)));
       const PRn = growPrio();
       let h = '<div class="gw-menu"><div class="gw-mh"><b>🌱 Border Growth or Population Growth?</b><button class="lnk" data-a="growthMenu">close ▴</button></div>';
-      h += '<div class="mk-note" style="margin:0 0 4px">What matters more to you right now?</div><div class="gw-prio">' +
+      h += '<div class="gw-prio">' +
         Object.values(GROW_PRIO).map(P => `<button class="${PRn.id === P.id ? 'on' : ''}" data-gprio="${P.id}"><b>${P.name}</b><small>${esc(P.note)}</small></button>`).join('') + '</div>';
       h += '<div class="mk-note" style="margin:8px 0 4px">Which cities may grow?</div><div class="gw-pick">';
       h += small.map(ci => { const k = key(ci.c, ci.r), on = !skip.has(k);
@@ -1534,10 +1532,7 @@
     };
     h += take.concat(noTake).map(card).join('');
     h += ringWarn;
-    { const PRf = g.PR || growPrio(); h += `<p class="mk-note" style="margin:8px 0 0">Weighed against Population Growth (+3 population ≈ 7.5 ★${PRf.giant ? ' + ' + PRf.giant + ' ★ for the Giant sooner' : ''}) over ${PRf.H} turns · <b>${PRf.name}</b>${g.rechoose ? ' – switch it above, the result updates at once' : ' – after switching, check again'}.</p>`; }
-    h += `<p class="mk-note" style="margin:4px 0 0">${g.exhaustive ? `✓ All ${2 ** g.n} combinations checked – this is the best choice.` : `Checked ${g.done} combinations (alone, step by step, then adding, removing and swapping neighbours until nothing got better) – not all ${2 ** g.n}.`} ` +
-      (g.open ? `<b style="color:#ffb703">${plural(g.open, 'plan', 'plans')} not proven within ${GROW_PROOF_SECS} s</b> – best found there. ` : 'Every ★/turn number is proven. ') +
-      `${g.ms ? Math.round(g.ms / 1000) + ' s.' : ''}</p>`;
+    if (g.open) h += `<p class="mk-note" style="margin:8px 0 0;color:#ffb703">⚠ ${plural(g.open, 'plan', 'plans')} not proven</p>`;
     const left = small.filter(ci => skip.has(key(ci.c, ci.r)));
     if (left.length) h += `<div class="mk-note" style="margin:4px 0 0">Not checked (your choice): ${left.map(ci => esc(cityName(ci, ci.k))).join(', ')}</div>`;
     h += '<button class="mk-btn sm" data-a="growthAgain" style="margin-top:8px">↻ Choose cities and check again</button>';
@@ -1685,28 +1680,24 @@
     next();
   }
   function proofHtml(res) {
-    if (res && res.exactPending) return '<p class="mk-note"><span class="mk-spin"></span><b>Exact search running…</b> the plans above are quick results; they are replaced by the proven ones as soon as it is done.</p>';
+    if (res && res.exactPending) return '<p class="mk-note"><span class="mk-spin"></span>Exact search running…</p>';
     const q = res && res.proof; if (!q) return '';
-    if (q.paused) return '<p class="mk-note">⏸ <b>Check of the plan paused</b> while Border Growth is checked – it goes on by itself afterwards.</p>';
+    if (q.paused) return '<p class="mk-note">⏸ Plan check paused</p>';
     const ok = '<b style="color:#7bd389">✓</b>', spin = '<span class="mk-spin"></span>', b = res.best, lines = [];
-    const dur = secs => (secs >= 120 ? Math.round(secs / 60) + ' min' : secs + ' s');
-    if (q.exact) lines.push(`${ok} <b>Most ★ and cheapest proven</b> – the exact search checked every possibility.`);
+    if (q.exact) lines.push(`${ok} Most ★ and cheapest proven`);
     else {
-      if (q.inc === 'proven') lines.push(`${ok} <b>Most ★ proven:</b> no plan earns more than ${b.income} ★/turn.`);
-      else if (q.inc === 'running') lines.push(`${spin}<b>Checking whether more ★ are possible…</b>${q.incBound != null ? ` (at most ${q.incBound} ★/turn)` : ''}`);
-      else if (q.inc === 'waiting') lines.push('⏳ Next: check whether more ★ are possible.');
-      else lines.push(`⚠️ More ★ not ruled out within the time limit${q.incBound != null ? ` – at most ${q.incBound} ★/turn would be possible` : ''}.`);
-      if (q.cost === 'proven') lines.push(`${ok} <b>Cheapest proven:</b> no plan with ${b.income} ★/turn costs less than ${b.cost} ★.`);
-      else if (q.cost === 'waiting') { /* comes later */ }
-      else if (q.cost === 'running') lines.push(`${spin}<b>Checking for a cheaper plan…</b>${q.costBound != null ? ` (cheapest possible ≥ ${Math.max(0, q.costBound)} ★)` : ''}`);
-      else if (q.cost === 'open') lines.push(`Cheapest not proven within ${dur(q.costSecs)} – this is the cheapest plan with ${b.income} ★/turn found so far` +
-        (q.costBound != null ? ` <small>(proven lower limit: ${Math.max(0, q.costBound)} ★ – with many equivalent layouts this limit stays far below the real minimum)</small>` : '') + '.');
+      if (q.inc === 'proven') lines.push(`${ok} Most ★ proven`);
+      else if (q.inc === 'running') lines.push(`${spin}Checking for more ★…`);
+      else if (q.inc === 'waiting') lines.push('⏳ Next: check for more ★');
+      else lines.push(`⚠ More ★ not ruled out${q.incBound != null ? ` (at most ${q.incBound} ★/turn)` : ''}`);
+      if (q.cost === 'proven') lines.push(`${ok} Cheapest proven`);
+      else if (q.cost === 'running') lines.push(`${spin}Checking for a cheaper plan…`);
+      else if (q.cost === 'open') lines.push('Cheapest not proven');
     }
-    const f = res.fastPlan, fTxt = f ? `${plural(f.payback, 'turn', 'turns')} (${f.income} ★/turn for ${f.cost} ★${f === b ? ', the best plan itself' : ' – see “Fastest payback”'})` : '';
-    if (q.fast === 'proven') lines.push(`${ok} <b>Fastest payback proven:</b> ${fTxt}.`);
-    else if (q.fast === 'running') lines.push(`${spin}<b>Checking the fastest payback…</b>${f ? ' best so far ' + fTxt : ''}`);
-    else if (q.fast === 'open') lines.push(`Fastest payback not proven within ${dur(q.costSecs)}${f ? ' – best found: ' + fTxt : ''}.`);
-    if (q.noSolver) lines.push('<small>(the optimality check HiGHS could not start in this browser)</small>');
+    if (q.fast === 'proven') lines.push(`${ok} Fastest payback proven`);
+    else if (q.fast === 'running') lines.push(`${spin}Checking the fastest payback…`);
+    else if (q.fast === 'open') lines.push('Fastest payback not proven');
+    if (q.noSolver) lines.push('<small>Check not available in this browser</small>');
     else if ((q.cost === 'open' || q.fast === 'open') && !(q.costSecs >= COST_MORE_SECS) && !prover)
       lines.push(`<button class="mk-btn sm" data-a="proveMore">🔎 Keep checking (up to ${Math.round(COST_MORE_SECS / 60)} min)</button>`);
     return `<p class="mk-note">${lines.join('<br>')}${q.secs && prover ? ` <small>· ${q.secs} s</small>` : ''}</p>`;
@@ -2272,25 +2263,21 @@
       h += `<div data-peek="cities:${ui.borders ? 'b' : 'c'}:${A.cities.length}">${stepsHtml()}`;
       // v32: Edit borders right at the top
       if (A.cities.length) h += `<button class="mk-btn ${ui.borders ? 'pri' : ''}" data-a="borders" style="margin:6px 0 4px">${ui.borders ? '✓ Done editing borders' : '✏️ Edit city borders'}</button>`;
-      if (ui.borders) h += '<div class="mk-note" style="margin:2px 0 4px">✏️ <b>Edit borders:</b> tap a tile <b>next to</b> the territory to add it (it joins the nearest city), tap a territory tile to remove it. Drag for several.</div>';
-      else h += `<div class="mk-note" style="margin:2px 0 4px">${A.cities.length ? 'Tap more of <b>your cities</b> – or tap one again: 3×3 → 5×5 → off.' : 'Tap <b>your own cities</b> on the map (the city tile). Each gets a 3×3 territory – 5×5 after Border Growth.'}</div>`;
       h += chipsHtml(A);
       if (nEd) h += `<div class="mk-row"><button class="mk-btn sm" data-a="resetBorders">↺ Reset borders (${nEd})</button></div>`;
       const ko = knownOwn();
       if (ko.length) h += `<button class="mk-btn sm" data-a="addKnown">＋ Add my ${plural(ko.length, 'city', 'cities')}: ${ko.slice(0, 4).map(q => esc(cityLabel(q.c, q.r))).join(', ')}${ko.length > 4 ? ' …' : ''}</button>`;
       if (A.cities.length) h += `<button class="mk-btn pri" data-step="2">Next: ② What’s here ▶</button>`;
       h += '</div>';
-      h += '<p class="mk-note">Only tiles inside these territories are planned – Markets, workshops and Farms, Mines, Lumber Huts are built there only. Where territories overlap, a tile belongs to the nearest city.</p>';
     } else if (ui.step === 2) {
       const bt = id => `<button data-brush="${id}" class="${ui.brush === id ? 'on' : ''} ${TER_B.indexOf(id) >= 0 ? 't' : RES_B.indexOf(id) >= 0 ? 'rs' : 'b'}" title="${esc(nm(id))}"><span>${iconHtml(id, 21)}</span>${BRUSH_LABEL[id]}</button>`;
       // v33: brushes grouped by what belongs together (16 = two rows of 8), the Plan button as a wide row below
       h += `<div data-peek="tiles">${stepsHtml()}<div class="mk-pal">` + PAL_ORDER.map(bt).join('') + '</div>' +
         '<button class="mk-btn pri mk-plan" data-step="3">▶ Show the plan</button></div>' +
         // v37: the explanation is below the collapsed panel (Less shows only up to "Show the plan")
-        `<div class="mk-note" style="margin:3px 0 0;font-size:11.5px">${ui.brush ? '<b>' + esc(nm(ui.brush)) + '</b> – tap or drag over tiles, tap again to remove. ' : ''}${autoNote()}${ringNote()}</div>`;
+        (autoStats().unsure ? `<div class="mk-note" style="margin:3px 0 0;color:#ffb703">⚠ ${plural(autoStats().unsure, 'tile', 'tiles')} with ? – please check</div>` : '');
       h += citiesHtml();
       h += countsHtml();
-      h += '<p class="mk-note">Mark the board <b>as it is now</b>: terrain (<b>Empty</b>, Forest, Mountain, Water = anything unusable), resources (<b>Crop (for Farm)</b>, Metal, Fruit) and existing buildings. Only the territories of the cities from step ① are shown (coloured outline) – change them there.</p>';
       h += '<button class="mk-btn sm" data-a="suggest">🪄 Suggest terrain from screenshot</button><button class="mk-btn sm" data-a="clearTiles">Clear marks in territories</button>';
     } else {
       const res = planResult(), p = curPlan(res);
@@ -2310,21 +2297,16 @@
         const it = ITEM(k) || {}, tech = it.tech && PP.TECH && PP.TECH[it.tech] ? PP.TECH[it.tech].name : TECH_OF_WS[k];
         return `<button class="mk-opt ${m.opts[k] ? 'on' : ''}" data-opt="${k}" title="Uncheck if you don't have ${esc(tech)} – existing ${esc(nm(k))}s still count"><span class="bx">${m.opts[k] ? '✓' : ''}</span><span>${iconHtml(k, 16)} ${esc(nm(k))}<small>${esc(tech)}</small></span></button>`;
       }).join('') + '</div>';
-      if (!WS_KEYS.some(k => m.opts[k])) h += '<p class="mk-note" style="margin-top:2px">No new workshops – the plan only uses the Windmills, Forges and Sawmills already on the board.</p>';
+      if (!WS_KEYS.some(k => m.opts[k])) h += '<p class="mk-note" style="margin-top:2px">No new workshops</p>';
       if (p) h += growthHtml(res);
       if (p) h += techHtml(res);
       const au = autoStats();
-      if (au.unsure) h += `<p class="mk-note" style="color:#ffb703">⚠️ ${plural(au.unsure, 'tile', 'tiles')} in your territory ${au.unsure === 1 ? 'was' : 'were'} not detected with certainty (?). The plan uses the best guess – check ${au.unsure === 1 ? 'it' : 'them'} in step ② if it matters.</p>`;
+      if (au.unsure) h += `<p class="mk-note" style="color:#ffb703">⚠ ${plural(au.unsure, 'tile', 'tiles')} with ? – check in ②</p>`;
       if (p) h += planHtml(p, res);
-      else if (res && res.tooBig) h += `<p class="mk-note" style="color:var(--warn,#ffaa00)">Too many possibilities for the exact search (${res.tooBig.toLocaleString('en')} Market combinations). Mark the tiles in step ② (unmarked tiles count as Empty, so every one is a possible Market site) or plan fewer cities at once.</p>`;
-      else if (res && !res.pending) h += '<p class="mk-note">No Market can earn anything here. A Market needs an Empty tile of a city’s territory next to a Windmill, Forge or Sawmill site – and those need Farms, Mines or Lumber Huts (or tiles that can become one) next to them. Check the tiles in step ② and the allowed actions.</p>';
+      else if (res && res.tooBig) h += `<p class="mk-note" style="color:var(--warn,#ffaa00)">⚠ Too many possibilities – mark the tiles in ② or plan fewer cities</p>`;
+      else if (res && !res.pending) h += '<p class="mk-note">No Market can earn anything here</p>';
       if (res && !res.pending && !res.altPending) h += proofHtml(res);
-      if (res && res.large) {
-        const L = res.large, n = plural(L.cities, 'city', 'cities');
-        h += `<p class="mk-note">${res.altPending ? '<span class="mk-spin"></span><b>Still improving…</b> the plan below is the best so far. ' : ''}` +
-          `Large search (${n}): planned in groups of 1–3 neighbouring cities, each group exactly, until no group can be improved · ${res.stats.windows} groups checked` +
-          (res.altPending ? '' : L.optimal ? ' · <b>every Market at 8 ★ – the most ★ possible</b>' : L.complete ? ' · no group of up to 3 neighbouring cities can do better' : ' · time limit reached – best plan found') + '.</p>';
-      } else if (res && !res.pending && !res.altPending && !res.tooBig) h += `<p class="mk-note">Exact search: ${plural(res.cities.filter(c => !c.implicit).length, 'city', 'cities')} · ${res.stats.combos} Market combinations · ${res.stats.nodes} layouts · ${res.stats.leaves} producer optimizations · best plan in ${res.msBest} ms, all ${res.ms} ms.</p>`;
+      if (res && res.large && res.altPending) h += '<p class="mk-note"><span class="mk-spin"></span>Still improving…</p>';
     }
     h += '</div>';
     el.innerHTML = h;
@@ -2336,16 +2318,6 @@
     let auto = 0, unsure = 0;
     for (const x of areaCells()) { if (x.terrain === 'city' || x.stored) continue; if (x.auto) auto++; if (x.unsure) unsure++; }
     return { auto, unsure };
-  }
-  function ringNote() {
-    const n = ringInfo().keys.size;
-    return n ? ` <span style="color:#c8ff9a">🌱 The dashed light-green tiles (${n}) are the extra ring the 3×3 cities would get with Border Growth – mark them too, the Border Growth check in ③ uses them.</span>` : '';
-  }
-  function autoNote() {
-    const a = autoStats();
-    if (!a.auto) return 'Unmarked tiles count as Empty.';
-    return 'Terrain is detected from the screenshot' + (a.unsure ? ' – <b style="color:#ffb703">' + plural(a.unsure, 'tile', 'tiles') + ' with ?</b>: not sure, please check (tap = mark it yourself)' : ' ✓') +
-      '. Crop, Metal and Fruit are filled in where the detection is sure – mark the others and the buildings yourself.';
   }
   function chipsHtml(A) {
     if (!A.cities.length) return '';
@@ -2485,7 +2457,7 @@
       h += '<h3>Building</h3>';
       h += nDone === p.steps.length
         ? '<div class="mk-prog all">🎉 All steps built – the Markets earn ' + p.income + ' ★/turn.</div>'
-        : `<div class="mk-prog"><div class="bar"><i style="width:${Math.round(100 * nDone / p.steps.length)}%"></i></div><span>${nDone ? `<b>${nDone}</b> of ${p.steps.length} built · ${left} ★ to go` : 'Mark steps with ✓ Built in the bar on the map'}</span></div>`;
+        : `<div class="mk-prog"><div class="bar"><i style="width:${Math.round(100 * nDone / p.steps.length)}%"></i></div><span>${nDone ? `<b>${nDone}</b> of ${p.steps.length} built · ${left} ★ to go` : `0 of ${p.steps.length} built`}</span></div>`;
       if (nDone) h += '<button class="mk-btn" data-a="clearDone" style="margin:0 0 6px">Clear all ✓ marks</button>';
     }
     h += `<ol class="mk-list"><li class="tot"><span class="tx">Total: ${p.income} ★/turn · ${plural(p.actions, 'step', 'steps')}${p.payback ? ' · pays off in ' + plural(p.payback, 'turn', 'turns') : ''}</span><span class="co">${p.cost} ★</span></li></ol>`;
