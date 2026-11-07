@@ -1,0 +1,17 @@
+[Unit]
+Description=Polytopia Planner – training contributions (opt-in)
+After=network.target
+
+[Service]
+ExecStart=/usr/bin/python3 /opt/polytopia-contrib/server.py
+DynamicUser=yes
+StateDirectory=polytopia-contrib
+Environment=PORT=8091
+Restart=on-failure
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+
+[Install]
+WantedBy=multi-user.target

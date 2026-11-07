@@ -1599,6 +1599,7 @@ window.PP = window.PP || {};
         <button data-m="fit" ${st.board ? '' : 'disabled'}>⤢ Show whole image</button>
         ${PP.ai && PP.ai.openSettings && PP.ai.enabled() ? `<button data-m="ai">🤖 AI detection <span>${PP.ai.hasKey && PP.ai.hasKey() ? 'Key ✓' : 'off'}</span></button>` : ''}
         ${PP.tutorial ? '<button data-m="tut">📖 Tutorial</button>' : ''}
+        ${PP.contrib ? `<button data-m="contrib">🧠 Help improve detection <span>${PP.contrib.status() === 'yes' ? 'On' : 'Off'}</span></button>` : ''}
         <button data-m="privacy">🔒 Privacy</button>
         <button data-m="clear" class="danger">🗑️ Clear everything</button>
       </div>
@@ -1615,6 +1616,7 @@ window.PP = window.PP || {};
       else if (m === 'ai') PP.ai.openSettings();
       else if (m === 'tut') PP.tutorial.open();
       else if (m === 'privacy') location.href = 'privacy.html';
+      else if (m === 'contrib') { PP.ui.closeSheet(); PP.contrib.settings(); }
       else if (m === 'clear') {
         if (!PP.ui.confirm('Delete all units, drawings, tiles, plans and techs?')) return;
         clearBoardItems(true); PP.ui.closeSheet(); commit(); toast('Everything cleared');
