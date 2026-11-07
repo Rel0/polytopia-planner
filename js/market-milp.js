@@ -38,7 +38,7 @@
       opts.push(keep);
       Ek.forEach(i => uniqueAt[i].push({ v: keep, T }));
       if (allD && Ek.length) opts.push(add({ name: `s${k}_${T}_dest`, kind: 'destroy', k, T, cost: Ek.length * C.destroy, act: Ek.length }));
-      const allowNew = allD && (T === 'market' || o[T]);
+      const allowNew = allD && (T === 'market' ? o.market !== false : o[T]);
       if (allowNew) for (const x of P.terrTiles[k]) {
         if (Ek.indexOf(x) >= 0 || !pField[x]) continue;
         const b = cells[x].bld;

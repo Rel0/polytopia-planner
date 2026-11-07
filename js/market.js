@@ -76,9 +76,11 @@
     if (t !== 'city' && x.own != null) o.own = String(x.own);
     return o;
   }
+  // v36 tech limits (only set by the tech advisor): market = new Markets (Trade), farm / mine / lumber = new producers
+  const TECH_KEYS = ['market', 'farm', 'mine', 'lumber'];
   function normOpts(opts) {
     const o = {};
-    for (const k of OPT_KEYS.concat(WS_KEYS)) o[k] = !(opts && opts[k] === false);
+    for (const k of OPT_KEYS.concat(WS_KEYS, TECH_KEYS)) o[k] = !(opts && opts[k] === false);
     return o;
   }
   function costs(opts) {
@@ -100,6 +102,7 @@
     return null;
   }
   function prodPath(x, X, o) {
+    if (o && o[X] === false) return null; // tech not there (Farming / Mining / Forestry)
     if (X === 'farm') {
       if (x.t === 'field') return x.crop ? ['farm'] : o.grow && o.burn ? ['plant', 'burn', 'farm'] : null;
       if (x.t === 'forest') return o.burn ? ['burn', 'farm'] : null;
@@ -208,7 +211,7 @@
       const Ek = E[k].market, list = [{ kind: 'keep', tiles: Ek, frees: [], w: 0, cost: 0, act: 0, k, T: 'market' }];
       const allD = Ek.every(i => dOK[i]);
       if (Ek.length && allD) list.push({ kind: 'destroy', tiles: [], frees: Ek, w: Ek.length * wD, cost: Ek.length * C.destroy, act: Ek.length, k, T: 'market' });
-      if (!allD) return list;
+      if (!allD || !P.o.market) return list; // no Trade → only the Markets that exist
       for (const x of terrTiles[k]) {
         if (Ek.indexOf(x) >= 0 || !pField[x]) continue;
         const b = cells[x].bld;
@@ -914,7 +917,7 @@
     destroy: ['💥', 'Destroy buildings', 'move / replace'], produce: ['🏗️', 'New Farms, Mines, Lumber Huts', ''] };
   const TECH_OF_WS = { windmill: 'Construction', forge: 'Smithery', sawmill: 'Mathematics' }; // fallback when PP.TECH is missing
 
-  const ui = { step: 1, brush: 'forest', paint: null, alt: 0, sel: null, entered: false, borders: false, edit: null, onlyForest: false, growMenu: false };
+  const ui = { step: 1, brush: 'forest', paint: null, alt: 0, sel: null, entered: false, borders: false, edit: null, onlyForest: false, growMenu: false, techMenu: false };
   const S = () => PP.state;
   // state.market: { cities: [{ c, r, rad: 1|2, made? }], edits: { 'c,r': 1 (added) | 0 (removed) }, touched, opts }
   // (v16 had a rectangle `region`; now always false – core resets it to null when a new screenshot is loaded)
@@ -1144,7 +1147,7 @@
   }
   function runJob(g, job) {
     return new Promise(done => {
-      const step = () => { if (growth !== g) return done(null); if (job.step(Date.now() + 20)) done(job.result); else setTimeout(step, 0); };
+      const step = () => { if (!alive(g)) return done(null); if (job.step(Date.now() + 20)) done(job.result); else setTimeout(step, 0); };
       setTimeout(step, 0);
     });
   }
@@ -1170,24 +1173,28 @@
   }
   // one configuration: quick search, then HiGHS proves the maximum ★ (same model as the main proof). If HiGHS finds
   // more ★ than the search, a short cost run makes the cost of that plan comparable. → { income, cost, proven }
-  async function solveGrowCfg(g, set) {
-    const cells = optCells(areaCells(area(set))), o = Object.assign({}, M().opts, { alts: false });
+  // a background check (Border Growth, tech advisor) is still wanted? g.alive() for the tech advisor
+  const alive = g => (g.alive ? g.alive() : growth === g);
+  async function solveGrowCfg(g, set) { return solveScenario(g, optCells(areaCells(area(set))), M().opts); }
+  // best plan for these cells and options: quick search, then HiGHS proves the maximum ★ → { income, cost, proven }
+  async function solveScenario(g, cells, opts) {
+    const o = Object.assign({}, opts, { alts: false });
     let job = createJob(cells, o);
     if (job.combos > QUICK_EXACT) job = createLargeJob(cells, Object.assign(o, { largeMs: 3000, quick: false }));
     const r = await runJob(g, job);
-    if (growth !== g || !r) return null;
+    if (!alive(g) || !r) return null;
     const b = r.best;
     let out = { income: b ? b.income : 0, cost: b ? b.cost : 0, proven: !r.large || !!(b && b.income >= r.large.ub) };
     if (out.proven) return out;
-    const P = prepare(cells, Object.assign({}, M().opts));
+    const P = prepare(cells, Object.assign({}, opts));
     const pr = await milpRun(g, P, { mode: 'income' }, r.decision, GROW_PROOF_SECS);
-    if (growth !== g) return null;
+    if (!alive(g)) return null;
     if (!pr) return out;
     out.proven = pr.optimal;
     if (pr.p && pr.p.income > out.income) {
       out.income = pr.p.income; out.cost = pr.p.cost;
       const pc = await milpRun(g, P, { mode: 'cost', minIncome: out.income }, pr.D, GROW_COST_SECS);
-      if (growth !== g) return null;
+      if (!alive(g)) return null;
       if (pc && pc.p && pc.p.income >= out.income && pc.p.cost < out.cost) out.cost = pc.p.cost;
     }
     return out;
@@ -1202,7 +1209,7 @@
     if (!res || !res.best) return;
     const skip = growSkip(), A = area(), cand = A.cities.filter(ci => ci.rad === 1 && !skip.has(key(ci.c, ci.r))).map(ci => ({ key: key(ci.c, ci.r), name: cityName(ci, ci.k), k: ci.k, c: ci.c, r: ci.r }));
     if (!cand.length) return;
-    stopGrowth();
+    stopGrowth(); if (tech && tech.state !== 'done') stopTech(); // only one check at a time; finished results stay
     const n = cand.length, exhaustive = n <= GROW_ALL_MAX;
     const g = growth = { sig: cacheSig, state: 'running', exhaustive, n, done: 0, total: growSolves(n), t0: Date.now(), open: 0, cities: [], best: null, base: null };
     const memo = new Map(), cfgKey = set => [...set].sort().join('|');
@@ -1219,14 +1226,7 @@
     const better = (a, sa, b, sb) => !b || a.income > b.income || (a.income === b.income && (a.cost < b.cost || (a.cost === b.cost && sa.size < sb.size)));
     const near = (a, b) => Math.max(Math.abs(a.c - b.c), Math.abs(a.r - b.r)) <= 5;
     (async () => {
-      // the proof of the main plan needs the same CPU (each check is ~4× slower next to it) → pause it, go on afterwards
-      if (prover) {
-        const pr = prover;
-        g.paused = { res: pr.res, sig: pr.sig, costSecs: pr.costSecs || COST_SECS };
-        stopProver();
-        ['inc', 'cost', 'fast'].forEach(k => { if (pr.res.proof && (pr.res.proof[k] === 'running' || pr.res.proof[k] === 'waiting')) pr.res.proof[k] = 'waiting'; });
-        if (pr.res.proof) pr.res.proof.paused = true;
-      }
+      pauseProof(g);
       g.t0 = Date.now();
       const base = await solve(new Set()); if (!base) return;
       g.base = base;
@@ -1300,6 +1300,15 @@
       refresh();
     })();
   }
+  // the proof of the main plan needs the same CPU (each check is ~4× slower next to it) → pause it, go on afterwards
+  function pauseProof(g) {
+    if (!prover) return;
+    const pr = prover;
+    g.paused = { res: pr.res, sig: pr.sig, costSecs: pr.costSecs || COST_SECS };
+    stopProver();
+    ['inc', 'cost', 'fast'].forEach(k => { if (pr.res.proof && (pr.res.proof[k] === 'running' || pr.res.proof[k] === 'waiting')) pr.res.proof[k] = 'waiting'; });
+    if (pr.res.proof) pr.res.proof.paused = true;
+  }
   function resumeProof(g) {
     const pz = g && g.paused; if (!pz) return;
     g.paused = null;
@@ -1311,6 +1320,131 @@
     if (g && g.worker) try { g.worker.terminate(); } catch (e) { /* gone */ }
     growth = null;
     if (g && g.state !== 'done') resumeProof(g);
+  }
+  // ====================================================================== v36 tech advisor
+  // Which tech (that you don't have yet) brings your Markets the most? Every scenario is the best Market plan with your
+  // techs plus that tech (and the techs it needs) – solved like the Border Growth check. Then the best order: the best
+  // tech counts as bought and the others are checked again on top of it.
+  const MK_TECHS = ['trade', 'construction', 'mathematics', 'smithery', 'farming', 'forestry', 'mining', 'spiritualism'];
+  const TECH_PICK = ['riding', 'roads', 'trade', 'organization', 'farming', 'construction', 'hunting', 'forestry', 'mathematics', 'climbing', 'mining', 'smithery', 'archery', 'spiritualism', 'philosophy'];
+  const TECH_UNLOCKS = { trade: 'Markets', construction: 'Windmill, Burn Forest', mathematics: 'Sawmill', smithery: 'Forge', farming: 'Farm', forestry: 'Lumber Hut, Clear Forest', mining: 'Mine', spiritualism: 'Grow Forest' };
+  let tech = null;
+  const techName = id => (PP.TECH && PP.TECH[id] ? PP.TECH[id].name : id);
+  const ownedTechs = () => { const b = S().build || {}; return new Set(Array.isArray(b.owned) ? b.owned : []); };
+  const techNow = () => (tech && tech.sig === techSig() ? tech : null);
+  function techSig() { return cacheSig + '|' + [...ownedTechs()].sort().join(','); }
+  // the techs needed for id that are not in have, prerequisites first
+  function techPath(id, have) { const out = []; let t = PP.TECH && PP.TECH[id]; while (t && !have.has(t.id)) { out.unshift(t.id); t = t.parent ? PP.TECH[t.parent] : null; } return out; }
+  function techCityCount() {
+    const own = (S().cities || []).filter(c => c && c.side === 'me').length, b = S().build || {};
+    return Math.max(1, own, selCities().length, +b.cityCount || 1);
+  }
+  function techCost(list, owned) {
+    const n = techCityCount(), ow = [...owned];
+    return list.reduce((a, id) => a + (PP.engine && PP.engine.techCost ? PP.engine.techCost(id, n, ow) : (PP.TECH[id] ? PP.TECH[id].tier : 1) * n + 4), 0);
+  }
+  // what the plan may build with these techs (and the options you set)
+  function techOpts(have) {
+    const h = id => have.has(id), u = M().opts, o = Object.assign({}, u);
+    const lim = { market: h('trade'), farm: h('farming'), mine: h('mining'), lumber: h('forestry'), clear: h('forestry'), burn: h('construction'),
+      destroy: h('construction'), grow: h('spiritualism'), windmill: h('construction'), sawmill: h('mathematics'), forge: h('smithery') };
+    for (const k in lim) o[k] = u[k] !== false && lim[k];
+    return o;
+  }
+  function stopTech() {
+    const g = tech;
+    if (g && g.worker) try { g.worker.terminate(); } catch (e) { /* gone */ }
+    tech = null;
+    if (g && g.state !== 'done') resumeProof(g);
+  }
+  function startTech() {
+    if (growth && growth.state !== 'done') stopGrowth(); // only one check at a time; finished results stay
+    stopTech();
+    const owned = ownedTechs(), cand = MK_TECHS.filter(t => !owned.has(t));
+    const g = tech = { sig: techSig(), state: 'running', done: 0, total: 1 + cand.length, open: 0, rows: [], order: [], t0: Date.now(), alive: () => tech === g };
+    const cells = optCells(areaCells()), memo = new Map();
+    const refresh = () => { if (tech === g && PP.modes && PP.modes.current === 'market') PP.app.refresh(); };
+    const solve = async have => {
+      const k = [...have].sort().join(',');
+      if (!memo.has(k)) {
+        const v = await solveScenario(g, cells, techOpts(have)); if (!v) return null;
+        if (!v.proven) g.open++; memo.set(k, v); g.done++; if (g.done > g.total) g.total = g.done; refresh();
+      }
+      return memo.get(k);
+    };
+    // a scenario always includes Trade (no Trade → no new Market)
+    const withTech = (have, id) => { const add = techPath(id, have); const h2 = new Set([...have, ...add]); if (!h2.has('trade')) techPath('trade', h2).forEach(t => { add.push(t); h2.add(t); }); return { have: h2, add }; };
+    (async () => {
+      pauseProof(g);
+      g.t0 = Date.now();
+      const base = await solve(owned); if (!base) return;
+      g.base = base;
+      for (const id of cand) {
+        const { have, add } = withTech(owned, id), r = await solve(have); if (!r) return;
+        g.rows.push({ id, add, income: r.income, gain: r.income - base.income, tcost: techCost(add, owned), dcost: r.cost - base.cost, proven: r.proven });
+        refresh();
+      }
+      // best order: always the tech that adds the most ★/turn on top of the ones before (ties: cheaper)
+      let have = owned, cur = base, left = cand.slice();
+      while (left.length) {
+        let best = null;
+        for (const id of left) {
+          if (have.has(id)) continue;
+          const w = withTech(have, id), r = await solve(w.have); if (!r) return;
+          const gain = r.income - cur.income, tc = techCost(w.add, have), dc = r.cost - cur.cost;
+          if (!best || gain > best.gain || (gain === best.gain && tc + dc < best.tc + best.dc)) best = { id, w, r, gain, tc, dc };
+        }
+        if (!best || best.gain <= 0) break;
+        g.order.push({ id: best.id, add: best.w.add, gain: best.gain, tc: best.tc, dc: best.dc, income: best.r.income });
+        have = best.w.have; cur = best.r; left = left.filter(id => !have.has(id));
+        refresh();
+      }
+      g.state = 'done'; g.ms = Date.now() - g.t0;
+      if (g.worker) try { g.worker.terminate(); } catch (e) { /* gone */ }
+      resumeProof(g);
+      refresh();
+    })();
+  }
+  function techHtml(res) {
+    if (!res || res.pending || res.tooBig || res.altPending || !res.best) return '';
+    const g = techNow(), owned = ownedTechs();
+    if (!g) {
+      if (!ui.techMenu) return '<button class="mk-btn" data-a="techMenu">🔬 Which tech helps my Markets most? ▾</button>';
+      const cand = MK_TECHS.filter(t => !owned.has(t)), solves = 1 + cand.length * 2;
+      const est = Math.max(5, Math.round(solves * (res.large ? 6 : 1.5)));
+      let h = '<div class="gw-menu"><div class="gw-mh"><b>🔬 Which techs do you have?</b><button class="lnk" data-a="techMenu">close ▴</button></div><div class="gw-pick">';
+      h += TECH_PICK.map(id => { const on = owned.has(id); return `<button class="${on ? 'on' : ''}" data-tech="${id}" style="--cc:${on ? '#06d6a0' : '#5a6488'}" aria-pressed="${on}"><span class="bx">${on ? '✓' : ''}</span>${esc(techName(id))}</button>`; }).join('');
+      h += `</div><div class="mk-note" style="margin:6px 0">Same list as in 💰 Costs. Tech prices for ${plural(techCityCount(), 'city', 'cities')}.</div>`;
+      h += cand.length ? `<button class="mk-btn pri" data-a="tech">▶ Start <small style="opacity:.8">(about ${plural(solves, 'plan', 'plans')} · about ${est < 90 ? est + ' s' : Math.round(est / 60) + ' min'})</small></button>`
+        : '<div class="mk-note">You have every tech the Markets need.</div>';
+      return h + '</div>';
+    }
+    const box = inner => '<div class="mk-grow"><div class="gw-t">🔬 Which tech helps my Markets most?</div>' + inner + '</div>';
+    if (g.state === 'running') {
+      const pct = Math.min(100, Math.round(100 * g.done / Math.max(1, g.total)));
+      return box(`<div class="mk-prog"><div class="bar"><i style="width:${pct}%;background:#7bd389"></i></div><span><span class="mk-spin"></span>checking plan ${Math.min(g.done + 1, g.total)} of ≈${g.total}…</span></div>`);
+    }
+    const nm = id => `<b>${esc(techName(id))}</b>`, extra = (add, id) => { const o = add.filter(x => x !== id); return o.length ? ` <small>(+ ${o.map(techName).map(esc).join(', ')})</small>` : ''; };
+    const pay = (gain, c) => (gain > 0 ? (c > 0 ? 'pays back in ' + plural(Math.ceil(c / gain), 'turn', 'turns') : 'pays back at once') : '');
+    let h = '';
+    const first = g.order[0];
+    h += first ? `<div class="gw-sum">👉 Buy first: ${nm(first.id)}${extra(first.add, first.id)} – <b class="gw-plus">+${first.gain} ★/turn</b> from Markets<br><small>${g.base.income} → ${first.income} ★/turn · techs ${first.tc} ★ + building ${Math.max(0, first.dc)} ★ · ${pay(first.gain, first.tc + Math.max(0, first.dc))}</small></div>`
+      : '<div class="gw-sum">👉 <b>No new tech adds Market income</b> with these cities and tiles.</div>';
+    if (g.order.length > 1) {
+      h += '<div class="mk-note" style="margin:0 0 4px">Best order (each on top of the ones before):</div><div class="tc-order">';
+      let sum = g.base.income;
+      h += g.order.map((o, i) => { sum = o.income; return `<span><b>${i + 1}.</b> ${esc(techName(o.id))}${o.add.length > 1 ? ' <small>(+' + plural(o.add.length - 1, 'tech', 'techs') + ')</small>' : ''} <b class="gw-plus">+${o.gain} ★</b></span>`; }).join('<i>→</i>');
+      h += `</div><div class="mk-note" style="margin:2px 0 8px">All together: ${g.base.income} → <b>${sum} ★/turn</b></div>`;
+    }
+    h += '<div class="mk-note" style="margin:4px 0">Each tech alone (with the techs it needs):</div>';
+    const rows = g.rows.slice().sort((a, b) => b.gain - a.gain || (a.tcost + a.dcost) - (b.tcost + b.dcost));
+    h += rows.map(r => `<div class="gw-card ${r.gain > 0 ? 'take' : 'skip'}" style="--cc:${r.gain > 0 ? '#7bd389' : '#5a6488'}"><div class="gw-h">${nm(r.id)}${extra(r.add, r.id)}` +
+      `<span class="gw-v">${r.gain > 0 ? '+' + r.gain + ' ★/turn' : 'no gain'}</span></div>` +
+      `<div class="gw-d"><small>${esc(TECH_UNLOCKS[r.id] || '')} · techs ${r.tcost} ★${r.gain > 0 ? ' + building ' + Math.max(0, r.dcost) + ' ★ · ' + pay(r.gain, r.tcost + Math.max(0, r.dcost)) : ''}</small></div></div>`).join('');
+    h += `<p class="mk-note" style="margin:8px 0 0">Only Market income counts (not units, population or score). Tech prices for ${plural(techCityCount(), 'city', 'cities')}. ` +
+      (g.open ? `<b style="color:#ffb703">${plural(g.open, 'plan', 'plans')} not proven within ${GROW_PROOF_SECS} s</b>. ` : 'Every ★/turn number is proven. ') + (g.ms ? Math.round(g.ms / 1000) + ' s.' : '') + '</p>';
+    h += '<button class="mk-btn sm" data-a="techAgain" style="margin-top:8px">↻ Change my techs and check again</button>';
+    return box(h);
   }
   // v33: cities the player does not want to grow (chosen in the Border Growth menu) – kept with the plan
   function growSkip() { const m = M(); if (!Array.isArray(m.growSkip)) m.growSkip = []; return new Set(m.growSkip); }
@@ -1553,6 +1687,7 @@
     if (cache && sig === cacheSig) return cache;
     if (prover && prover.sig !== sig) stopProver();
     if (growth && growth.sig !== sig) stopGrowth(); // board changed → that check is worthless
+    if (tech && tech.sig.split('|')[0] !== sig) stopTech();
     if (running && running.sig === sig) return running.job.partial ? Object.assign({}, running.job.partial, { altPending: true, etaMs: running.job.eta ? running.job.eta() : null }) : { pending: true, job: running.job };
     let job = createJob(optCells(areaCells()), Object.assign({}, m.opts)), exact = null;
     // v29: results first. Tiny problems: the exact search right away. Otherwise the fast group search shows a plan within
@@ -2018,6 +2153,9 @@
 .mk .mk-btn.on{box-shadow:inset 0 0 0 2px #ffb703;background:rgba(255,183,3,.15)}
 .mk .mk-grow{margin:12px 0 4px;padding:10px;border:1px solid var(--line,#33406e);border-radius:12px;background:rgba(123,211,137,.05)}
 .mk .gw-t{font-weight:800;margin-bottom:6px}
+.mk .tc-order{display:flex;flex-wrap:wrap;align-items:center;gap:4px 6px;font-size:13px}
+.mk .tc-order span{background:rgba(255,255,255,.06);border-radius:8px;padding:4px 8px}
+.mk .tc-order i{font-style:normal;color:var(--muted,#9aa5c8)}
 .mk .gw-menu{margin:6px 0;padding:8px 10px;border:1px solid var(--line,#33406e);border-radius:12px;background:rgba(255,255,255,.03)}
 .mk .gw-mh{display:flex;align-items:center;justify-content:space-between;margin-bottom:6px}
 .mk .gw-pick{display:flex;flex-wrap:wrap;gap:6px}
@@ -2137,6 +2275,7 @@
       }).join('') + '</div>';
       if (!WS_KEYS.some(k => m.opts[k])) h += '<p class="mk-note" style="margin-top:2px">No new workshops – the plan only uses the Windmills, Forges and Sawmills already on the board.</p>';
       if (p) h += growthHtml(res);
+      if (p) h += techHtml(res);
       const au = autoStats();
       if (au.unsure) h += `<p class="mk-note" style="color:#ffb703">⚠️ ${plural(au.unsure, 'tile', 'tiles')} in your territory ${au.unsure === 1 ? 'was' : 'were'} not detected with certainty (?). The plan uses the best guess – check ${au.unsure === 1 ? 'it' : 'them'} in step ② if it matters.</p>`;
       if (p) h += planHtml(p, res);
@@ -2350,6 +2489,7 @@
     if (d.brush) { ui.brush = ui.brush === d.brush ? null : d.brush; PP.app.refresh(); return; }
     if (d.alt) { ui.alt = d.alt === 'best' ? 0 : d.alt; ui.sel = null; PP.app.refresh(); requestAnimationFrame(fitPlan); return; }
     if (d.opt) { m.opts[d.opt] = !m.opts[d.opt]; ui.alt = 0; PP.app.commit(); return; }
+    if (d.tech) { const b = S().build || (S().build = {}); if (!Array.isArray(b.owned)) b.owned = []; const i = b.owned.indexOf(d.tech); if (i >= 0) b.owned.splice(i, 1); else b.owned.push(d.tech); PP.app.commit(); return; }
     if (d.gskip) { const sk = growSkip(); if (sk.has(d.gskip)) sk.delete(d.gskip); else sk.add(d.gskip); M().growSkip = [...sk]; PP.app.commit(); return; }
     if (d.done) { if (m.done[d.done]) delete m.done[d.done]; else m.done[d.done] = ++doneSeq; PP.app.commit(); return; }
     if (d.go) {
@@ -2377,6 +2517,9 @@
       PP.app.commit(); requestAnimationFrame(fitRegion);
       toast(n ? plural(n, 'city', 'cities') + ' added' : 'Nothing added'); return;
     }
+    if (a === 'techMenu') { ui.techMenu = !ui.techMenu; PP.app.refresh(); return; }
+    if (a === 'techAgain') { stopTech(); ui.techMenu = true; PP.app.refresh(); return; }
+    if (a === 'tech') { ui.techMenu = false; startTech(); PP.app.refresh(); return; }
     if (a === 'growthMenu') { ui.growMenu = !ui.growMenu; PP.app.refresh(); return; }
     if (a === 'growthAgain') { stopGrowth(); ui.growMenu = true; PP.app.refresh(); return; }
     if (a === 'growth') { ui.growMenu = false; }
