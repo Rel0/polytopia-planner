@@ -283,7 +283,6 @@ details.adv .hprow button{width:auto;padding:0 10px;font-size:14px}
   #drawer.collapsed #drawerTab i{margin-top:0}
   #drawerHead{padding:6px 8px 6px 14px}
   #drawerBody{padding-bottom:12px}
-  body.mapact #drawerBody{padding-bottom:96px}
   /* v8: compact "peek" state – sheet height = the tool's [data-peek] part (set by core as --ph), no title row */
   #drawer.peek{height:var(--ph,96px);min-height:0}
   #drawer.peek #drawerHead{display:none}

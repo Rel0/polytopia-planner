@@ -740,10 +740,13 @@ window.PP = window.PP || {};
     const ma = $('#mapAct');
     if (ma && !ma.hidden) {
       // always at the same height: the bottom of the map (phone: just above the panel's grab tab, on top of the panel)
-      const sheet = isSheet(), vr = sheet ? { x: 0, w: cw } : visibleRect(true);
+      // collapsed panel: always the same spot at the bottom; panel open: right above it, never on top of it;
+      // hardly any map left (panel expanded fully): hidden
+      const sheet = isSheet(), vr = visibleRect(true), open = vr.y + vr.h < ch - 2;
       ma.style.left = (vr.x + vr.w / 2) + 'px';
       ma.style.width = Math.max(200, Math.min(440, vr.w - 16)) + 'px';
-      ma.style.bottom = (sheet && drawerEl && !drawerEl.hidden ? 46 : 10) + 'px';
+      ma.style.bottom = (open ? ch - (vr.y + vr.h) + (sheet ? 46 : 8) : sheet && drawerEl && !drawerEl.hidden ? 46 : 10) + 'px';
+      ma.style.visibility = open && vr.h < 150 ? 'hidden' : '';
     }
     document.body.classList.toggle('mapact', !!(ma && !ma.hidden));
     const el = $('#hint'); if (!el || el.hidden) return;

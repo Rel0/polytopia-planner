@@ -887,7 +887,7 @@
   const ICON = {
     field: '🟩', forest: '🌲', mountain: '⛰️', water: '🌊', city: '🏠', crop: '🌾', ore: '💎', fruit: '🍒',
     farm: '🌾', mine: '⛏️', lumber: '🪵', windmill: '🌬️', forge: '🔨', sawmill: '🪚', market: '🏪',
-    destroy: '💥', clear: '🪓', burn: '🔥', plant: '🌱', other: '🏛️',
+    destroy: '💥', clear: '🪓', burn: '🔥', plant: '🌱', other: '🏛️', space: '🌌',
   };
   const ICON_NAME = { ore: 'metal', plant: 'forest', destroy: null, clear: null, burn: null, other: null };
   const iconName = id => (id in ICON_NAME ? ICON_NAME[id] : id);
@@ -902,18 +902,19 @@
   const BUILT_COL = '#16a34a', BUILT_FILL = 'rgba(22,163,74,.5)', BUILT_DARK = 'rgba(8,60,28,.95)';
   const ACT_COL = '#3ddc84'; // what the ✓ Built button acts on
   const cityCol = k => CITY_COL[(k >= 0 ? k : 0) % CITY_COL.length];
-  const TER_B = ['field', 'forest', 'mountain', 'water', 'city'];
+  const TER_B = ['field', 'forest', 'mountain', 'water', 'space', 'city'];
   const RES_B = ['crop', 'ore', 'fruit'];
   const BLD_B = ['farm', 'mine', 'lumber', 'windmill', 'forge', 'sawmill', 'market'];
   const BRUSH = TER_B.concat(RES_B, BLD_B);
-  const BRUSH_LABEL = { field: 'Empty', forest: 'Forest', mountain: 'Mountain', water: 'Water', city: 'City', crop: 'Crop', ore: 'Metal', fruit: 'Fruit',
+  const PAL_ORDER = ['field', 'sawmill', 'lumber', 'forest', 'windmill', 'farm', 'crop', 'fruit', 'forge', 'mine', 'ore', 'mountain', 'city', 'market', 'water', 'space'];
+  const BRUSH_LABEL = { field: 'Empty', forest: 'Forest', mountain: 'Mountain', water: 'Water', space: 'Space', city: 'City', crop: 'Crop', ore: 'Metal', fruit: 'Fruit',
     farm: 'Farm', mine: 'Mine', lumber: 'Lumber', windmill: 'Windmill', forge: 'Forge', sawmill: 'Sawmill', market: 'Market' };
   const RES_TER = { crop: 'field', fruit: 'field', ore: 'mountain' };
   const OPT_LABEL = { clear: ['🪓', 'Clear Forest', '+1 ★'], burn: ['🔥', 'Burn Forest', '→ Crop'], grow: ['🌱', 'Grow Forest', 'Empty → Forest'],
     destroy: ['💥', 'Destroy buildings', 'move / replace'], produce: ['🏗️', 'New Farms, Mines, Lumber Huts', ''] };
   const TECH_OF_WS = { windmill: 'Construction', forge: 'Smithery', sawmill: 'Mathematics' }; // fallback when PP.TECH is missing
 
-  const ui = { step: 1, brush: 'forest', paint: null, alt: 0, sel: null, entered: false, borders: false, edit: null, onlyForest: false };
+  const ui = { step: 1, brush: 'forest', paint: null, alt: 0, sel: null, entered: false, borders: false, edit: null, onlyForest: false, growMenu: false };
   const S = () => PP.state;
   // state.market: { cities: [{ c, r, rad: 1|2, made? }], edits: { 'c,r': 1 (added) | 0 (removed) }, touched, opts }
   // (v16 had a rectangle `region`; now always false – core resets it to null when a new screenshot is loaded)
@@ -960,7 +961,7 @@
     } catch (e) { /* none */ }
     return null;
   }
-  const TERRAINS = ['field', 'forest', 'mountain', 'water', 'ocean', 'cloud'];
+  const TERRAINS = ['field', 'forest', 'mountain', 'water', 'ocean', 'cloud', 'space'];
   // effective tile: { c, r, terrain, res, bld, stored, name?, cityId? } – unmarked tiles count as Empty
   // v29: terrain of an unmarked tile from the screenshot (PP.tilemodel, in the browser) → { terrain, conf, sure }
   // Cloud / space / foreign cities and villages count as unusable (water). Cached per screenshot + grid.
@@ -975,10 +976,13 @@
     if (autoMemo.m.has(k)) return autoMemo.m.get(k);
     const ctr = PP.grid.center(c, r), w = Math.abs(g.ux - g.vx);
     let out = null;
+    // v33: a tile whose centre is not on the screenshot is outside the map → Space (never part of a territory)
+    if (!(ctr.x >= 0 && ctr.y >= 0 && ctr.x < P.w && ctr.y < P.h)) { out = { terrain: 'space', model: 'outside', conf: 1, sure: true, res: [] }; autoMemo.m.set(k, out); return out; }
     try {
       const p = TM.classify(P, ctr.x, ctr.y, w);
       if (p) {
-        const t = /^(field|forest|mountain|water)$/.test(p.terrain) ? p.terrain : 'water';
+        // "outside" (space / map edge): only when the model is sure – unsure stays water (also not usable)
+        const t = /^(field|forest|mountain|water)$/.test(p.terrain) ? p.terrain : p.terrain === 'outside' && p.conf >= TM.SURE ? 'space' : 'water';
         // v2 models: a resource is only filled in when the model is sure about it (crop / fruit on fields, metal on mountains)
         const rs = p.res && p.resConf >= (TM.RES_SURE || 0.7) ? (p.res === 'metal' ? 'ore' : p.res) : null;
         out = { terrain: t, model: p.terrain, conf: p.conf, sure: p.conf >= TM.SURE, res: rs && RES_TER[rs] === t ? [rs] : [] };
@@ -1039,13 +1043,14 @@
       if (isCityAt(t.c, t.r)) continue; // someone else's city
       base.add(k);
       if (m.edits[k] === 0) continue;
+      if (cellAt(t.c, t.r).terrain === 'space') continue; // outside the map
       owner.set(k, nearestOf(t.c, t.r, t.by).k);
     }
     if (cities.length) {
       for (const k of Object.keys(m.edits)) {
         if (m.edits[k] !== 1 || owner.has(k) || cand.has(k)) continue;
         const [c, r] = k.split(',').map(Number);
-        if (!isFinite(c) || !isFinite(r) || isCityAt(c, r)) continue;
+        if (!isFinite(c) || !isFinite(r) || isCityAt(c, r) || cellAt(c, r).terrain === 'space') continue;
         owner.set(k, nearestOf(c, r, cities).k);
       }
     }
@@ -1058,17 +1063,24 @@
   // today's area. They can be marked in ② (only the Border Growth check uses them). → { A, keys: Map 'c,r' → city k }
   function ringInfo() {
     const A = area(), small = A.cities.filter(ci => ci.rad === 1), keys = new Map();
-    if (!small.length) return { A, keys };
+    if (!small.length) return { A, keys, G: null };
     const G = area(new Set(small.map(ci => key(ci.c, ci.r))));
     for (const [k, own] of G.owner) {
       if (A.owner.has(k)) continue;
       const [c, r] = k.split(',').map(Number);
       if (!isCityAt(c, r)) keys.set(k, own);
     }
-    return { A, keys };
+    return { A, keys, G };
   }
   const inRing = (c, r) => ringInfo().keys.has(key(c, r));
-  const inPaint = (c, r) => inArea(c, r) || inRing(c, r);
+  // paintable: everything inside a radius (also Space tiles, so they can be changed back), today's and grown
+  const inPaint = (c, r) => { const k = key(c, r), R = ringInfo(); return R.A.base.has(k) || R.A.owner.has(k) || (R.G && R.G.base.has(k)); };
+  // tiles inside a radius that are Space (outside the map) – shown in ② so they can be corrected
+  function spaceKeys() {
+    const R = ringInfo(), out = new Set();
+    [R.A.base].concat(R.G ? [R.G.base] : []).forEach(B => B.forEach(k => { const [c, r] = k.split(',').map(Number); if (cellAt(c, r).terrain === 'space') out.add(k); }));
+    return out;
+  }
   const ringCells = () => [...ringInfo().keys.keys()].map(k => { const [c, r] = k.split(',').map(Number); return Object.assign(cellAt(c, r), { ring: true }); });
   const RING_COL = 'rgba(190,255,120,.85)'; // dashed outline of the Border Growth ring in ②
   // per city: ring tiles you have not marked yourself, and how many of them the detection is unsure about
@@ -1188,7 +1200,7 @@
   const growSolves = n => (n <= GROW_ALL_MAX ? 2 ** n : 3 * n + 4);
   function startGrowth(res) {
     if (!res || !res.best) return;
-    const A = area(), cand = A.cities.filter(ci => ci.rad === 1).map(ci => ({ key: key(ci.c, ci.r), name: cityName(ci, ci.k), k: ci.k, c: ci.c, r: ci.r }));
+    const skip = growSkip(), A = area(), cand = A.cities.filter(ci => ci.rad === 1 && !skip.has(key(ci.c, ci.r))).map(ci => ({ key: key(ci.c, ci.r), name: cityName(ci, ci.k), k: ci.k, c: ci.c, r: ci.r }));
     if (!cand.length) return;
     stopGrowth();
     const n = cand.length, exhaustive = n <= GROW_ALL_MAX;
@@ -1300,6 +1312,8 @@
     growth = null;
     if (g && g.state !== 'done') resumeProof(g);
   }
+  // v33: cities the player does not want to grow (chosen in the Border Growth menu) – kept with the plan
+  function growSkip() { const m = M(); if (!Array.isArray(m.growSkip)) m.growSkip = []; return new Set(m.growSkip); }
   function growthHtml(res) {
     if (!res || res.pending || res.tooBig || res.altPending || !res.best) return '';
     const A = area(), small = A.cities.filter(ci => ci.rad === 1), grown = A.cities.filter(ci => ci.rad === 2);
@@ -1309,24 +1323,30 @@
       ` (${grown.map(ci => esc(cityName(ci, ci.k))).join(', ')}).</div><button class="mk-btn" data-a="growthAll" style="margin-top:4px;width:100%">🌱 Check all ${A.cities.length} cities from 3×3</button>` : '';
     if (growthAuto && !growthNow()) { growthAuto = false; setTimeout(() => { startGrowth(planResult()); PP.app.refresh(); }, 0); }
     if (!small.length) return box(allBtn.replace('margin:8px 0 0', 'margin:0'));
-    const g = growthNow(), rs = ringStats();
-    const n = small.length, solves = growSolves(n);
-    const openRing = small.reduce((a, ci) => a + ((rs[ci.k] || {}).open || 0), 0);
-    const ringWarn = openRing ? `<div class="gw-warn">⚠ ${plural(openRing, 'tile', 'tiles')} in the Border Growth rings are only detected from the screenshot, not checked by you. Missed Crop, Fruit, Metal or buildings there make Border Growth look worse than it is – mark them in <button class="lnk" data-step="2">② What’s here</button> (dashed light-green tiles).</div>` : '';
+    const g = growthNow(), rs = ringStats(), skip = growSkip();
+    const pick = small.filter(ci => !skip.has(key(ci.c, ci.r))), n = pick.length, solves = growSolves(n);
+    const openRing = pick.reduce((a, ci) => a + ((rs[ci.k] || {}).open || 0), 0);
+    const ringWarn = openRing ? `<div class="gw-warn">⚠ ${plural(openRing, 'ring tile', 'ring tiles')} only detected, not checked – <button class="lnk" data-step="2">mark them in ②</button></div>` : '';
     if (!g) {
+      // v33: a plain button; tapping it opens a small menu: which cities may grow, then Start
+      if (!ui.growMenu) return `<button class="mk-btn" data-a="growthMenu">🌱 Check Border Growth ▾</button>`;
       const est = Math.max(5, Math.round(solves * (res.large ? 6 : 1.5)));
-      return box(`<div class="mk-note" style="margin:0 0 6px">${n === 1 ? 'Tests whether the last city with 3×3 should grow to 5×5.' :
-        n <= GROW_ALL_MAX ? `Tests every combination of the ${n} cities with 3×3 – so cities that only pay off together are found too.` :
-        `Tests which of the ${n} cities with 3×3 should grow – alone, step by step together, then swapping neighbours until nothing gets better.`}</div>` + ringWarn +
-        (prover ? '<div class="mk-note" style="margin:0 0 6px">The check of the plan above is paused meanwhile and goes on by itself afterwards.</div>' : '') +
-        `<button class="mk-btn pri" data-a="growth" style="width:100%">🌱 Check Border Growth <small style="opacity:.8">(${n <= GROW_ALL_MAX ? '' : 'about '}${plural(solves, 'plan', 'plans')} · about ${est < 90 ? est + ' s' : Math.round(est / 60) + ' min'})</small></button>` + allBtn);
+      let h = '<div class="gw-menu"><div class="gw-mh"><b>🌱 Which cities may grow?</b><button class="lnk" data-a="growthMenu">close ▴</button></div><div class="gw-pick">';
+      h += small.map(ci => { const k = key(ci.c, ci.r), on = !skip.has(k);
+        return `<button class="${on ? 'on' : ''}" data-gskip="${k}" style="--cc:${cityCol(ci.k)}" aria-pressed="${on}"><span class="bx">${on ? '✓' : ''}</span>${esc(cityName(ci, ci.k))}</button>`; }).join('');
+      h += '</div>';
+      if (grown.length) h += `<div class="mk-note" style="margin:4px 0">Already 5×5: ${grown.map(ci => esc(cityName(ci, ci.k))).join(', ')} <button class="lnk" data-a="growthAll">set all to 3×3 and check</button></div>`;
+      h += ringWarn;
+      h += n ? `<button class="mk-btn pri" data-a="growth">▶ Start <small style="opacity:.8">(${n <= GROW_ALL_MAX ? '' : 'about '}${plural(solves, 'plan', 'plans')} · about ${est < 90 ? est + ' s' : Math.round(est / 60) + ' min'})</small></button>`
+        : '<button class="mk-btn" disabled>Pick at least one city</button>';
+      return h + '</div>';
     }
     if (g.state === 'running') {
       const pct = Math.min(100, Math.round(100 * g.done / Math.max(1, g.total)));
       return box(`<div class="mk-prog"><div class="bar"><i style="width:${pct}%;background:#7bd389"></i></div><span><span class="mk-spin"></span>checking plan ${Math.min(g.done + 1, g.total)} of ${g.exhaustive ? '' : '≈'}${g.total}…</span></div>`);
     }
     const nm = (k, name) => `<b style="color:${cityCol(k)}">${esc(name)}</b>`;
-    const take = g.cities.filter(c => c.take).sort((a, b) => b.gain - a.gain), skip = g.cities.filter(c => !c.take).sort((a, b) => b.alone - a.alone);
+    const take = g.cities.filter(c => c.take).sort((a, b) => b.gain - a.gain), noTake = g.cities.filter(c => !c.take).sort((a, b) => b.alone - a.alone);
     const sum = g.best.income - g.base.income, dc = g.best.cost - g.base.cost;
     let h = '';
     h += take.length
@@ -1349,12 +1369,14 @@
       return `<div class="gw-card ${c.take ? 'take' : 'skip'}" style="--cc:${cityCol(c.k)}"><div class="gw-h"><span class="dot"></span>${nm(c.k, c.name)}` +
         `<span class="gw-v">${c.take ? '🌱 Take Border Growth' : '✋ Take the other reward'}</span></div>${x}</div>`;
     };
-    h += take.concat(skip).map(card).join('');
+    h += take.concat(noTake).map(card).join('');
     h += ringWarn;
     h += `<p class="mk-note" style="margin:8px 0 0">${g.exhaustive ? `✓ All ${2 ** g.n} combinations checked – this is the best choice.` : `Checked ${g.done} combinations (alone, step by step, then adding, removing and swapping neighbours until nothing got better) – not all ${2 ** g.n}.`} ` +
       (g.open ? `<b style="color:#ffb703">${plural(g.open, 'plan', 'plans')} not proven within ${GROW_PROOF_SECS} s</b> – best found there. ` : 'Every ★/turn number is proven. ') +
       `${g.ms ? Math.round(g.ms / 1000) + ' s.' : ''}</p>`;
-    h += allBtn;
+    const left = small.filter(ci => skip.has(key(ci.c, ci.r)));
+    if (left.length) h += `<div class="mk-note" style="margin:4px 0 0">Not checked (your choice): ${left.map(ci => esc(cityName(ci, ci.k))).join(', ')}</div>`;
+    h += '<button class="mk-btn sm" data-a="growthAgain" style="margin-top:8px">↻ Choose cities and check again</button>';
     return box(h);
   }
   // v29 proof with HiGHS (js/market-worker.js): after the group search (many cities) the plan is checked by a MILP –
@@ -1872,7 +1894,7 @@
       }
       if (ui.step === 2) return ui.brush ? 'Tap or drag: ' + nm(ui.brush) + ' (tap again = remove)' : 'Pick a brush, then tap tiles';
       if (ui.onlyForest) return '🪓 Only the forests to cut down (🔥 = burn) · tap 🪓 again for the whole plan';
-      return 'Tap a Market to see what feeds it · tap any tile for details';
+      return 'Tap a Market or a city to see what belongs to it · tap any tile for details';
     },
     onEnter() {
       const m = M();
@@ -1954,6 +1976,7 @@
 .mk .mk-pal button.rs{background:rgba(255,255,255,.04);border-style:dashed}
 .mk .mk-pal button.b{background:rgba(76,201,240,.08)}
 .mk .mk-pal button.on{background:rgba(255,209,102,.22)}
+.mk .mk-plan{margin:6px 0 2px;min-height:46px;font-size:15px;border-radius:12px}
 .mk .mk-pal button.go{background:var(--accent,#4cc9f0);color:#08121f;border-color:transparent;font-weight:800;font-size:11px}
 .mk .mk-btn{display:block;width:100%;border:0;border-radius:11px;padding:10px;margin:6px 0;font-weight:700;background:var(--panel2,#252e52);color:var(--text,#e8ecf8);min-height:44px;font-size:14px}
 .mk .mk-btn.pri{background:var(--accent,#4cc9f0);color:#08121f}
@@ -1995,6 +2018,13 @@
 .mk .mk-btn.on{box-shadow:inset 0 0 0 2px #ffb703;background:rgba(255,183,3,.15)}
 .mk .mk-grow{margin:12px 0 4px;padding:10px;border:1px solid var(--line,#33406e);border-radius:12px;background:rgba(123,211,137,.05)}
 .mk .gw-t{font-weight:800;margin-bottom:6px}
+.mk .gw-menu{margin:6px 0;padding:8px 10px;border:1px solid var(--line,#33406e);border-radius:12px;background:rgba(255,255,255,.03)}
+.mk .gw-mh{display:flex;align-items:center;justify-content:space-between;margin-bottom:6px}
+.mk .gw-pick{display:flex;flex-wrap:wrap;gap:6px}
+.mk .gw-pick button{display:flex;align-items:center;gap:6px;border:1px solid rgba(255,255,255,.12);border-left:4px solid var(--cc);border-radius:9px;padding:6px 9px;background:var(--panel2,#252e52);color:var(--text,#e8ecf8);font-weight:700;font-size:13px;opacity:.6}
+.mk .gw-pick button.on{opacity:1}
+.mk .gw-pick .bx{width:16px;height:16px;border-radius:4px;border:2px solid rgba(255,255,255,.4);display:inline-flex;align-items:center;justify-content:center;font-size:11px;line-height:1}
+.mk .gw-pick button.on .bx{background:var(--accent,#4cc9f0);border-color:var(--accent,#4cc9f0);color:#08121f}
 .mk .gw-sum{font-size:14.5px;line-height:1.45;margin:0 0 8px;padding:8px 10px;border-radius:10px;background:rgba(123,211,137,.12)}
 .mk .gw-plus{color:#7bd389}
 .mk .gw-card{margin:6px 0;padding:8px 10px;border-radius:10px;border:1px solid rgba(255,255,255,.08);border-left:5px solid var(--cc);background:rgba(255,255,255,.03)}
@@ -2079,8 +2109,9 @@
       h += '<p class="mk-note">Only tiles inside these territories are planned – Markets, workshops and Farms, Mines, Lumber Huts are built there only. Where territories overlap, a tile belongs to the nearest city.</p>';
     } else if (ui.step === 2) {
       const bt = id => `<button data-brush="${id}" class="${ui.brush === id ? 'on' : ''} ${TER_B.indexOf(id) >= 0 ? 't' : RES_B.indexOf(id) >= 0 ? 'rs' : 'b'}" title="${esc(nm(id))}"><span>${iconHtml(id, 21)}</span>${BRUSH_LABEL[id]}</button>`;
-      h += `<div data-peek="tiles">${stepsHtml()}<div class="mk-pal">` + TER_B.concat(RES_B).map(bt).join('') + BLD_B.map(bt).join('') +
-        '<button class="go" data-step="3" title="Show the plan"><span>▶</span>Plan</button></div>' +
+      // v33: brushes grouped by what belongs together (16 = two rows of 8), the Plan button as a wide row below
+      h += `<div data-peek="tiles">${stepsHtml()}<div class="mk-pal">` + PAL_ORDER.map(bt).join('') + '</div>' +
+        '<button class="mk-btn pri mk-plan" data-step="3">▶ Show the plan</button>' +
         `<div class="mk-note" style="margin:3px 0 0;font-size:11.5px">${ui.brush ? '<b>' + esc(nm(ui.brush)) + '</b> – tap or drag over tiles, tap again to remove. ' : ''}${autoNote()}${ringNote()}</div></div>`;
       h += citiesHtml();
       h += countsHtml();
@@ -2193,6 +2224,7 @@
     const tp = p.tiles.find(t => t.c === c && t.r === r);
     const b = p.buildings.find(v => v.c === c && v.r === r);
     if (b && b.item === 'market') h += '<small style="color:#ffd166">✨ highlighted: this Market, its workshops and their producers</small> · ';
+    if (x.terrain === 'city' && own >= 0) h += '<small style="color:#ffd166">✨ highlighted: everything this city builds and uses</small> · ';
     if (tp) {
       const all = tp.steps.every(isDone);
       h += (all ? `<b style="color:${BUILT_COL}">✓ BUILT</b> · ` : '') + tp.steps.map(s => `${isDone(s) ? '✅' : ''}<b>${s.no}</b> ${esc(stepName(s))}`).join(' → ') + (b ? ' · ' + bldText(b, p) : '');
@@ -2318,6 +2350,7 @@
     if (d.brush) { ui.brush = ui.brush === d.brush ? null : d.brush; PP.app.refresh(); return; }
     if (d.alt) { ui.alt = d.alt === 'best' ? 0 : d.alt; ui.sel = null; PP.app.refresh(); requestAnimationFrame(fitPlan); return; }
     if (d.opt) { m.opts[d.opt] = !m.opts[d.opt]; ui.alt = 0; PP.app.commit(); return; }
+    if (d.gskip) { const sk = growSkip(); if (sk.has(d.gskip)) sk.delete(d.gskip); else sk.add(d.gskip); M().growSkip = [...sk]; PP.app.commit(); return; }
     if (d.done) { if (m.done[d.done]) delete m.done[d.done]; else m.done[d.done] = ++doneSeq; PP.app.commit(); return; }
     if (d.go) {
       const [c, r] = d.go.split(',').map(Number);
@@ -2344,8 +2377,11 @@
       PP.app.commit(); requestAnimationFrame(fitRegion);
       toast(n ? plural(n, 'city', 'cities') + ' added' : 'Nothing added'); return;
     }
+    if (a === 'growthMenu') { ui.growMenu = !ui.growMenu; PP.app.refresh(); return; }
+    if (a === 'growthAgain') { stopGrowth(); ui.growMenu = true; PP.app.refresh(); return; }
+    if (a === 'growth') { ui.growMenu = false; }
     if (a === 'growth') { const r = planResult(); if (r && r.best) { startGrowth(r); PP.app.refresh(); } return; }
-    if (a === 'growthAll') { M().cities.forEach(sc => { sc.rad = 1; }); stopGrowth(); growthAuto = true; M().touched = true; ui.alt = 0; PP.app.commit(); return; }
+    if (a === 'growthAll') { M().cities.forEach(sc => { sc.rad = 1; }); stopGrowth(); growthAuto = true; ui.growMenu = false; M().touched = true; ui.alt = 0; PP.app.commit(); return; }
     if (a === 'growthApply') {
       const g = growthNow(); if (!g) return;
       const keys = new Set((g.cities || []).filter(c => c.take).map(c => c.key));
@@ -2435,7 +2471,7 @@
       }
     }
   }
-  const TER_FILL = { field: 'rgba(155,211,90,.22)', forest: 'rgba(30,120,50,.42)', mountain: 'rgba(150,150,160,.45)', water: 'rgba(20,60,140,.6)' };
+  const TER_FILL = { space: 'rgba(0,0,0,.55)', field: 'rgba(155,211,90,.22)', forest: 'rgba(30,120,50,.42)', mountain: 'rgba(150,150,160,.45)', water: 'rgba(20,60,140,.6)' };
   function drawUnder(ctx) {
     const A = area();
     if (!A.n) return;
@@ -2462,6 +2498,12 @@
       }
     }
     if (ui.step === 2) {
+      // Space (outside the map) inside a radius: black, thin grey edge – never part of a territory
+      for (const k of spaceKeys()) {
+        const [c, r] = k.split(',').map(Number);
+        diamondPath(ctx, c, r, 0.94); ctx.fillStyle = 'rgba(0,0,0,.6)'; ctx.fill();
+        ctx.lineWidth = 1; ctx.strokeStyle = 'rgba(200,200,220,.35)'; ctx.setLineDash([2, 3]); ctx.stroke(); ctx.setLineDash([]);
+      }
       // the Border Growth ring: a bit darker than the territory, dashed light-green edge
       for (const x of ringCells()) {
         diamondPath(ctx, x.c, x.r, 1); ctx.fillStyle = 'rgba(6,9,22,.3)'; ctx.fill();
@@ -2545,6 +2587,10 @@
     }
     ctx.save();
     if (ui.step === 2) {
+      for (const k of spaceKeys()) {
+        const [c, r] = k.split(',').map(Number), q = PP.board.tileToScreen(c, r);
+        if (vis(q)) drawIcon(ctx, 'space', q.x, q.y, big * 0.5, 0.6);
+      }
       for (const x of areaCells().concat(ringCells())) {
         if (x.terrain === 'city') continue;
         if (!x.stored) {
@@ -2614,7 +2660,17 @@
   function focusOf(p) {
     if (!p || !ui.sel) return null;
     const m = p.markets.find(q => q.c === ui.sel.c && q.r === ui.sel.r);
-    if (!m) return null;
+    if (!m) {
+      // v33: a tapped city → everything of its territory that the plan builds or uses lights up
+      const A = area(), k = A.cities.findIndex(ci => ci.c === ui.sel.c && ci.r === ui.sel.r);
+      if (k < 0) return null;
+      const F = new Set([key(ui.sel.c, ui.sel.r)]), mine = (c, r) => A.ownerOf(c, r) === k;
+      p.tiles.forEach(t => { if (mine(t.c, t.r)) F.add(key(t.c, t.r)); });
+      p.buildings.forEach(b => { if (mine(b.c, b.r)) F.add(key(b.c, b.r)); });
+      p.workshops.forEach(w => { if (mine(w.c, w.r)) { F.add(key(w.c, w.r)); w.producers.forEach(pr => { if (mine(pr.c, pr.r)) F.add(key(pr.c, pr.r)); }); } });
+      p.markets.forEach(q => { if (mine(q.c, q.r)) F.add(key(q.c, q.r)); });
+      return { F, m: null, city: k };
+    }
     const F = new Set([key(m.c, m.r)]);
     for (const f of m.feeders) {
       F.add(key(f.c, f.r));
@@ -2642,7 +2698,7 @@
     // Market → workshops (thick, city colour)
     for (const m of p.markets) {
       const mp = PP.board.tileToScreen(m.c, m.r);
-      ctx.globalAlpha = foc && foc.m !== m ? 0.15 : 1;
+      ctx.globalAlpha = foc && (foc.m ? foc.m !== m : !foc.F.has(key(m.c, m.r))) ? 0.15 : 1;
       for (const w of m.feeders) {
         const wp = PP.board.tileToScreen(w.c, w.r);
         ctx.beginPath(); ctx.moveTo(mp.x, mp.y); ctx.lineTo(wp.x, wp.y);
@@ -2717,7 +2773,7 @@
     if (foc) {
       ctx.save();
       for (const k of foc.F) {
-        const [c, r] = k.split(',').map(Number), isM = c === foc.m.c && r === foc.m.r;
+        const [c, r] = k.split(',').map(Number), isM = foc.m ? c === foc.m.c && r === foc.m.r : c === ui.sel.c && r === ui.sel.r;
         diamondPath(ctx, c, r, isM ? 1.02 : 0.96);
         ctx.shadowColor = isM ? '#ffd166' : '#fff'; ctx.shadowBlur = clamp(u * 0.3, 6, 16);
         ctx.lineWidth = isM ? 3.5 : 2.2; ctx.strokeStyle = isM ? '#ffd166' : 'rgba(255,255,255,.95)'; ctx.stroke();
