@@ -882,12 +882,12 @@
   const toast = m => PP.ui && PP.ui.toast && PP.ui.toast(m);
   const NAME = { field: 'Empty', forest: 'Forest', mountain: 'Mountain', water: 'Water', city: 'City', crop: 'Crop (for Farm)', ore: 'Metal', fruit: 'Fruit',
     lumber: 'Lumber Hut', plant: 'Grow Forest', fruitH: 'Harvest Fruit', other: 'Other building' };
-  const nm = id => NAME[id] || (ITEM(id) || {}).name || id;
+  const nm = id => NAME[id] || (ITEM(id) || {}).name || ({ cloud: 'Cloud', space: 'Space' })[id] || id;
   const stepName = s => (s.item === 'destroy' ? 'Destroy ' + nm(s.what || 'building') : s.item === 'fruit' ? 'Harvest Fruit' : UNIQUE.indexOf(s.item) >= 0 || PRODS.indexOf(s.item) >= 0 ? 'Build ' + nm(s.item) : nm(s.item));
   const ICON = {
     field: '🟩', forest: '🌲', mountain: '⛰️', water: '🌊', city: '🏠', crop: '🌾', ore: '💎', fruit: '🍒',
     farm: '🌾', mine: '⛏️', lumber: '🪵', windmill: '🌬️', forge: '🔨', sawmill: '🪚', market: '🏪',
-    destroy: '💥', clear: '🪓', burn: '🔥', plant: '🌱', other: '🏛️', space: '🌌',
+    destroy: '💥', clear: '🪓', burn: '🔥', plant: '🌱', other: '🏛️', space: '🌌', cloud: '☁️',
   };
   const ICON_NAME = { ore: 'metal', plant: 'forest', destroy: null, clear: null, burn: null, other: null };
   const iconName = id => (id in ICON_NAME ? ICON_NAME[id] : id);
@@ -902,12 +902,12 @@
   const BUILT_COL = '#16a34a', BUILT_FILL = 'rgba(22,163,74,.5)', BUILT_DARK = 'rgba(8,60,28,.95)';
   const ACT_COL = '#3ddc84'; // what the ✓ Built button acts on
   const cityCol = k => CITY_COL[(k >= 0 ? k : 0) % CITY_COL.length];
-  const TER_B = ['field', 'forest', 'mountain', 'water', 'space', 'city'];
+  const TER_B = ['field', 'forest', 'mountain', 'water', 'space', 'cloud', 'city'];
   const RES_B = ['crop', 'ore', 'fruit'];
   const BLD_B = ['farm', 'mine', 'lumber', 'windmill', 'forge', 'sawmill', 'market'];
   const BRUSH = TER_B.concat(RES_B, BLD_B);
-  const PAL_ORDER = ['field', 'sawmill', 'lumber', 'forest', 'windmill', 'farm', 'crop', 'fruit', 'forge', 'mine', 'ore', 'mountain', 'city', 'market', 'water', 'space'];
-  const BRUSH_LABEL = { field: 'Empty', forest: 'Forest', mountain: 'Mountain', water: 'Water', space: 'Space', city: 'City', crop: 'Crop', ore: 'Metal', fruit: 'Fruit',
+  const PAL_ORDER = ['field', 'sawmill', 'lumber', 'forest', 'windmill', 'farm', 'crop', 'fruit', 'forge', 'mine', 'ore', 'mountain', 'city', 'market', 'water', 'space', 'cloud'];
+  const BRUSH_LABEL = { field: 'Empty', forest: 'Forest', mountain: 'Mountain', water: 'Water', space: 'Space', cloud: 'Cloud', city: 'City', crop: 'Crop', ore: 'Metal', fruit: 'Fruit',
     farm: 'Farm', mine: 'Mine', lumber: 'Lumber', windmill: 'Windmill', forge: 'Forge', sawmill: 'Sawmill', market: 'Market' };
   const RES_TER = { crop: 'field', fruit: 'field', ore: 'mountain' };
   const OPT_LABEL = { clear: ['🪓', 'Clear Forest', '+1 ★'], burn: ['🔥', 'Burn Forest', '→ Crop'], grow: ['🌱', 'Grow Forest', 'Empty → Forest'],
@@ -985,7 +985,7 @@
         const t = /^(field|forest|mountain|water)$/.test(p.terrain) ? p.terrain : p.terrain === 'outside' && p.conf >= TM.SURE ? 'space' : 'water';
         // v2 models: a resource is only filled in when the model is sure about it (crop / fruit on fields, metal on mountains)
         const rs = p.res && p.resConf >= (p.res === 'crop' ? TM.CROP_SURE || 0.6 : TM.RES_SURE || 0.7) ? (p.res === 'metal' ? 'ore' : p.res) : null; // v3: crop from 0.6
-        out = { terrain: t, model: p.terrain, conf: p.conf, sure: p.conf >= TM.SURE, res: rs && RES_TER[rs] === t ? [rs] : [] };
+        out = { terrain: t, model: p.terrain, conf: p.conf, sure: p.conf >= TM.SURE, res: rs && RES_TER[rs] === t ? [rs] : [], cloud: p.terrain === 'cloud' };
       }
     } catch (e) { out = null; }
     autoMemo.m.set(k, out);
@@ -998,14 +998,15 @@
     }
     if (t && t.src !== 'auto') {
       let ter = TERRAINS.indexOf(t.terrain) >= 0 ? t.terrain : 'field';
+      const cloud = ter === 'cloud';           // v37: marked as Cloud (not explored) – nothing is built there, like water
       if (ter === 'ocean' || ter === 'cloud') ter = 'water';
       if (t.mk === 'blocked' && ter === 'field') ter = 'water'; // v13 "Blocked"
       const res = (Array.isArray(t.res) ? t.res : []).filter(q => RES_TER[q] === ter);
       const bld = t.bld ? (BLDS.indexOf(t.bld) >= 0 ? t.bld : 'other') : null;
-      return { c, r, terrain: ter, res, bld, other: bld === 'other' ? t.bld : null, stored: true };
+      return { c, r, terrain: ter, res, bld, other: bld === 'other' ? t.bld : null, stored: true, cloud };
     }
     const a = autoTerrain(c, r);
-    if (a) return { c, r, terrain: a.terrain, res: a.res || [], bld: null, stored: false, auto: true, unsure: !a.sure, conf: a.conf };
+    if (a) return { c, r, terrain: a.terrain, res: a.res || [], bld: null, stored: false, auto: true, unsure: !a.sure, conf: a.conf, cloud: !!(a.cloud && a.sure) };
     return { c, r, terrain: 'field', res: [], bld: null, stored: false };
   }
   // ------------------------------------------------------------------ planning area = territories of the selected cities
@@ -1088,7 +1089,8 @@
     const out = {};
     for (const [k, own] of ringInfo().keys) {
       const [c, r] = k.split(',').map(Number), x = cellAt(c, r), o = out[own] || (out[own] = { n: 0, open: 0, unsure: 0 });
-      o.n++; if (!x.stored) { o.open++; if (x.unsure) o.unsure++; }
+      // only tiles the detection is unsure about (the ones with ?) – a sure detection or your own mark is fine
+      o.n++; if (!x.stored && x.unsure) { o.open++; o.unsure++; }
     }
     return out;
   }
@@ -1457,7 +1459,7 @@
     const g = growthNow(), rs = ringStats(), skip = growSkip();
     const pick = small.filter(ci => !skip.has(key(ci.c, ci.r))), n = pick.length, solves = growSolves(n);
     const openRing = pick.reduce((a, ci) => a + ((rs[ci.k] || {}).open || 0), 0);
-    const ringWarn = openRing ? `<div class="gw-warn">⚠ ${plural(openRing, 'ring tile', 'ring tiles')} only detected, not checked – <button class="lnk" data-step="2">mark them in ②</button></div>` : '';
+    const ringWarn = openRing ? `<div class="gw-warn">⚠ ${plural(openRing, 'tile', 'tiles')} with <b>?</b> in the Border Growth rings (dashed light-green, outside 3×3) – <button class="lnk" data-step="2">check them in ②</button></div>` : '';
     if (!g) {
       // v33: a plain button; tapping it opens a small menu: which cities may grow, then Start
       if (!ui.growMenu) return `<button class="mk-btn" data-a="growthMenu">🌱 Check Border Growth ▾</button>`;
@@ -1496,7 +1498,7 @@
       } else {
         x += `<div class="gw-d">${c.alone > 0 ? `Alone +${c.alone} ★/turn – but nothing on top of the cities that grow` : 'Border Growth adds no ★/turn to the Markets here'}</div>`;
       }
-      if (rr.open) x += `<div class="gw-w">⚠ ${plural(rr.open, 'ring tile', 'ring tiles')} not checked${rr.unsure ? ' (' + rr.unsure + ' unsure)' : ''}</div>`;
+      if (rr.open) x += `<div class="gw-w">⚠ ${plural(rr.open, 'tile', 'tiles')} with ? in its Border Growth ring – check them in ②</div>`;
       return `<div class="gw-card ${c.take ? 'take' : 'skip'}" style="--cc:${cityCol(c.k)}"><div class="gw-h"><span class="dot"></span>${nm(c.k, c.name)}` +
         `<span class="gw-v">${c.take ? '🌱 Take Border Growth' : '✋ Take the other reward'}</span></div>${x}</div>`;
     };
@@ -1916,6 +1918,8 @@
   }
   function brushOn(id, x) {
     if (id === 'city') return x.terrain === 'city';
+    if (id === 'cloud') return x.stored && !!x.cloud;
+    if (id === 'water' && x.cloud) return false;
     if (TER_B.indexOf(id) >= 0) return x.stored && x.terrain === id && !x.bld && !x.res.length;
     if (RES_B.indexOf(id) >= 0) return x.res.indexOf(id) >= 0;
     return x.bld === id;
@@ -2100,8 +2104,8 @@
 .mk .mk-steps button{flex:1;min-width:0;border:0;background:none;color:var(--muted,#9aa5c8);font-weight:650;font-size:13px;padding:6px 2px;border-radius:8px;line-height:1.1;min-height:36px;white-space:nowrap;touch-action:manipulation}
 .mk .mk-steps button.on{background:var(--panel2,#252e52);color:var(--text,#e8ecf8)}
 .mk .mk-steps button:disabled{opacity:.4}
-.mk .mk-pal{display:grid;grid-template-columns:repeat(8,minmax(0,1fr));gap:3px;margin:0 0 2px}
-.mk .mk-pal button{border:1px solid var(--line,#33406e);background:var(--panel2,#252e52);color:var(--text,#e8ecf8);border-radius:8px;padding:2px 0 1px;font-size:9.5px;letter-spacing:-.3px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:0;min-width:0;min-height:44px;overflow:hidden;white-space:nowrap;touch-action:manipulation}
+.mk .mk-pal{display:grid;grid-template-columns:repeat(9,minmax(0,1fr));gap:3px;margin:0 0 2px}
+.mk .mk-pal button{border:1px solid var(--line,#33406e);background:var(--panel2,#252e52);color:var(--text,#e8ecf8);border-radius:8px;padding:2px 0 1px;font-size:clamp(7.5px,2.45vw,9.5px);letter-spacing:-.4px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:0;min-width:0;min-height:44px;overflow:hidden;white-space:nowrap;touch-action:manipulation}
 .mk .mk-pal button span{font-size:18px;line-height:1.1;height:22px;display:flex;align-items:center}
 .mk .mk-pal button.on{border-color:var(--gold,#ffd166);background:rgba(255,209,102,.22);color:var(--gold,#ffd166);box-shadow:inset 0 0 0 1px var(--gold,#ffd166)}
 .mk .mk-pal button.t{background:rgba(155,211,90,.08)}
@@ -2246,8 +2250,9 @@
       const bt = id => `<button data-brush="${id}" class="${ui.brush === id ? 'on' : ''} ${TER_B.indexOf(id) >= 0 ? 't' : RES_B.indexOf(id) >= 0 ? 'rs' : 'b'}" title="${esc(nm(id))}"><span>${iconHtml(id, 21)}</span>${BRUSH_LABEL[id]}</button>`;
       // v33: brushes grouped by what belongs together (16 = two rows of 8), the Plan button as a wide row below
       h += `<div data-peek="tiles">${stepsHtml()}<div class="mk-pal">` + PAL_ORDER.map(bt).join('') + '</div>' +
-        '<button class="mk-btn pri mk-plan" data-step="3">▶ Show the plan</button>' +
-        `<div class="mk-note" style="margin:3px 0 0;font-size:11.5px">${ui.brush ? '<b>' + esc(nm(ui.brush)) + '</b> – tap or drag over tiles, tap again to remove. ' : ''}${autoNote()}${ringNote()}</div></div>`;
+        '<button class="mk-btn pri mk-plan" data-step="3">▶ Show the plan</button></div>' +
+        // v37: the explanation is below the collapsed panel (Less shows only up to "Show the plan")
+        `<div class="mk-note" style="margin:3px 0 0;font-size:11.5px">${ui.brush ? '<b>' + esc(nm(ui.brush)) + '</b> – tap or drag over tiles, tap again to remove. ' : ''}${autoNote()}${ringNote()}</div>`;
       h += citiesHtml();
       h += countsHtml();
       h += '<p class="mk-note">Mark the board <b>as it is now</b>: terrain (<b>Empty</b>, Forest, Mountain, Water = anything unusable), resources (<b>Crop (for Farm)</b>, Metal, Fruit) and existing buildings. Only the territories of the cities from step ① are shown (coloured outline) – change them there.</p>';
@@ -2611,7 +2616,7 @@
       }
     }
   }
-  const TER_FILL = { space: 'rgba(0,0,0,.55)', field: 'rgba(155,211,90,.22)', forest: 'rgba(30,120,50,.42)', mountain: 'rgba(150,150,160,.45)', water: 'rgba(20,60,140,.6)' };
+  const TER_FILL = { cloud: 'rgba(225,230,245,.55)', space: 'rgba(0,0,0,.55)', field: 'rgba(155,211,90,.22)', forest: 'rgba(30,120,50,.42)', mountain: 'rgba(150,150,160,.45)', water: 'rgba(20,60,140,.6)' };
   function drawUnder(ctx) {
     const A = area();
     if (!A.n) return;
@@ -2648,18 +2653,18 @@
       for (const x of ringCells()) {
         diamondPath(ctx, x.c, x.r, 1); ctx.fillStyle = 'rgba(6,9,22,.3)'; ctx.fill();
         diamondPath(ctx, x.c, x.r, 0.9);
-        if (x.stored || (x.auto && !x.unsure)) { ctx.globalAlpha = x.stored ? 0.8 : 0.45; ctx.fillStyle = TER_FILL[x.terrain] || TER_FILL.water; ctx.fill(); ctx.globalAlpha = 1; }
+        if (x.stored || (x.auto && !x.unsure)) { ctx.globalAlpha = x.stored ? 0.8 : 0.45; ctx.fillStyle = TER_FILL[x.cloud ? 'cloud' : x.terrain] || TER_FILL.water; ctx.fill(); ctx.globalAlpha = 1; }
         ctx.lineWidth = 1.6; ctx.strokeStyle = x.unsure && !x.stored ? 'rgba(255,183,3,.9)' : RING_COL; ctx.setLineDash([5, 4]); ctx.stroke(); ctx.setLineDash([]);
       }
       for (const x of areaCells(A)) {
         if (x.terrain === 'city') continue;
         diamondPath(ctx, x.c, x.r, 0.94);
         if (!x.stored) {
-          if (x.auto && !x.unsure) { ctx.globalAlpha = 0.6; ctx.fillStyle = TER_FILL[x.terrain] || TER_FILL.water; ctx.fill(); ctx.globalAlpha = 1; }
+          if (x.auto && !x.unsure) { ctx.globalAlpha = 0.6; ctx.fillStyle = TER_FILL[x.cloud ? 'cloud' : x.terrain] || TER_FILL.water; ctx.fill(); ctx.globalAlpha = 1; }
           ctx.lineWidth = x.unsure ? 1.8 : 1.2; ctx.strokeStyle = x.unsure ? 'rgba(255,183,3,.9)' : 'rgba(255,255,255,.45)';
           ctx.setLineDash([3, 3]); ctx.stroke(); ctx.setLineDash([]); continue;
         }
-        ctx.fillStyle = TER_FILL[x.terrain] || TER_FILL.water; ctx.fill();
+        ctx.fillStyle = TER_FILL[x.cloud ? 'cloud' : x.terrain] || TER_FILL.water; ctx.fill();
         ctx.lineWidth = 1.4; ctx.strokeStyle = 'rgba(255,255,255,.55)'; ctx.stroke();
       }
     }
@@ -2739,7 +2744,7 @@
             disc(ctx, q.x, q.y, big * 0.42, 'rgba(40,28,0,.82)', '#ffb703', 1.5);
             ctx.save(); ctx.font = `bold ${Math.round(big * 0.58)}px system-ui,sans-serif`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
             ctx.fillStyle = '#ffd166'; ctx.fillText('?', q.x, q.y + 1); ctx.restore();
-          } else if (x.auto && x.terrain !== 'field') drawIcon(ctx, x.terrain, q.x, q.y, big * 0.7, 0.75);
+          } else if (x.auto && x.terrain !== 'field') drawIcon(ctx, x.cloud ? 'cloud' : x.terrain, q.x, q.y, big * 0.7, 0.75);
           // resources the detection is sure about
           (x.res || []).forEach((rs, i) => {
             const rx = q.x + big * (0.5 + i * 0.5), ry = q.y + big * 0.3;
@@ -2753,7 +2758,7 @@
           const R = big * 0.62, U = UNIQUE.indexOf(x.bld) >= 0;
           disc(ctx, q.x, q.y, R, U ? 'rgba(40,30,5,.78)' : 'rgba(10,14,30,.65)', U ? '#ffd166' : 'rgba(255,255,255,.8)', 1.5);
           drawIcon(ctx, x.bld, q.x, q.y, big * 0.95);
-        } else if (x.terrain !== 'field') drawIcon(ctx, x.terrain, q.x, q.y, big * 0.8, 0.95);
+        } else if (x.terrain !== 'field') drawIcon(ctx, x.cloud ? 'cloud' : x.terrain, q.x, q.y, big * 0.8, 0.95);
         x.res.forEach((rs, i) => {
           if ((rs === 'crop' && x.bld === 'farm') || (rs === 'ore' && x.bld === 'mine')) return;
           const rx = q.x + big * (0.55 + i * 0.5), ry = q.y + big * 0.32;
