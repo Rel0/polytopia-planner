@@ -1134,7 +1134,7 @@
   // growth = { sig, state: 'running'|'done', steps: [{ key, name, k, income, cost, gain }], all: { income, cost }, base, done, total }
   let growth = null, growthAuto = false;
   const GROW_PROOF_SECS = 10, GROW_COST_SECS = 5; // HiGHS time per Border Growth plan (alone usually a few seconds)
-  const growthNow = () => (growth && growth.sig === cacheSig ? growth : null);
+  const growthNow = () => (growth && growth.sig === cacheSig && (!growth.prio || growth.prio === (GROW_PRIO[M().growPrio] ? M().growPrio : 'bal')) ? growth : null);
   const growVerdict = k => { const g = growthNow(); return g && g.state === 'done' && g.byKey ? g.byKey[k] || null : null; };
   // one configuration: group search / exact search first, then HiGHS proves the maximum ★ (same model as the main proof),
   // so the numbers are the same on every run. → { income, cost, proven }
@@ -1222,7 +1222,11 @@
       return memo.get(k);
     };
     const got = set => memo.get(cfgKey(set));
-    const better = (a, sa, b, sb) => !b || a.income > b.income || (a.income === b.income && (a.cost < b.cost || (a.cost === b.cost && sa.size < sb.size)));
+    // v40: a city only grows if Border Growth beats Population Growth (+3 pop ≈ 7.5 ★ + a bonus for the Giant sooner):
+    // value of a choice = extra Market ★/turn × horizon − extra building cost − (cities that grow) × value of Pop Growth
+    const PR = growPrio(); g.prio = PR.id; g.PR = PR;
+    const valOf = (r, set) => (r.income - g.base.income) * PR.H - (r.cost - g.base.cost) - set.size * PR.pg;
+    const better = (a, sa, b, sb) => { if (!b) return true; const va = valOf(a, sa), vb = valOf(b, sb); return va > vb + 1e-9 || (Math.abs(va - vb) <= 1e-9 && sa.size < sb.size); };
     const near = (a, b) => Math.max(Math.abs(a.c - b.c), Math.abs(a.r - b.r)) <= 5;
     (async () => {
       pauseProof(g);
@@ -1247,7 +1251,7 @@
         const order = cand.slice().sort((a, b) => aloneOf(b) - aloneOf(a));
         const tryAdd = async keys => {
           const set = new Set([...bestSet, ...keys]), r = await solve(set); if (!r) return null;
-          if (r.income > bestR.income) { keys.forEach(k => { addGain[k] = { gain: r.income - bestR.income, dcost: r.cost - bestR.cost, with: keys.length > 1 ? keys : null }; }); bestSet = set; bestR = r; return true; }
+          if (valOf(r, set) > valOf(bestR, bestSet) + 1e-9) { keys.forEach(k => { addGain[k] = { gain: r.income - bestR.income, dcost: r.cost - bestR.cost, with: keys.length > 1 ? keys : null }; }); bestSet = set; bestR = r; return true; }
           return false;
         };
         for (const c of order) if ((await tryAdd([c.key])) === null) return;
@@ -1272,6 +1276,7 @@
       }
       // what each chosen city adds on top of the others (exact: the choice without it)
       for (const k of bestSet) if (!(await solve(new Set([...bestSet].filter(x => x !== k))))) return;
+      g.verdicts = (bestSet, bestR) => {
       // verdict per city
       g.best = { set: bestSet, income: bestR.income, cost: bestR.cost };
       const aloneR = c => got(new Set([c.key]));
@@ -1290,9 +1295,20 @@
           }
           if (!partners.length && addGain[c.key] && addGain[c.key].with) partners = cand.filter(d => d !== c && addGain[c.key].with.indexOf(d.key) >= 0);
         }
-        return { key: c.key, k: c.k, name: c.name, c: c.c, r: c.r, take, gain, dcost, alone, partners: partners.map(d => ({ k: d.k, name: d.name })) };
+        // why not: no gain at all / pays back too slowly against Population Growth / nothing on top of the growing cities
+        const aloneCost = al ? al.cost - base.cost : 0, why = take ? null : alone <= 0 ? 'nogain' : alone * PR.H - aloneCost - PR.pg <= 0 ? 'slow' : 'others';
+        return { key: c.key, k: c.k, name: c.name, c: c.c, r: c.r, take, gain, dcost, alone, aloneCost, why, partners: partners.map(d => ({ k: d.k, name: d.name })) };
       });
       g.byKey = {}; g.cities.forEach(ci => { g.byKey[ci.key] = ci; });
+      };
+      g.verdicts(bestSet, bestR);
+      // v40: all combinations known → another priority is just another choice among them (no new plans needed)
+      if (exhaustive) g.rechoose = P2 => {
+        Object.assign(PR, P2); g.prio = P2.id;
+        let bs = new Set(), br = g.base;
+        for (const [k, r] of memo) { const set = new Set(k ? k.split('|') : []); if (better(r, set, br, bs)) { br = r; bs = set; } }
+        g.verdicts(bs, br);
+      };
       g.state = 'done'; g.ms = Date.now() - g.t0;
       if (g.worker) try { g.worker.terminate(); } catch (e) { /* gone */ }
       resumeProof(g);
@@ -1446,6 +1462,12 @@
     return box(h);
   }
   // v33: cities the player does not want to grow (chosen in the Border Growth menu) – kept with the plan
+  const GROW_PRIO = {
+    eco: { id: 'eco', name: '💰 Economy', H: 20, giant: 0, note: 'Market income first' },
+    bal: { id: 'bal', name: '⚖️ Balanced', H: 10, giant: 5, note: 'only a clear gain' },
+    war: { id: 'war', name: '🛡️ War – Giants first', H: 5, giant: 20, note: 'only if it pays back very fast' },
+  };
+  function growPrio() { const id = M().growPrio; const P = GROW_PRIO[id] || GROW_PRIO.bal; return Object.assign({ pg: 7.5 + P.giant }, P); }
   function growSkip() { const m = M(); if (!Array.isArray(m.growSkip)) m.growSkip = []; return new Set(m.growSkip); }
   function growthHtml(res) {
     if (!res || res.pending || res.tooBig || res.altPending || !res.best) return '';
@@ -1464,7 +1486,11 @@
       // v33: a plain button; tapping it opens a small menu: which cities may grow, then Start
       if (!ui.growMenu) return `<button class="mk-btn" data-a="growthMenu">🌱 Check Border Growth ▾</button>`;
       const est = Math.max(5, Math.round(solves * (res.large ? 6 : 1.5)));
-      let h = '<div class="gw-menu"><div class="gw-mh"><b>🌱 Which cities may grow?</b><button class="lnk" data-a="growthMenu">close ▴</button></div><div class="gw-pick">';
+      const PRn = growPrio();
+      let h = '<div class="gw-menu"><div class="gw-mh"><b>🌱 Border Growth or Population Growth?</b><button class="lnk" data-a="growthMenu">close ▴</button></div>';
+      h += '<div class="mk-note" style="margin:0 0 4px">What matters more to you right now?</div><div class="gw-prio">' +
+        Object.values(GROW_PRIO).map(P => `<button class="${PRn.id === P.id ? 'on' : ''}" data-gprio="${P.id}"><b>${P.name}</b><small>${esc(P.note)}</small></button>`).join('') + '</div>';
+      h += '<div class="mk-note" style="margin:8px 0 4px">Which cities may grow?</div><div class="gw-pick">';
       h += small.map(ci => { const k = key(ci.c, ci.r), on = !skip.has(k);
         return `<button class="${on ? 'on' : ''}" data-gskip="${k}" style="--cc:${cityCol(ci.k)}" aria-pressed="${on}"><span class="bx">${on ? '✓' : ''}</span>${esc(cityName(ci, ci.k))}</button>`; }).join('');
       h += '</div>';
@@ -1482,11 +1508,12 @@
     const take = g.cities.filter(c => c.take).sort((a, b) => b.gain - a.gain), noTake = g.cities.filter(c => !c.take).sort((a, b) => b.alone - a.alone);
     const sum = g.best.income - g.base.income, dc = g.best.cost - g.base.cost;
     let h = '';
+    { const PRr = growPrio(); h += `<div class="gw-prio" style="margin:0 0 8px">` + Object.values(GROW_PRIO).map(P => `<button class="${PRr.id === P.id ? 'on' : ''}" data-gprio="${P.id}"><b>${P.name}</b><small>${esc(P.note)}</small></button>`).join('') + '</div>'; }
     h += take.length
-      ? `<div class="gw-sum">👉 Take Border Growth in <b>${take.length} of ${g.cities.length}</b> ${g.cities.length === 1 ? 'city' : 'cities'}: ${take.map(c => nm(c.k, c.name)).join(', ')}<br>` +
+      ? `<div class="gw-sum">👉 🌱 Border Growth in <b>${take.length} of ${g.cities.length}</b> ${g.cities.length === 1 ? 'city' : 'cities'}: ${take.map(c => nm(c.k, c.name)).join(', ')}${noTake.length ? `<br>👥 Population Growth in ${noTake.map(c => nm(c.k, c.name)).join(', ')}` : ''}<br>` +
         `<b class="gw-plus">+${sum} ★/turn</b> <small>(${g.base.income} → ${g.best.income}${dc > 0 ? ' · builds ' + dc + ' ★ more · pays back in ' + plural(Math.ceil(dc / Math.max(1, sum)), 'turn', 'turns') : ''})</small></div>` +
         `<button class="mk-btn pri" data-a="growthApply" style="width:100%;margin:0 0 8px">Plan with 5×5 for ${take.map(c => esc(c.name)).join(', ')}</button>`
-      : '<div class="gw-sum">👉 <b>No city should take Border Growth for its Markets</b> – take the other reward everywhere.</div>';
+      : '<div class="gw-sum">👉 <b>Population Growth in every city</b> – Border Growth doesn\'t pay back fast enough here (Giant sooner).</div>';
     const card = c => {
       const rr = rs[c.k] || { open: 0, unsure: 0 };
       let x = '';
@@ -1496,15 +1523,19 @@
         else if (c.alone > c.gain) x += `<div class="gw-x">Alone it would add +${c.alone} – less together, because the growing neighbours share tiles and Markets</div>`;
         else if (c.alone < c.gain) x += `<div class="gw-x">Alone only +${c.alone} – more together with the other growing cities</div>`;
       } else {
-        x += `<div class="gw-d">${c.alone > 0 ? `Alone +${c.alone} ★/turn – but nothing on top of the cities that grow` : 'Border Growth adds no ★/turn to the Markets here'}</div>`;
+        const PRc = g.PR || growPrio(), pb = c.alone > 0 && c.aloneCost > 0 ? Math.ceil(c.aloneCost / c.alone) : 0;
+        x += `<div class="gw-d">${c.why === 'nogain' ? 'Border Growth adds no ★/turn to the Markets here'
+          : c.why === 'slow' ? `Border Growth: +${c.alone} ★/turn${c.aloneCost > 0 ? ` for ${c.aloneCost} ★ (pays back in ${plural(pb, 'turn', 'turns')})` : ''} – less than +3 population is worth (${PRc.H} turns, ${PRc.name.replace(/^\S+ /, '')})`
+          : `Alone +${c.alone} ★/turn – but not enough on top of the cities that grow`}</div><div class="gw-x">+3 population: Level 5 (Giant / Park) sooner</div>`;
       }
       if (rr.open) x += `<div class="gw-w">⚠ ${plural(rr.open, 'tile', 'tiles')} with ? in its Border Growth ring – check them in ②</div>`;
       return `<div class="gw-card ${c.take ? 'take' : 'skip'}" style="--cc:${cityCol(c.k)}"><div class="gw-h"><span class="dot"></span>${nm(c.k, c.name)}` +
-        `<span class="gw-v">${c.take ? '🌱 Take Border Growth' : '✋ Take the other reward'}</span></div>${x}</div>`;
+        `<span class="gw-v">${c.take ? '🌱 Border Growth' : '👥 Population Growth'}</span></div>${x}</div>`;
     };
     h += take.concat(noTake).map(card).join('');
     h += ringWarn;
-    h += `<p class="mk-note" style="margin:8px 0 0">${g.exhaustive ? `✓ All ${2 ** g.n} combinations checked – this is the best choice.` : `Checked ${g.done} combinations (alone, step by step, then adding, removing and swapping neighbours until nothing got better) – not all ${2 ** g.n}.`} ` +
+    { const PRf = g.PR || growPrio(); h += `<p class="mk-note" style="margin:8px 0 0">Weighed against Population Growth (+3 population ≈ 7.5 ★${PRf.giant ? ' + ' + PRf.giant + ' ★ for the Giant sooner' : ''}) over ${PRf.H} turns · <b>${PRf.name}</b>${g.rechoose ? ' – switch it above, the result updates at once' : ' – after switching, check again'}.</p>`; }
+    h += `<p class="mk-note" style="margin:4px 0 0">${g.exhaustive ? `✓ All ${2 ** g.n} combinations checked – this is the best choice.` : `Checked ${g.done} combinations (alone, step by step, then adding, removing and swapping neighbours until nothing got better) – not all ${2 ** g.n}.`} ` +
       (g.open ? `<b style="color:#ffb703">${plural(g.open, 'plan', 'plans')} not proven within ${GROW_PROOF_SECS} s</b> – best found there. ` : 'Every ★/turn number is proven. ') +
       `${g.ms ? Math.round(g.ms / 1000) + ' s.' : ''}</p>`;
     const left = small.filter(ci => skip.has(key(ci.c, ci.r)));
@@ -2160,6 +2191,10 @@
 .mk .gw-menu{margin:6px 0;padding:8px 10px;border:1px solid var(--line,#33406e);border-radius:12px;background:rgba(255,255,255,.03)}
 .mk .gw-mh{display:flex;align-items:center;justify-content:space-between;margin-bottom:6px}
 .mk .gw-pick{display:flex;flex-wrap:wrap;gap:6px}
+.mk .gw-prio{display:flex;gap:5px}
+.mk .gw-prio button{flex:1;display:flex;flex-direction:column;align-items:center;gap:2px;border:1px solid rgba(255,255,255,.12);border-radius:10px;padding:7px 4px;background:var(--panel2,#252e52);color:var(--text,#e8ecf8);font-size:12.5px;min-width:0}
+.mk .gw-prio button small{color:var(--muted,#9aa5c8);font-size:10.5px;text-align:center}
+.mk .gw-prio button.on{border-color:var(--accent,#4cc9f0);background:rgba(76,201,240,.15)}
 .mk .gw-pick button{display:flex;align-items:center;gap:6px;border:1px solid rgba(255,255,255,.12);border-left:4px solid var(--cc);border-radius:9px;padding:6px 9px;background:var(--panel2,#252e52);color:var(--text,#e8ecf8);font-weight:700;font-size:13px;opacity:.6}
 .mk .gw-pick button.on{opacity:1}
 .mk .gw-pick .bx{width:16px;height:16px;border-radius:4px;border:2px solid rgba(255,255,255,.4);display:inline-flex;align-items:center;justify-content:center;font-size:11px;line-height:1}
@@ -2317,7 +2352,7 @@
     return '<div class="mk-chips">' + A.cities.map((ci, k) => {
       const n = [...A.owner.values()].filter(o => o === k).length - 1, at = ci.c + ',' + ci.r;
       const gi = ci.rad === 1 ? growVerdict(at) : null;
-      const gtxt = gi ? (gi.take ? ` · <b style="color:#7bd389">🌱 Grow: +${gi.gain} ★</b>` : ' · ✋ no growth') : '';
+      const gtxt = gi ? (gi.take ? ` · <b style="color:#7bd389">🌱 Grow: +${gi.gain} ★</b>` : ' · 👥 Pop. Growth') : '';
       return `<div class="mk-chip" style="--cc:${cityCol(k)}"><span class="dot"></span><span class="nmx">${esc(cityName(ci, k))}<small>${ci.c}/${ci.r} · ${n} tiles${gtxt}</small></span>` +
         `<span class="seg"><button data-rad="${at},1" class="${ci.rad === 1 ? 'on' : ''}">3×3</button><button data-rad="${at},2" class="${ci.rad === 2 ? 'on' : ''}">5×5</button></span>` +
         `<button class="x" data-unsel="${at}" title="Remove" aria-label="Remove ${esc(cityName(ci, k))}">✕</button></div>`;
@@ -2492,6 +2527,11 @@
     if (d.alt) { ui.alt = d.alt === 'best' ? 0 : d.alt; ui.sel = null; PP.app.refresh(); requestAnimationFrame(fitPlan); return; }
     if (d.opt) { m.opts[d.opt] = !m.opts[d.opt]; ui.alt = 0; PP.app.commit(); return; }
     if (d.tech) { const b = S().build || (S().build = {}); if (!Array.isArray(b.owned)) b.owned = []; const i = b.owned.indexOf(d.tech); if (i >= 0) b.owned.splice(i, 1); else b.owned.push(d.tech); PP.app.commit(); return; }
+    if (d.gprio) {
+      M().growPrio = d.gprio;
+      if (growth && growth.state === 'done' && growth.rechoose && growth.sig === cacheSig) growth.rechoose(growPrio()); // instant
+      PP.app.commit(); return;
+    }
     if (d.gskip) { const sk = growSkip(); if (sk.has(d.gskip)) sk.delete(d.gskip); else sk.add(d.gskip); M().growSkip = [...sk]; PP.app.commit(); return; }
     if (d.done) { if (m.done[d.done]) delete m.done[d.done]; else m.done[d.done] = ++doneSeq; PP.app.commit(); return; }
     if (d.go) {
@@ -2686,7 +2726,7 @@
     T.cities.forEach(ci => {
       const gi = ci.rad === 1 ? growVerdict(key(ci.c, ci.r)) : null; if (!gi) return;
       const q = PP.board.tileToScreen(ci.c, ci.r), R = big * (small ? 0.42 : 0.66);
-      const gt = gi.take ? '🌱 Grow · +' + gi.gain + ' ★/turn' : '✋ No growth', gy = q.y + R + fs * 0.8 + fs * 1.5, gf = fs * 0.95;
+      const gt = gi.take ? '🌱 Grow · +' + gi.gain + ' ★/turn' : '👥 Pop. Growth', gy = q.y + R + fs * 0.8 + fs * 1.5, gf = fs * 0.95;
       D.pill(ctx, q.x, gy, gt, gi.take ? 'rgba(31,138,76,.97)' : 'rgba(70,76,100,.95)', gf);
       ctx.save(); ctx.font = `bold ${gf}px system-ui,sans-serif`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
       ctx.fillStyle = gi.take ? '#eafff0' : '#d6dbea'; ctx.fillText(gt, q.x, gy + 1); ctx.restore();
