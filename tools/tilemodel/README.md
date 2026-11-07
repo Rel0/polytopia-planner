@@ -93,6 +93,11 @@ Crop on fields, leave-one-screenshot-out (124 crop fields, 402 other fields):
 | v3, threshold 0.6 (`CROP_SURE`, used) | 81 | 5 |
 | v3, threshold 0.7 | 57 | 0 |
 
+With the two label exports from 7 Nov (27 screenshots, 145 crop and 143 fruit fields), leave-one-screenshot-out:
+crop at 0.6: 83 of 145 found, 6 of 490 other fields wrongly called crop. Fruit at 0.6 (`FRUIT_SURE`, was 0.7): 66 of 143
+found (was 42), 6 of 492 wrong. Before they were added to the training, the shipped models got these on the two new
+screenshots: land terrain 85 % (sure ones 99 of 100), crop 7 of 21, cities 7 of 11.
+
 ## City detector (v3, Nov 2026)
 
 Every city, own or enemy, has a **name plate** centred on its tile: white italic text with a dark shadow on a

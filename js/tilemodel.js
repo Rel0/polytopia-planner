@@ -267,6 +267,6 @@ window.PP = window.PP || {};
   }
 
   // terrain below SURE is shown as "please check"; resources are only filled in at RES_SURE or above
-  PP.tilemodel = { classify, features, plateFeatures, cropFeatures, cityProb, forest, SURE: 0.6, RES_SURE: 0.7, CROP_SURE: 0.6, CITY_SURE: 0.5,
+  PP.tilemodel = { classify, features, plateFeatures, cropFeatures, cityProb, forest, SURE: 0.6, RES_SURE: 0.7, CROP_SURE: 0.6, FRUIT_SURE: 0.6, CITY_SURE: 0.5,
     get ready() { return !!(PP.TILE_MODEL && PP.TILE_MODEL.terrain); }, get cityReady() { return !!(PP.CITY_MODEL && PP.CITY_MODEL.trees); } };
 })(window.PP);
