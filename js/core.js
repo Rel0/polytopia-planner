@@ -502,7 +502,7 @@ window.PP = window.PP || {};
   // v29: the label tool (training data for the tile detection) only with ?label in the URL
   try { if (new URLSearchParams(location.search).has('label')) TOOLS.push({ id: 'label', icon: '🏷️', label: 'Label' }); } catch (e) { /* no URL */ }
   const TOOL_IDS = TOOLS.map(t => t.id);
-  const MODE_LABELS = { units: 'Units', cost: 'Costs', draw: 'Draw', market: 'Market', notes: 'Notes', label: 'Label', calibrate: 'Grid' };
+  const MODE_LABELS = { units: 'Units', cost: 'Costs', draw: 'Draw', market: 'Market', notes: 'Notes', label: 'Label', calibrate: 'Grid', align: 'Update screenshot' };
   const toolInfo = id => TOOLS.find(t => t.id === id) || { id, icon: (registry[id] || {}).icon || '🧰', label: (registry[id] || {}).label || MODE_LABELS[id] || id };
   const firstTool = () => TOOL_IDS.find(id => registry[id]) || 'idle';
   // deep link from the landing pages: /?tool=units|cost|market|draw|notes opens that tool (once)
@@ -1084,7 +1084,6 @@ window.PP = window.PP || {};
   let afterCal = null;
   function calDone() {
     save();
-    if (pendingMerge) setTimeout(runMerge, 0); // v38: updating a screenshot – line the old marks up now
     const st = S(), want = takeLinkTool() || afterCal || st.ui.mode;
     afterCal = null;
     st.ui.drawerOpen = true;
@@ -1378,12 +1377,13 @@ window.PP = window.PP || {};
       im.src = url;
     });
   }
-  // ---------------------------------------------------------------- v38 update a screenshot, keep the marks
-  // A newer screenshot of the same game (more map visible, zoomed or moved): after its grid is confirmed, every tile
-  // of the old and the new picture is compared (RGB on a 10 × 10 lattice over the tile, so the zoom does not matter)
-  // for every shift of the tile numbers; the shift with the smallest median difference wins (simulated: 6/6 right,
-  // runner-up 3–47 × worse). Then all marks move by it, and a bar lets you nudge them by a tile and confirm.
-  let pendingMerge = null, mergeBar = null;
+  // ---------------------------------------------------------------- v39 update a screenshot, keep the marks
+  // A newer screenshot of the same game (more map visible, zoomed or moved) is laid over the old one, half
+  // transparent: drag it, make it bigger / smaller (two fingers, ± buttons) until it sits exactly on the old one, then
+  // ✓ – the app takes the whole new screenshot and the grid is carried over through that placement, so every mark
+  // stays on its tile (tile numbers don't change). Start placement: grid detection on the new picture + comparing the
+  // tiles of both pictures (RGB on a 10 × 10 lattice, median over tiles; simulated updates: 6/6 right).
+  // al = { img, blob, url, s, tx, ty, alpha, mode } – the new picture drawn at old-image coords: X_old = t + s · X_new
   function tileDescs(P, g) {
     const out = new Map(); if (!P || !g) return out;
     const w = Math.hypot(g.ux - g.vx, g.uy - g.vy), h = Math.abs(g.uy + g.vy), det = g.ux * g.vy - g.vx * g.uy || 1e-9, N = 10;
@@ -1421,58 +1421,144 @@ window.PP = window.PP || {};
     }
     return res.sort((p, q) => p.d - q.d);
   }
-  // move everything that sits on a tile by (dc, dr)
-  function shiftState(dc, dr) {
-    if (!dc && !dr) return;
-    const st = S(), mv = o => { if (o && Number.isFinite(o.c) && Number.isFinite(o.r)) { o.c += dc; o.r += dr; } };
-    const mk = k => { const m = /^(-?\d+),(-?\d+)(.*)$/.exec(k); return m ? (+m[1] + dc) + ',' + (+m[2] + dr) + m[3] : k; };
-    const rekey = obj => { const o = {}; Object.keys(obj || {}).forEach(k => { o[mk(k)] = obj[k]; }); return o; };
-    st.tiles = rekey(st.tiles);
-    (st.units || []).forEach(mv); (st.cities || []).forEach(mv); (st.notes || []).forEach(mv);
-    (st.marks || []).forEach(m => { if (Number.isFinite(m.c1)) { m.c1 += dc; m.r1 += dr; } if (Number.isFinite(m.c2)) { m.c2 += dc; m.r2 += dr; } });
-    const b = st.build || {};
-    (b.placements || []).forEach(mv);
-    if (Array.isArray(b.noCity)) b.noCity = b.noCity.map(mk);
-    const m = st.market || {};
-    (m.cities || []).forEach(mv);
-    if (m.edits) m.edits = rekey(m.edits);
-    if (m.done) m.done = rekey(m.done);
-    if (Array.isArray(m.growSkip)) m.growSkip = m.growSkip.map(mk);
-  }
   function hasMarks() {
     const st = S(), m = st.market || {}, b = st.build || {};
     return Object.values(st.tiles || {}).some(t => t && t.src !== 'auto') || (m.cities || []).length || (st.units || []).some(u => u && u.src !== 'auto') ||
       (st.notes || []).some(n => n && Number.isFinite(n.c)) || (b.placements || []).length || (st.marks || []).length;
   }
-  function runMerge() {
-    const pm = pendingMerge; pendingMerge = null; if (!pm) return;
-    let best = { dc: 0, dr: 0 }, sure = false;
+  let al = null;
+  function newPixels(im) {
+    const c = document.createElement('canvas'); c.width = im.naturalWidth; c.height = im.naturalHeight;
+    const x = c.getContext('2d', { willReadFrequently: true }); x.drawImage(im, 0, 0);
+    return { w: c.width, h: c.height, data: x.getImageData(0, 0, c.width, c.height).data };
+  }
+  // best first placement of the new picture over the old one
+  function autoPlace(im) {
+    const g = S().grid, wOld = Math.hypot(g.ux - g.vx, g.uy - g.vy);
+    let place = null;
     try {
-      const res = alignDescs(pm.old, tileDescs(imagePixels(), S().grid));
-      if (res.length) { best = res[0]; sure = res.length < 2 || res[1].d >= 1.5 * res[0].d; }
-    } catch (e) { console.warn('merge failed', e); }
-    shiftState(best.dc, best.dr);
-    mergeBar = { sure, dc: 0, dr: 0 };
-    commit(); showMergeBar();
+      const det = PP.vision && PP.vision.detectGrid ? PP.vision.detectGrid(im) : null;
+      if (det && det.ok && det.w > 8) {
+        const w = det.w, h = RATIO * w, gN = { ux: w / 2, uy: h / 2, vx: -w / 2, vy: h / 2, ox: det.cx, oy: det.cy };
+        const res = alignDescs(tileDescs(imagePixels(), g), tileDescs(newPixels(im), gN));
+        if (res.length) {
+          const s = wOld / w, b = res[0], nx = gN.ox + b.dc * gN.ux + b.dr * gN.vx, ny = gN.oy + b.dc * gN.uy + b.dr * gN.vy;
+          place = { s, tx: g.ox - s * nx, ty: g.oy - s * ny, sure: res.length < 2 || res[1].d >= 1.5 * res[0].d };
+        } else place = { s: wOld / w, sure: false };
+      }
+    } catch (e) { console.warn('autoPlace failed', e); }
+    if (!place) place = { s: 1, sure: false };
+    if (place.tx == null) { // centre it on the old picture
+      const W = img.naturalWidth, H = img.naturalHeight;
+      place.tx = (W - im.naturalWidth * place.s) / 2; place.ty = (H - im.naturalHeight * place.s) / 2;
+    }
+    return place;
   }
-  function showMergeBar() {
-    let el = $('#mergeBar');
-    if (!mergeBar) { if (el) el.hidden = true; return; }
-    if (!el) { el = document.createElement('div'); el.id = 'mergeBar'; $('#stage').appendChild(el); el.addEventListener('click', onMergeBar); }
-    el.hidden = false;
-    el.innerHTML = `<div class="mt">${mergeBar.sure ? '✓ Your marks were moved onto the new screenshot.' : '⚠ Not sure where the old screenshot fits – please check.'}<br><small>Do cities, units and marked tiles sit right? Otherwise move them one tile:</small></div>` +
-      '<div class="mb"><button data-mv="-1,0" title="up-left">↖</button><button data-mv="0,-1" title="up-right">↗</button><button data-mv="0,1" title="down-left">↙</button><button data-mv="1,0" title="down-right">↘</button>' +
-      '<button class="ok" data-mv="ok">✓ Fits</button></div>';
+  function startAlign(file) {
+    const url = URL.createObjectURL(file), im = new Image();
+    im.onload = () => {
+      const p = autoPlace(im);
+      al = { img: im, blob: file, url, s: p.s, tx: p.tx, ty: p.ty, alpha: 0.55, sure: p.sure, back: PP.modes.current };
+      PP.modes.set('align');
+      // show the whole area of both pictures
+      needFit = true; fit();
+    };
+    im.onerror = () => { URL.revokeObjectURL(url); toast('Image could not be loaded'); };
+    im.src = url;
   }
-  function onMergeBar(ev) {
-    const b = ev.target.closest('button[data-mv]'); if (!b || !mergeBar) return;
-    if (b.dataset.mv === 'ok') { mergeBar = null; showMergeBar(); toast('Screenshot updated – your marks are kept'); return; }
-    const [dc, dr] = b.dataset.mv.split(',').map(Number);
-    // the (c, r) axes point down-right / down-left on the screen (Polytopia's fixed camera)
-    const g = S().grid, right = g.ux >= 0;
-    shiftState(right ? dc : -dc, dr);
+  function endAlign(take) {
+    const a = al; if (!a) return;
+    al = null;
+    if (!take) { URL.revokeObjectURL(a.url); PP.modes.set(a.back && registry[a.back] && TOOL_IDS.includes(a.back) ? a.back : firstTool()); toast('Update cancelled'); return; }
+    // the grid in the new picture's pixels: X_new = (X_old − t) / s
+    const g = S().grid, s = a.s;
+    let G = { ox: (g.ox - a.tx) / s, oy: (g.oy - a.ty) / s, ux: g.ux / s, uy: g.uy / s, vx: g.vx / s, vy: g.vy / s };
+    // snap onto the detected grid of the new picture (same tile numbers – the placement is good to a fraction of a tile)
+    try {
+      const w = Math.hypot(G.ux - G.vx, G.uy - G.vy), det = PP.vision.detectGrid(a.img, { wMin: w * 0.95, wMax: w * 1.05 });
+      if (det && det.ok) {
+        const W = det.w, h = RATIO * W, u = [W / 2, h / 2], v = [-W / 2, h / 2], dx = G.ox - det.cx, dy = G.oy - det.cy, dt = u[0] * v[1] - v[0] * u[1];
+        const A = Math.round((dx * v[1] - v[0] * dy) / dt), B = Math.round((u[0] * dy - u[1] * dx) / dt);
+        const sx = det.cx + A * u[0] + B * v[0], sy = det.cy + A * u[1] + B * v[1];
+        if (Math.hypot(sx - G.ox, sy - G.oy) < 0.3 * W) G = { ox: sx, oy: sy, ux: u[0], uy: u[1], vx: v[0], vy: v[1] };
+      }
+    } catch (e) { /* keep the placement */ }
+    // adopt the new picture
+    if (imgUrl) URL.revokeObjectURL(imgUrl);
+    img = a.img; imgUrl = a.url; pix = null; hiRes = null;
+    const st = S(); st.board = 'image'; st.grid = G;
+    idb.set('img', a.blob);
+    setTimeout(clearUndo, 0);
+    needFit = true; fit();
+    PP.modes.set(a.back && registry[a.back] && TOOL_IDS.includes(a.back) ? a.back : firstTool());
     commit();
+    startOcr(img);
+    toast('Screenshot updated – your marks are kept', 3000);
   }
+  PP.modes.register('align', {
+    label: 'Update screenshot',
+    panelPlace: 'float',
+    hint: () => (al && al.fingers === 'map' ? 'Drag / pinch: move & zoom the map to check' : 'Drag the new screenshot onto the old one · two fingers: bigger / smaller'),
+    wantsDrag() { return !!al && al.fingers !== 'map'; },
+    wantsPinch() { return !!al && al.fingers !== 'map'; },
+    onDrag(phase, t) {
+      if (!al) return;
+      if (phase === 'start') al.drag = { tx: al.tx, ty: al.ty, x: t.x, y: t.y };
+      else if (!al.drag) return;
+      else if (phase === 'move') { al.tx = al.drag.tx + (t.x - al.drag.x); al.ty = al.drag.ty + (t.y - al.drag.y); PP.board.redraw(); }
+      else if (phase === 'end') al.drag = null;
+      else { al.tx = al.drag.tx; al.ty = al.drag.ty; al.drag = null; PP.board.redraw(); }
+    },
+    // the point of the new picture under the start midpoint stays under the fingers
+    onPinch(phase, q) {
+      if (!al) return;
+      if (phase === 'start') { al.pinch = { s: al.s, tx: al.tx, ty: al.ty }; return; }
+      const z = al.pinch; if (!z) return;
+      if (phase === 'move') {
+        const s = clamp(z.s * q.f, 0.1, 10), X = (q.p0.x - z.tx) / z.s, Y = (q.p0.y - z.ty) / z.s;
+        al.s = s; al.tx = q.p.x - s * X; al.ty = q.p.y - s * Y; PP.board.redraw(); refresh();
+      } else if (phase === 'end') al.pinch = null;
+      else { Object.assign(al, { s: z.s, tx: z.tx, ty: z.ty }); al.pinch = null; PP.board.redraw(); }
+    },
+    drawOver(c) {
+      if (!al) return;
+      const p = toScreen(al.tx, al.ty), k = view.s * al.s;
+      c.save(); c.globalAlpha = al.alpha; c.imageSmoothingQuality = 'high';
+      c.drawImage(al.img, p.x, p.y, al.img.naturalWidth * k, al.img.naturalHeight * k);
+      c.globalAlpha = 1; c.lineWidth = 2; c.strokeStyle = '#4cc9f0'; c.setLineDash([6, 4]);
+      c.strokeRect(p.x, p.y, al.img.naturalWidth * k, al.img.naturalHeight * k); c.restore();
+    },
+    renderPanel(el) {
+      if (!al) { el.innerHTML = ''; return; }
+      // collapsed (default): only ✓ Fits and a handle to open the options – the pictures get the screen
+      if (!al.open) {
+        el.innerHTML = `<div class="btnrow big" style="margin-top:0"><button data-al="open" style="flex:0 0 auto;padding:9px 12px">⌃ Options</button>` +
+          `<button class="primary" data-al="ok">✓ Fits – use the new screenshot</button></div>`;
+      } else el.innerHTML = `<div class="btnrow" style="margin-top:0"><button data-al="open">⌄ Hide options</button></div><div class="calok"${al.sure ? '' : ' style="background:rgba(255,170,0,.14)"'}><b>${al.sure ? 'New screenshot laid over the old one – check it' : 'Please lay the new screenshot onto the old one'}</b>
+          <span>Drag it so the map matches the old one underneath. Bigger / smaller: two fingers or the buttons.</span></div>
+        <div class="lbl">Fingers move:</div>
+        <div class="btnrow"><button data-al="f" data-v="shot" class="${al.fingers !== 'map' ? 'primary' : ''}">🖼️ New screenshot</button><button data-al="f" data-v="map" class="${al.fingers === 'map' ? 'primary' : ''}">🗺️ Map (zoom to check)</button></div>
+        <div class="lbl">Size: ${Math.round(al.s * 100)} %</div>
+        <div class="btnrow"><button data-al="s" data-v="0.95">−5 %</button><button data-al="s" data-v="0.99">−1 %</button><button data-al="s" data-v="1.01">+1 %</button><button data-al="s" data-v="1.05">+5 %</button></div>
+        <div class="lbl">See more of: old ← → new</div>
+        <input type="range" id="alA" min="0.1" max="0.9" step="0.05" value="${al.alpha}" style="width:100%">
+        <div class="btnrow big"><button data-al="cancel">Cancel</button><button class="primary" data-al="ok">✓ Fits – use the new screenshot</button></div>`;
+      el.onclick = ev => {
+        const b = ev.target.closest('button[data-al]'); if (!b || !al) return;
+        const a = b.dataset.al;
+        if (a === 'ok') { endAlign(true); return; }
+        if (a === 'cancel') { endAlign(false); return; }
+        if (a === 'f') { al.fingers = b.dataset.v; refresh(); return; }
+        if (a === 'open') { al.open = !al.open; refresh(); placeHint(); return; }
+        if (a === 's') {
+          // scale around the centre of the visible map
+          const f = +b.dataset.v, c = toImage(cw / 2, ch / 2), X = (c.x - al.tx) / al.s, Y = (c.y - al.ty) / al.s;
+          al.s = clamp(al.s * f, 0.1, 10); al.tx = c.x - al.s * X; al.ty = c.y - al.s * Y; PP.board.redraw(); refresh();
+        }
+      };
+      el.oninput = ev => { if (ev.target.id === 'alA' && al) { al.alpha = +ev.target.value; PP.board.redraw(); } };
+    },
+  });
   function newScreenshot(file, force) {
     if (!file || (!force && !(file.type || '').startsWith('image/'))) { if (file) toast('Please choose an image file'); return Promise.resolve(null); }
     if (S().board === 'image' && img && hasMarks()) {
@@ -1480,14 +1566,11 @@ window.PP = window.PP || {};
         PP.ui.openSheet(`<div class="sheethead"><b>New screenshot</b><button class="x" data-m="x" aria-label="Close">✕</button></div>
           <div class="menu"><button data-m="upd">🔄 Update this game <span>keep my marks</span></button>
           <button data-m="new">🆕 New game <span>start over</span></button></div>
-          <p class="note">Update: the new screenshot is lined up with the old one automatically – cities, units, marked tiles and plans stay.</p>`,
+          <p class="note">Update: the new screenshot is laid over the old one – you check or adjust where it sits, then cities, units, marked tiles and plans stay on their tiles.</p>`,
         (ev, b) => {
           if (!b) return;
           const m = b.dataset.m; PP.ui.closeSheet();
-          if (m === 'upd') {
-            try { pendingMerge = { old: tileDescs(imagePixels(), Object.assign({}, S().grid)) }; } catch (e) { pendingMerge = null; }
-            resolve(loadImageBlob(file, true));
-          } else if (m === 'new') { clearBoardItems(); resolve(loadImageBlob(file, true)); }
+          if (m === 'upd') { startAlign(file); resolve(null); } else if (m === 'new') { clearBoardItems(); resolve(loadImageBlob(file, true)); }
           else resolve(null);
         });
       });
