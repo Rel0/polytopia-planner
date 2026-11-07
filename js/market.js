@@ -913,7 +913,7 @@
     destroy: ['💥', 'Destroy buildings', 'move / replace'], produce: ['🏗️', 'New Farms, Mines, Lumber Huts', ''] };
   const TECH_OF_WS = { windmill: 'Construction', forge: 'Smithery', sawmill: 'Mathematics' }; // fallback when PP.TECH is missing
 
-  const ui = { step: 1, brush: 'forest', paint: null, alt: 0, sel: null, entered: false, borders: false, edit: null };
+  const ui = { step: 1, brush: 'forest', paint: null, alt: 0, sel: null, entered: false, borders: false, edit: null, onlyForest: false };
   const S = () => PP.state;
   // state.market: { cities: [{ c, r, rad: 1|2, made? }], edits: { 'c,r': 1 (added) | 0 (removed) }, touched, opts }
   // (v16 had a rectangle `region`; now always false – core resets it to null when a new screenshot is loaded)
@@ -1855,6 +1855,7 @@
   function fitPlan() {
     const p = curPlan(planResult()); if (!p) { fitRegion(); return; }
     const l = [];
+    if (ui.onlyForest && forestSteps(p).length) { forestSteps(p).forEach(s => l.push([s.c, s.r])); fitTiles(l, 150); return; }
     p.tiles.forEach(t => l.push([t.c, t.r]));
     p.buildings.forEach(b => { l.push([b.c, b.r]); (b.producers || []).forEach(q => l.push([q.c, q.r])); });
     if (!l.length) { fitRegion(); return; }
@@ -1870,10 +1871,12 @@
         return selCities().length ? 'Tap more cities · tap a city again: 3×3 → 5×5 → off' : 'Tap your own cities (the city tile) to plan their Markets';
       }
       if (ui.step === 2) return ui.brush ? 'Tap or drag: ' + nm(ui.brush) + ' (tap again = remove)' : 'Pick a brush, then tap tiles';
+      if (ui.onlyForest) return '🪓 Only the forests to cut down (🔥 = burn) · tap 🪓 again for the whole plan';
       return 'Tap a Market to see what feeds it · tap any tile for details';
     },
     onEnter() {
       const m = M();
+      ui.onlyForest = false;
       if (!m.touched && !m.cities.length) knownOwn().forEach(q => { if (cityEntry(q.c, q.r)) m.cities.push({ c: q.c, r: q.r, rad: 1 }); });
       if (!selCities().length) ui.step = 1; else if (ui.step === 1 && !ui.entered) ui.step = 2;
       ui.entered = true;
@@ -1989,6 +1992,7 @@
 .mk ol.mk-list li .tx small{color:var(--muted,#9aa5c8)}
 .mk ol.mk-list li .co{font-weight:700;white-space:nowrap}
 .mk ol.mk-list li.sel{background:rgba(76,201,240,.12)}
+.mk .mk-btn.on{box-shadow:inset 0 0 0 2px #ffb703;background:rgba(255,183,3,.15)}
 .mk .mk-grow{margin:12px 0 4px;padding:10px;border:1px solid var(--line,#33406e);border-radius:12px;background:rgba(123,211,137,.05)}
 .mk .gw-t{font-weight:800;margin-bottom:6px}
 .mk .gw-sum{font-size:14.5px;line-height:1.45;margin:0 0 8px;padding:8px 10px;border-radius:10px;background:rgba(123,211,137,.12)}
@@ -2086,8 +2090,11 @@
     } else {
       const res = planResult(), p = curPlan(res);
       const added = p && p.actions && planAdded(p);
-      h += `<div data-peek="plan:${ui.alt}:${ui.sel ? ui.sel.c + '/' + ui.sel.r : ''}:${res && res.pending ? 'p' : 'd'}">${stepsHtml()}<div class="mk-key"><div class="t">${keyLine(p, res)}</div>` +
+      h += `<div data-peek="plan:${ui.alt}:${ui.onlyForest ? 'f' : ''}:${ui.sel ? ui.sel.c + '/' + ui.sel.r : ''}:${res && res.pending ? 'p' : 'd'}">${stepsHtml()}<div class="mk-key"><div class="t">${keyLine(p, res)}</div>` +
         (p && p.actions ? `<button class="mk-btn ${added ? 'ok' : 'pri'}" data-a="${added ? 'fromPlan' : 'toPlan'}">${added ? '✓ In plan' : '➕ Cost plan'}</button>` : '') + '</div>';
+      // v32: "only forests to cut down" right at the top (off by default; also the 🪓 in the bar on the map)
+      const fo = forestSteps(p);
+      if (fo.length) h += `<button class="mk-btn ${ui.onlyForest ? 'on' : ''}" data-a="onlyForest" style="margin:6px 0">${ui.onlyForest ? '🗺️ Show the whole plan again' : '🪓 Show which forests to cut down'}</button>`;
       if (p) h += altsHtml(res);
       h += (ui.sel && p ? selLine(p, ui.sel.c, ui.sel.r) : '') + '</div>';
       h += '<h3>Allowed actions</h3><div class="mk-opts">' + OPT_KEYS.map(k => {
@@ -2171,7 +2178,14 @@
     const order = ['city', 'field', 'forest', 'mountain', 'water', 'crop', 'ore', 'fruit'].concat(BLD_B);
     return '<div class="mk-cnt">' + order.filter(k => n[k]).map(k => `<span title="${esc(nm(k))}">${iconHtml(k, 15)} ${n[k]}</span>`).join('') + (un ? `<span title="Not marked – counted as Empty">❔ ${un} unmarked</span>` : '') + '</div>';
   }
-  const groupName = (p, k) => { const g = p.groups[k]; return g ? cityName(g.city, k) : 'City'; };
+  // v32: the plan numbers its cities in board order, the map (colours, "City A/B/…") in the order they were selected →
+  // translate by the city's position, so a building always has the colour and name of its own city
+  function pk(p, k) {
+    if (!p._ak) { const A = area(); p._ak = p.groups.map((g, i) => { if (g.city.implicit) return i; const j = A.cities.findIndex(ci => ci.c === g.city.c && ci.r === g.city.r); return j >= 0 ? j : i; }); }
+    return p._ak[k] != null ? p._ak[k] : k;
+  }
+  const pCol = (p, k) => cityCol(pk(p, k));
+  const groupName = (p, k) => { const g = p.groups[k]; return g ? cityName(g.city, pk(p, k)) : 'City'; };
   function selLine(p, c, r) {
     const x = cellAt(c, r), T = terr(), own = T.ownerOf(c, r);
     let h = `<div class="mk-bd" style="margin:6px 2px 0">📍 <b>${c}/${r}</b> · ${iconHtml(x.terrain === 'city' ? 'city' : x.terrain, 15)} ${esc(x.terrain === 'city' ? cityName(T.cities[own] || {}, own) : nm(x.terrain))}${x.res.map(q => ' + ' + esc(nm(q))).join('')}${x.bld ? ' + ' + esc(nm(x.other || x.bld)) : ''}`;
@@ -2213,7 +2227,7 @@
       const tp = p.tiles.find(t => t.c === ui.sel.c && t.r === ui.sel.r);
       return tp ? { steps: tp.steps, c: tp.c, r: tp.r, tile: true } : { steps: [], c: ui.sel.c, r: ui.sel.r, tile: true, none: true };
     }
-    const nx = p.steps.find(s => !isDone(s));
+    const nx = (ui.onlyForest ? forestSteps(p) : p.steps).find(s => !isDone(s));
     return nx ? { steps: [nx], c: nx.c, r: nx.r, tile: false } : null;
   }
   const actOnSel = () => { const p = curPlan(planResult()); return !!(p && ui.sel && p.tiles.some(t => t.c === ui.sel.c && t.r === ui.sel.r)); };
@@ -2221,13 +2235,16 @@
     if (ui.step !== 3) return '';
     const res = planResult(), p = curPlan(res);
     if (!p || !p.steps.length) return '';
-    const n = p.steps.length, nDone = p.steps.filter(isDone).length, anyDone = Object.keys(M().done).length > 0;
-    const undo = `<button class="ma-undo" data-ma="undo" title="Undo the last ✓" aria-label="Undo the last ✓" ${anyDone ? '' : 'disabled'}>↶</button>`;
-    const t = actTarget(p), cnt = `${nDone}/${n} built`;
-    if (!t) return undo + `<span class="ma-tx">🎉 <b>All ${n} steps built</b><br><small>The Markets earn ${p.income} ★/turn</small></span>`;
+    // v32: left a 🪓 toggle "only forests to cut down" (undo is the ↶ in the header now)
+    const fo = forestSteps(p), only = ui.onlyForest && fo.length > 0, list = only ? fo : p.steps;
+    const n = list.length, nDone = list.filter(isDone).length;
+    const undo = fo.length ? `<button class="ma-undo ${only ? 'on' : ''}" data-ma="forest" title="${only ? 'Show the whole plan again' : 'Show which forests to cut down'}" aria-label="${only ? 'Show the whole plan again' : 'Show which forests to cut down'}" aria-pressed="${only}">🪓</button>` : '';
+    const t = actTarget(p), cnt = only ? `${nDone}/${n} forests` : `${nDone}/${n} built`;
+    if (!t) return undo + (only ? `<span class="ma-tx">🎉 <b>All ${n} forests cut down</b><br><small>Tap 🪓 to see the whole plan again</small></span>`
+      : `<span class="ma-tx">🎉 <b>All ${n} steps built</b><br><small>The Markets earn ${p.income} ★/turn</small></span>`);
     if (t.none) return undo + `<span class="ma-tx">📍 <b>${t.c}/${t.r}</b>: nothing to build here<br><small>Tap a numbered tile · tap this tile again for the next step</small></span><button class="ma-ok" disabled>✓ Built</button>`;
     const all = t.steps.every(isDone), s0 = t.steps[0];
-    const nos = t.steps.map(s => `<span class="no" style="background:${cityCol(s.city)}">${s.no}</span>`).join('');
+    const nos = t.steps.map(s => `<span class="no" style="background:${pCol(p, s.city)}">${s.no}</span>`).join('');
     const what = t.steps.map(s => esc(stepName(s))).join(' → ');
     return undo + `<span class="ma-tx">${t.tile ? '' : '<small>Next:</small> '}${nos}${what}<br><small>${s0.c}/${s0.r} · ${cnt}</small></span>` +
       (all ? '<button class="ma-un" data-ma="toggle">Not built</button>' : '<button class="ma-ok" data-ma="toggle">✓ Built</button>');
@@ -2235,11 +2252,7 @@
   function mapActClick(ev) {
     const b = ev.target.closest('button[data-ma]'); if (!b || b.disabled) return;
     const m = M(), p = curPlan(planResult());
-    if (b.dataset.ma === 'undo') {
-      let last = null; for (const k in m.done) if (!last || m.done[k] > m.done[last]) last = k;
-      if (last) { delete m.done[last]; PP.app.commit(); }
-      return;
-    }
+    if (b.dataset.ma === 'forest') { ui.onlyForest = !ui.onlyForest; ui.sel = null; PP.app.refresh(); requestAnimationFrame(fitPlan); return; }
     const t = actTarget(p); if (!t || t.none) return;
     const all = t.steps.every(isDone);
     t.steps.forEach(s => { if (all) delete m.done[doneKey(s)]; else m.done[doneKey(s)] = ++doneSeq; });
@@ -2250,8 +2263,8 @@
     const multi = p.groups.length > 1;
     let h = '<h3>Markets</h3>';
     for (const g of p.groups) {
-      const col = cityCol(g.k);
-      if (multi || !g.city.implicit) h += `<div class="mk-city" style="--cc:${col}"><span class="dot"></span><span class="nmx">${esc(cityName(g.city, g.k))} <small style="color:var(--muted,#9aa5c8);font-weight:400">${g.city.implicit ? '' : g.city.c + '/' + g.city.r}</small></span><span class="inc">${g.income} ★/turn</span></div>`;
+      const col = pCol(p, g.k);
+      if (multi || !g.city.implicit) h += `<div class="mk-city" style="--cc:${col}"><span class="dot"></span><span class="nmx">${esc(cityName(g.city, pk(p, g.k)))} <small style="color:var(--muted,#9aa5c8);font-weight:400">${g.city.implicit ? '' : g.city.c + '/' + g.city.r}</small></span><span class="inc">${g.income} ★/turn</span></div>`;
       h += '<ol class="mk-list">';
       const list = g.markets.concat(g.workshops);
       if (!list.length) h += '<li class="none">No Market here – nothing with a level fits into this city’s territory.</li>';
@@ -2261,13 +2274,11 @@
     }
     if (p.steps.length) {
       const nDone = p.steps.filter(isDone).length, left = p.steps.filter(s => !isDone(s)).reduce((a, s) => a + s.cost, 0);
-      h += '<h3>Build order</h3>';
+      // v32: no step list any more – progress here, ticking happens in the bar on the map
+      h += '<h3>Building</h3>';
       h += nDone === p.steps.length
         ? '<div class="mk-prog all">🎉 All steps built – the Markets earn ' + p.income + ' ★/turn.</div>'
-        : `<div class="mk-prog"><div class="bar"><i style="width:${Math.round(100 * nDone / p.steps.length)}%"></i></div><span>${nDone ? `<b>${nDone}</b> of ${p.steps.length} built · ${left} ★ to go` : 'Tick ☐ when a step is built in the game'}</span></div>`;
-      h += '<ol class="mk-list">';
-      h += p.steps.map(s => `<li data-go="${s.c},${s.r}" class="${ui.sel && ui.sel.c === s.c && ui.sel.r === s.r ? 'sel' : ''}${isDone(s) ? ' done' : ''}"><button class="ck" data-done="${doneKey(s)}" title="${isDone(s) ? 'Built – tap to undo' : 'Mark as built'}" aria-label="${isDone(s) ? 'Built – tap to undo' : 'Mark as built'}">${isDone(s) ? '✓' : ''}</button><span class="no" style="background:${cityCol(s.city)}">${s.no}</span><span class="ic">${iconHtml(s.item === 'fruit' ? 'fruit' : s.item, 18)}</span><span class="tx">${esc(stepName(s))} <small>· ${s.c}/${s.r}${p.groups.length > 1 ? ' · ' + esc(groupName(p, s.city)) : ''}</small></span>${isDone(s) ? '<span class="bt">✓ BUILT</span>' : `<span class="co">${s.cost > 0 ? s.cost + ' ★' : s.cost < 0 ? '+' + (-s.cost) + ' ★' : '0 ★'}</span>`}</li>`).join('');
-      h += '</ol>';
+        : `<div class="mk-prog"><div class="bar"><i style="width:${Math.round(100 * nDone / p.steps.length)}%"></i></div><span>${nDone ? `<b>${nDone}</b> of ${p.steps.length} built · ${left} ★ to go` : 'Mark steps with ✓ Built in the bar on the map'}</span></div>`;
       if (nDone) h += '<button class="mk-btn" data-a="clearDone" style="margin:0 0 6px">Clear all ✓ marks</button>';
     }
     h += `<ol class="mk-list"><li class="tot"><span class="tx">Total: ${p.income} ★/turn · ${plural(p.actions, 'step', 'steps')}${p.payback ? ' · pays off in ' + plural(p.payback, 'turn', 'turns') : ''}</span><span class="co">${p.cost} ★</span></li></ol>`;
@@ -2300,7 +2311,7 @@
     const b = ev.target.closest('button,[data-go]'); if (!b || b.disabled) return;
     const d = b.dataset, m = M();
     if (d.step) {
-      ui.step = +d.step; ui.sel = null; if (ui.step !== 1) ui.borders = false;
+      ui.step = +d.step; ui.sel = null; ui.onlyForest = false; if (ui.step !== 1) ui.borders = false;
       PP.app.refresh();
       requestAnimationFrame(ui.step === 3 ? fitPlan : fitRegion);
       return;
@@ -2348,6 +2359,7 @@
       for (const x of areaCells()) if (x.terrain !== 'city') delete S().tiles[key(x.c, x.r)];
       toast('Marks cleared (cities stay)'); PP.app.commit(); return;
     }
+    if (a === 'onlyForest') { ui.onlyForest = !ui.onlyForest; ui.sel = null; PP.app.refresh(); requestAnimationFrame(fitPlan); return; }
     if (a === 'clearDone') { m.done = {}; PP.app.commit(); return; }
     if (a === 'toPlan') {
       const p = curPlan(planResult()); if (!p) return;
@@ -2473,9 +2485,9 @@
     drawTerritory(ctx, A, ui.step === 3);
     if (ui.step === 3) {
       const p = curPlan(planResult());
-      if (p) {
-        for (const m of p.markets) { diamondPath(ctx, m.c, m.r, 0.98); ctx.fillStyle = hexA(cityCol(m.city), 0.45); ctx.fill(); }
-        for (const w of p.workshops) { diamondPath(ctx, w.c, w.r, 0.92); ctx.globalAlpha = 0.35; ctx.fillStyle = WS_COL[w.item]; ctx.fill(); ctx.globalAlpha = 1; }
+      if (p && !ui.onlyForest) {
+        for (const m of p.markets) { diamondPath(ctx, m.c, m.r, 0.98); ctx.fillStyle = hexA(pCol(p, m.city), 0.45); ctx.fill(); }
+        for (const w of p.workshops) { const o = A.ownerOf(w.c, w.r); diamondPath(ctx, w.c, w.r, 0.92); ctx.globalAlpha = 0.3; ctx.fillStyle = o >= 0 ? cityCol(o) : pCol(p, w.city || 0); ctx.fill(); ctx.globalAlpha = 1; }
       }
     }
     ctx.restore();
@@ -2581,6 +2593,23 @@
     if (ui.sel && !(ui.step === 3 && actOnSel())) { diamondPath(ctx, ui.sel.c, ui.sel.r, 1); ctx.lineWidth = 2.5; ctx.strokeStyle = '#fff'; ctx.setLineDash([4, 3]); ctx.stroke(); ctx.setLineDash([]); }
     ctx.restore();
   }
+  // v32: steps that remove a forest (cut down / burn) – the "only forests" view at the start of a turn
+  const forestSteps = p => (p ? p.steps.filter(s => s.item === 'clear' || s.item === 'burn') : []);
+  function drawForest(ctx, D, p, u, big) {
+    const rad = clamp(u * 0.15, 6.5, 11), byTile = new Map();
+    forestSteps(p).forEach(s => { const k = key(s.c, s.r); if (!byTile.has(k)) byTile.set(k, []); byTile.get(k).push(s); });
+    const later = [];
+    for (const [, st] of byTile) {
+      const s0 = st[0], q = PP.board.tileToScreen(s0.c, s0.r), col = pCol(p, s0.city), done = st.every(isDone), R = big * 0.62;
+      diamondPath(ctx, s0.c, s0.r, 0.94);
+      if (done) { ctx.fillStyle = BUILT_FILL; ctx.fill(); ctx.lineWidth = clamp(u * 0.07, 2.5, 5); ctx.strokeStyle = BUILT_COL; ctx.stroke(); }
+      else { ctx.fillStyle = hexA(col, 0.3); ctx.fill(); ctx.lineWidth = clamp(u * 0.08, 3, 5.5); ctx.strokeStyle = col; ctx.stroke(); }
+      disc(ctx, q.x, q.y, R, done ? BUILT_DARK : 'rgba(10,14,30,.85)', done ? BUILT_COL : col, 2.5);
+      emoji(ctx, st.some(x => x.item === 'burn') && !st.some(x => x.item === 'clear') ? '🔥' : '🪓', q.x, q.y, big * 0.75, done ? 0.55 : 1);
+      later.push(() => numBadge(ctx, done ? '✓' : st.map(x => x.no).join('·'), q.x - R * 0.8, q.y - R * 0.9, rad * (done ? 1.2 : 1), done ? BUILT_COL : col, done ? '#fff' : '#0b0f1f'));
+    }
+    later.forEach(f => f());
+  }
   const ACT_GLYPH = { destroy: '💥', fruit: '🍒', plant: '🌱', clear: '🪓', burn: '🔥' };
   // v29: a tapped Market of the plan → { set of 'c,r' (Market, its workshops, their producers), market }
   function focusOf(p) {
@@ -2596,7 +2625,10 @@
     return { F, m };
   }
   function drawPlan(ctx, D, p, u, big) {
+    if (ui.onlyForest) { drawForest(ctx, D, p, u, big); return; }
     const foc = focusOf(p), dim = (c, r) => (foc && !foc.F.has(key(c, r)) ? 0.16 : 1);
+    // v32: every building marker in the colour of the city whose territory it is in
+    const TA = area(), colAt = (c, r, fb) => { const o = TA.ownerOf(c, r); return o >= 0 ? cityCol(o) : pCol(p, fb >= 0 ? fb : 0); };
     // workshop → counted producers (thin, dashed, workshop colour)
     for (const w of p.workshops) {
       const wp = PP.board.tileToScreen(w.c, w.r);
@@ -2604,7 +2636,7 @@
         const q = PP.board.tileToScreen(pr.c, pr.r);
         ctx.beginPath(); ctx.moveTo(wp.x, wp.y); ctx.lineTo(q.x, q.y);
         const on = foc && foc.F.has(key(w.c, w.r));
-        ctx.lineWidth = clamp(u * (on ? 0.07 : 0.04), 1.2, on ? 4 : 2.4); ctx.strokeStyle = WS_COL[w.item]; ctx.globalAlpha = foc ? (on ? 1 : 0.12) : 0.85; ctx.setLineDash([4, 3]); ctx.stroke(); ctx.setLineDash([]);
+        ctx.lineWidth = clamp(u * (on ? 0.07 : 0.04), 1.2, on ? 4 : 2.4); ctx.strokeStyle = colAt(w.c, w.r, w.city); ctx.globalAlpha = foc ? (on ? 1 : 0.12) : 0.85; ctx.setLineDash([4, 3]); ctx.stroke(); ctx.setLineDash([]);
         ctx.globalAlpha = 1;
       }
     }
@@ -2616,7 +2648,7 @@
         const wp = PP.board.tileToScreen(w.c, w.r);
         ctx.beginPath(); ctx.moveTo(mp.x, mp.y); ctx.lineTo(wp.x, wp.y);
         ctx.lineWidth = clamp(u * 0.16, 3, 9); ctx.strokeStyle = 'rgba(0,0,0,.6)'; ctx.stroke();
-        ctx.lineWidth = clamp(u * 0.1, 2, 6); ctx.strokeStyle = cityCol(m.city); ctx.stroke();
+        ctx.lineWidth = clamp(u * 0.1, 2, 6); ctx.strokeStyle = pCol(p, m.city); ctx.stroke();
       }
     }
     ctx.globalAlpha = 1;
@@ -2629,16 +2661,16 @@
       if (p.tiles.some(t => t.c === pr.c && t.r === pr.r)) continue;
       const q = PP.board.tileToScreen(pr.c, pr.r);
       ctx.globalAlpha = dim(pr.c, pr.r);
-      disc(ctx, q.x, q.y, big * 0.42, 'rgba(10,14,30,.6)', WS_COL[w.item], 1.3);
+      disc(ctx, q.x, q.y, big * 0.42, 'rgba(10,14,30,.6)', colAt(pr.c, pr.r, w.city), 1.8);
       drawIcon(ctx, pr.item, q.x, q.y, big * 0.62, ctx.globalAlpha);
       ctx.globalAlpha = 1;
     }
-    for (const m of p.markets) { ctx.globalAlpha = dim(m.c, m.r); diamondPath(ctx, m.c, m.r, 0.98); ctx.lineWidth = 3; ctx.strokeStyle = cityCol(m.city); ctx.stroke(); ctx.globalAlpha = 1; }
+    for (const m of p.markets) { ctx.globalAlpha = dim(m.c, m.r); diamondPath(ctx, m.c, m.r, 0.98); ctx.lineWidth = 3; ctx.strokeStyle = pCol(p, m.city); ctx.stroke(); ctx.globalAlpha = 1; }
     // tiles with steps: final building (or 💥 if only destroyed); existing buildings that count: ✓
     const bAt = new Map(p.buildings.map(b => [key(b.c, b.r), b]));
     const later = [], pills = [];
     for (const t of p.tiles) {
-      const q = PP.board.tileToScreen(t.c, t.r), col = cityCol(t.city), b = bAt.get(key(t.c, t.r)), a = dim(t.c, t.r);
+      const q = PP.board.tileToScreen(t.c, t.r), col = pCol(p, t.city), b = bAt.get(key(t.c, t.r)), a = dim(t.c, t.r);
       const R = big * (b ? 0.7 : 0.5), allDone = t.steps.every(isDone);
       ctx.globalAlpha = a;
       if (allDone) { // built: the whole tile green with a strong outline
@@ -2673,7 +2705,7 @@
       const q = PP.board.tileToScreen(b.c, b.r), R = big * 0.7, a = dim(b.c, b.r);
       if (!b.isNew) {
         ctx.globalAlpha = a;
-        disc(ctx, q.x, q.y, R, 'rgba(10,14,30,.7)', 'rgba(255,255,255,.85)', 1.8);
+        disc(ctx, q.x, q.y, R, 'rgba(10,14,30,.7)', colAt(b.c, b.r, b.city), 2.2);
         drawIcon(ctx, b.item, q.x, q.y, big * 1.0, a);
         ctx.globalAlpha = 1;
         if (a === 1) later.push(() => numBadge(ctx, '✓', q.x - R * 0.8, q.y - R * 0.9, rad * 0.9, '#e8ecf8', '#0b6b4f'));
@@ -2708,7 +2740,7 @@
   PP.market.unselectCity = (c, r) => { unselectCity(c, r); PP.app.commit(); };
   PP.market.editBorder = (c, r, want) => { const x = editBorder(c, r, want == null ? null : want); PP.app.commit(); return x; };
   PP.market.setBorders = on => { ui.borders = !!on; PP.app.refresh(); };
-  PP.market.setStep = s => { ui.step = s; PP.app.refresh(); };
+  PP.market.setStep = s => { ui.step = s; ui.onlyForest = false; PP.app.refresh(); };
   PP.market.setBrush = b => { ui.brush = b; PP.app.refresh(); };
   PP.market.paint = (c, r, id, on) => { applyBrush(c, r, id, on !== false); PP.app.commit(); };
   PP.market.setOpts = o => { Object.assign(M().opts, o); PP.app.commit(); };

@@ -65,7 +65,28 @@ window.PP = window.PP || {};
     clearTimeout(saveTimer); saveTimer = 0;
     try { localStorage.setItem(LS_KEY, JSON.stringify(PP.state)); } catch (e) { console.warn('save failed', e); }
   }
-  function save() { clearTimeout(saveTimer); saveTimer = setTimeout(saveNow, 200); }
+  // v32 undo: every save compares the state (without the view settings in .ui) with the last one; a change puts the
+  // old state on the undo stack. A new screenshot clears it (the image itself cannot be undone).
+  const UNDO_MAX = 50;
+  let undoStack = [], lastSnap = null;
+  const snapOf = st => JSON.stringify(Object.assign({}, st, { ui: null }));
+  function trackUndo() {
+    const cur = snapOf(PP.state);
+    if (lastSnap !== null && cur !== lastSnap) { undoStack.push(lastSnap); if (undoStack.length > UNDO_MAX) undoStack.shift(); }
+    lastSnap = cur;
+    updateUndo();
+  }
+  function updateUndo() { const b = document.getElementById('undoBtn'); if (b) b.disabled = !undoStack.length; }
+  function clearUndo() { undoStack = []; lastSnap = snapOf(PP.state); updateUndo(); }
+  function undo() {
+    if (!undoStack.length) return false;
+    const prev = undoStack.pop(), s = JSON.parse(prev);
+    s.ui = PP.state.ui; PP.state = s; lastSnap = prev;
+    sanitize(); saveNow(); updateUndo();
+    refresh();
+    return true;
+  }
+  function save() { trackUndo(); clearTimeout(saveTimer); saveTimer = setTimeout(saveNow, 200); }
   window.addEventListener('pagehide', () => { if (saveTimer) saveNow(); });
   document.addEventListener('visibilitychange', () => { if (document.hidden && saveTimer) saveNow(); });
 
@@ -1322,6 +1343,7 @@ window.PP = window.PP || {};
     return new Promise(resolve => {
       const url = URL.createObjectURL(blob), im = new Image();
       im.onload = () => {
+        if (fresh) setTimeout(clearUndo, 0);
         if (imgUrl) URL.revokeObjectURL(imgUrl);
         img = im; imgUrl = url; pix = null; hiRes = null;
         const st = S();
@@ -1433,6 +1455,8 @@ window.PP = window.PP || {};
     $('#railTools').addEventListener('click', ev => { const b = ev.target.closest('[data-tool]'); if (b) railClick(b.dataset.tool); });
     $('#menuBtn').onclick = openMenu;
     $('#fitBtn').onclick = () => { if (S().board) fit(); };
+    $('#undoBtn').onclick = () => { if (undo()) toast('Undone'); else toast('Nothing to undo'); };
+    clearUndo();
     $('#budget').onclick = () => { if (registry.cost) railClick('cost'); };
     $('#drawerClose').onclick = () => PP.drawer.close();
     bindDrawerTab($('#drawerTab'));
@@ -1468,7 +1492,13 @@ window.PP = window.PP || {};
     const onSheetInput = ev => { if (sheetInput) try { sheetInput(ev); } catch (e) { reportError(e, 'sheet'); } };
     sheet.addEventListener('input', onSheetInput);
     sheet.addEventListener('change', onSheetInput);
-    document.addEventListener('keydown', e => { if (e.key === 'Escape') PP.ui.closeSheet(); });
+    document.addEventListener('keydown', e => {
+      if (e.key === 'Escape') PP.ui.closeSheet();
+      // Ctrl/Cmd+Z = undo (not while typing in a field)
+      if ((e.ctrlKey || e.metaKey) && !e.shiftKey && (e.key === 'z' || e.key === 'Z') && !/^(INPUT|TEXTAREA|SELECT)$/.test((e.target && e.target.tagName) || '')) {
+        e.preventDefault(); if (undo()) toast('Undone');
+      }
+    });
 
     document.addEventListener('paste', e => {
       const item = [...((e.clipboardData && e.clipboardData.items) || [])].find(i => i.type.startsWith('image/'));
@@ -1530,6 +1560,7 @@ window.PP = window.PP || {};
 
   let inited = false;
   PP.app = {
+    undo: () => undo(),
     init() {
       if (inited) return; inited = true;
       bindDom(); domReady = true;
