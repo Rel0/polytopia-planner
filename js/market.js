@@ -882,12 +882,12 @@
   const toast = m => PP.ui && PP.ui.toast && PP.ui.toast(m);
   const NAME = { field: 'Empty', forest: 'Forest', mountain: 'Mountain', water: 'Water', city: 'City', crop: 'Crop (for Farm)', ore: 'Metal', fruit: 'Fruit',
     lumber: 'Lumber Hut', plant: 'Grow Forest', fruitH: 'Harvest Fruit', other: 'Other building' };
-  const nm = id => NAME[id] || (ITEM(id) || {}).name || ({ cloud: 'Cloud', space: 'Space' })[id] || id;
+  const nm = id => NAME[id] || (ITEM(id) || {}).name || ({ cloud: 'Cloud', space: 'Space', monument: 'Monument' })[id] || id;
   const stepName = s => (s.item === 'destroy' ? 'Destroy ' + nm(s.what || 'building') : s.item === 'fruit' ? 'Harvest Fruit' : UNIQUE.indexOf(s.item) >= 0 || PRODS.indexOf(s.item) >= 0 ? 'Build ' + nm(s.item) : nm(s.item));
   const ICON = {
     field: '🟩', forest: '🌲', mountain: '⛰️', water: '🌊', city: '🏠', crop: '🌾', ore: '💎', fruit: '🍒',
     farm: '🌾', mine: '⛏️', lumber: '🪵', windmill: '🌬️', forge: '🔨', sawmill: '🪚', market: '🏪',
-    destroy: '💥', clear: '🪓', burn: '🔥', plant: '🌱', other: '🏛️', space: '🌌', cloud: '☁️',
+    destroy: '💥', clear: '🪓', burn: '🔥', plant: '🌱', other: '🏛️', space: '🌌', cloud: '☁️', monument: '🗽',
   };
   const ICON_NAME = { ore: 'metal', plant: 'forest', destroy: null, clear: null, burn: null, other: null };
   const iconName = id => (id in ICON_NAME ? ICON_NAME[id] : id);
@@ -905,9 +905,9 @@
   const TER_B = ['field', 'forest', 'mountain', 'water', 'space', 'cloud', 'city'];
   const RES_B = ['crop', 'ore', 'fruit'];
   const BLD_B = ['farm', 'mine', 'lumber', 'windmill', 'forge', 'sawmill', 'market'];
-  const BRUSH = TER_B.concat(RES_B, BLD_B);
-  const PAL_ORDER = ['field', 'sawmill', 'lumber', 'forest', 'windmill', 'farm', 'crop', 'fruit', 'forge', 'mine', 'ore', 'mountain', 'city', 'market', 'water', 'space', 'cloud'];
-  const BRUSH_LABEL = { field: 'Empty', forest: 'Forest', mountain: 'Mountain', water: 'Water', space: 'Space', cloud: 'Cloud', city: 'City', crop: 'Crop', ore: 'Metal', fruit: 'Fruit',
+  const BRUSH = TER_B.concat(RES_B, BLD_B, ['monument']);
+  const PAL_ORDER = ['field', 'sawmill', 'lumber', 'forest', 'windmill', 'farm', 'crop', 'fruit', 'forge', 'mine', 'ore', 'mountain', 'city', 'market', 'water', 'space', 'cloud', 'monument'];
+  const BRUSH_LABEL = { field: 'Empty', forest: 'Forest', mountain: 'Mountain', water: 'Water', space: 'Space', cloud: 'Cloud', monument: 'Monument', city: 'City', crop: 'Crop', ore: 'Metal', fruit: 'Fruit',
     farm: 'Farm', mine: 'Mine', lumber: 'Lumber', windmill: 'Windmill', forge: 'Forge', sawmill: 'Sawmill', market: 'Market' };
   const RES_TER = { crop: 'field', fruit: 'field', ore: 'mountain' };
   const OPT_LABEL = { clear: ['🪓', 'Clear Forest', '+1 ★'], burn: ['🔥', 'Burn Forest', '→ Crop'], grow: ['🌱', 'Grow Forest', 'Empty → Forest'],
@@ -997,6 +997,7 @@
       return { c, r, terrain: 'city', res: [], bld: null, stored: true, name: (ce && ce.name) || '', cityId: ce ? ce.id : null };
     }
     if (t && t.src !== 'auto') {
+      if (t.bld === 'monument') return { c, r, terrain: 'water', res: [], bld: null, stored: true, monument: true }; // v41: nothing can be built, can't be destroyed
       let ter = TERRAINS.indexOf(t.terrain) >= 0 ? t.terrain : 'field';
       const cloud = ter === 'cloud';           // v37: marked as Cloud (not explored) – nothing is built there, like water
       if (ter === 'ocean' || ter === 'cloud') ter = 'water';
@@ -1941,6 +1942,7 @@
   function brushOn(id, x) {
     if (id === 'city') return x.terrain === 'city';
     if (id === 'cloud') return x.stored && !!x.cloud;
+    if (id === 'monument') return !!x.monument;
     if (id === 'water' && x.cloud) return false;
     if (TER_B.indexOf(id) >= 0) return x.stored && x.terrain === id && !x.bld && !x.res.length;
     if (RES_B.indexOf(id) >= 0) return x.res.indexOf(id) >= 0;
@@ -1956,6 +1958,7 @@
       return;
     }
     if (x.terrain === 'city') { if (!ui.paint || ui.paint.first) toast('City tile – use the City brush to remove it'); return; }
+    if (id === 'monument') { if (on) storeTile(c, r, { terrain: 'field', res: [], bld: 'monument' }); else delete S().tiles[k]; return; }
     if (TER_B.indexOf(id) >= 0) {
       if (!on) { delete S().tiles[k]; return; } // back to "not marked" (= Empty)
       const bld = x.bld && BASE[x.bld] === id && !(x.bld === 'farm' && id !== 'field') ? x.bld : null;
@@ -2628,7 +2631,7 @@
       }
     }
   }
-  const TER_FILL = { cloud: 'rgba(225,230,245,.55)', space: 'rgba(0,0,0,.55)', field: 'rgba(155,211,90,.22)', forest: 'rgba(30,120,50,.42)', mountain: 'rgba(150,150,160,.45)', water: 'rgba(20,60,140,.6)' };
+  const TER_FILL = { monument: 'rgba(255,209,102,.35)', cloud: 'rgba(225,230,245,.55)', space: 'rgba(0,0,0,.55)', field: 'rgba(155,211,90,.22)', forest: 'rgba(30,120,50,.42)', mountain: 'rgba(150,150,160,.45)', water: 'rgba(20,60,140,.6)' };
   function drawUnder(ctx) {
     const A = area();
     if (!A.n) return;
@@ -2665,18 +2668,18 @@
       for (const x of ringCells()) {
         diamondPath(ctx, x.c, x.r, 1); ctx.fillStyle = 'rgba(6,9,22,.3)'; ctx.fill();
         diamondPath(ctx, x.c, x.r, 0.9);
-        if (x.stored || (x.auto && !x.unsure)) { ctx.globalAlpha = x.stored ? 0.8 : 0.45; ctx.fillStyle = TER_FILL[x.cloud ? 'cloud' : x.terrain] || TER_FILL.water; ctx.fill(); ctx.globalAlpha = 1; }
+        if (x.stored || (x.auto && !x.unsure)) { ctx.globalAlpha = x.stored ? 0.8 : 0.45; ctx.fillStyle = TER_FILL[x.monument ? 'monument' : x.cloud ? 'cloud' : x.terrain] || TER_FILL.water; ctx.fill(); ctx.globalAlpha = 1; }
         ctx.lineWidth = 1.6; ctx.strokeStyle = x.unsure && !x.stored ? 'rgba(255,183,3,.9)' : RING_COL; ctx.setLineDash([5, 4]); ctx.stroke(); ctx.setLineDash([]);
       }
       for (const x of areaCells(A)) {
         if (x.terrain === 'city') continue;
         diamondPath(ctx, x.c, x.r, 0.94);
         if (!x.stored) {
-          if (x.auto && !x.unsure) { ctx.globalAlpha = 0.6; ctx.fillStyle = TER_FILL[x.cloud ? 'cloud' : x.terrain] || TER_FILL.water; ctx.fill(); ctx.globalAlpha = 1; }
+          if (x.auto && !x.unsure) { ctx.globalAlpha = 0.6; ctx.fillStyle = TER_FILL[x.monument ? 'monument' : x.cloud ? 'cloud' : x.terrain] || TER_FILL.water; ctx.fill(); ctx.globalAlpha = 1; }
           ctx.lineWidth = x.unsure ? 1.8 : 1.2; ctx.strokeStyle = x.unsure ? 'rgba(255,183,3,.9)' : 'rgba(255,255,255,.45)';
           ctx.setLineDash([3, 3]); ctx.stroke(); ctx.setLineDash([]); continue;
         }
-        ctx.fillStyle = TER_FILL[x.cloud ? 'cloud' : x.terrain] || TER_FILL.water; ctx.fill();
+        ctx.fillStyle = TER_FILL[x.monument ? 'monument' : x.cloud ? 'cloud' : x.terrain] || TER_FILL.water; ctx.fill();
         ctx.lineWidth = 1.4; ctx.strokeStyle = 'rgba(255,255,255,.55)'; ctx.stroke();
       }
     }
@@ -2770,7 +2773,7 @@
           const R = big * 0.62, U = UNIQUE.indexOf(x.bld) >= 0;
           disc(ctx, q.x, q.y, R, U ? 'rgba(40,30,5,.78)' : 'rgba(10,14,30,.65)', U ? '#ffd166' : 'rgba(255,255,255,.8)', 1.5);
           drawIcon(ctx, x.bld, q.x, q.y, big * 0.95);
-        } else if (x.terrain !== 'field') drawIcon(ctx, x.cloud ? 'cloud' : x.terrain, q.x, q.y, big * 0.8, 0.95);
+        } else if (x.terrain !== 'field') drawIcon(ctx, x.monument ? 'monument' : x.cloud ? 'cloud' : x.terrain, q.x, q.y, big * 0.8, 0.95);
         x.res.forEach((rs, i) => {
           if ((rs === 'crop' && x.bld === 'farm') || (rs === 'ore' && x.bld === 'mine')) return;
           const rx = q.x + big * (0.55 + i * 0.5), ry = q.y + big * 0.32;
