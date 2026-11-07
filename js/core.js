@@ -1084,6 +1084,7 @@ window.PP = window.PP || {};
   let afterCal = null;
   function calDone() {
     save();
+    if (pendingMerge) setTimeout(runMerge, 0); // v38: updating a screenshot – line the old marks up now
     const st = S(), want = takeLinkTool() || afterCal || st.ui.mode;
     afterCal = null;
     st.ui.drawerOpen = true;
@@ -1377,8 +1378,120 @@ window.PP = window.PP || {};
       im.src = url;
     });
   }
+  // ---------------------------------------------------------------- v38 update a screenshot, keep the marks
+  // A newer screenshot of the same game (more map visible, zoomed or moved): after its grid is confirmed, every tile
+  // of the old and the new picture is compared (RGB on a 10 × 10 lattice over the tile, so the zoom does not matter)
+  // for every shift of the tile numbers; the shift with the smallest median difference wins (simulated: 6/6 right,
+  // runner-up 3–47 × worse). Then all marks move by it, and a bar lets you nudge them by a tile and confirm.
+  let pendingMerge = null, mergeBar = null;
+  function tileDescs(P, g) {
+    const out = new Map(); if (!P || !g) return out;
+    const w = Math.hypot(g.ux - g.vx, g.uy - g.vy), h = Math.abs(g.uy + g.vy), det = g.ux * g.vy - g.vx * g.uy || 1e-9, N = 10;
+    const cs = [], rs = [];
+    [[0, 0], [P.w, 0], [0, P.h], [P.w, P.h]].forEach(([x, y]) => { const dx = x - g.ox, dy = y - g.oy; cs.push((dx * g.vy - g.vx * dy) / det); rs.push((g.ux * dy - g.uy * dx) / det); });
+    for (let c = Math.floor(Math.min(...cs)) - 1; c <= Math.ceil(Math.max(...cs)) + 1; c++) for (let r = Math.floor(Math.min(...rs)) - 1; r <= Math.ceil(Math.max(...rs)) + 1; r++) {
+      const x = g.ox + c * g.ux + r * g.vx, y = g.oy + c * g.uy + r * g.vy;
+      if (!(x > 0.5 * w && x < P.w - 0.5 * w && y > 0.5 * h && y < P.h - 0.5 * h && y > 0.07 * P.h && y < 0.88 * P.h)) continue; // not cut off, not under the game UI
+      const f = new Float32Array(N * N * 3); let k = 0;
+      for (let a = 0; a < N; a++) for (let b = 0; b < N; b++) {
+        const p = (b + 0.5) / N - 0.5, q = (a + 0.5) / N - 0.5;
+        const xx = Math.trunc(x + (p - q) * w / 2 * 0.75), yy = Math.trunc(y + (p + q) * h / 2 * 0.75), j = (yy * P.w + xx) * 4;
+        f[k++] = P.data[j]; f[k++] = P.data[j + 1]; f[k++] = P.data[j + 2];
+      }
+      // tiles without structure (black space, flat colour) match everywhere – leave them out
+      let m = 0, m2 = 0; for (let i = 0; i < f.length; i++) { m += f[i]; m2 += f[i] * f[i]; }
+      m /= f.length; if (Math.sqrt(Math.max(0, m2 / f.length - m * m)) < 14 || m < 30) continue;
+      out.set(c + ',' + r, f);
+    }
+    return out;
+  }
+  function alignDescs(A, B, R) {
+    R = R || 30; const res = [], keys = [...A.keys()].map(k => k.split(',').map(Number));
+    const minN = Math.max(10, Math.round(0.25 * Math.min(A.size, B.size))); // a real update overlaps a good part
+    for (let dc = -R; dc <= R; dc++) for (let dr = -R; dr <= R; dr++) {
+      const ds = [];
+      for (const [c, r] of keys) {
+        const b = B.get((c + dc) + ',' + (r + dr)); if (!b) continue;
+        const a = A.get(c + ',' + r); let s2 = 0; for (let i = 0; i < a.length; i++) s2 += Math.abs(a[i] - b[i]);
+        ds.push(s2 / a.length);
+      }
+      if (ds.length < minN) continue;
+      ds.sort((p, q) => p - q);
+      res.push({ d: ds[ds.length >> 1], dc, dr, n: ds.length }); // median: moved units / new buildings don't matter
+    }
+    return res.sort((p, q) => p.d - q.d);
+  }
+  // move everything that sits on a tile by (dc, dr)
+  function shiftState(dc, dr) {
+    if (!dc && !dr) return;
+    const st = S(), mv = o => { if (o && Number.isFinite(o.c) && Number.isFinite(o.r)) { o.c += dc; o.r += dr; } };
+    const mk = k => { const m = /^(-?\d+),(-?\d+)(.*)$/.exec(k); return m ? (+m[1] + dc) + ',' + (+m[2] + dr) + m[3] : k; };
+    const rekey = obj => { const o = {}; Object.keys(obj || {}).forEach(k => { o[mk(k)] = obj[k]; }); return o; };
+    st.tiles = rekey(st.tiles);
+    (st.units || []).forEach(mv); (st.cities || []).forEach(mv); (st.notes || []).forEach(mv);
+    (st.marks || []).forEach(m => { if (Number.isFinite(m.c1)) { m.c1 += dc; m.r1 += dr; } if (Number.isFinite(m.c2)) { m.c2 += dc; m.r2 += dr; } });
+    const b = st.build || {};
+    (b.placements || []).forEach(mv);
+    if (Array.isArray(b.noCity)) b.noCity = b.noCity.map(mk);
+    const m = st.market || {};
+    (m.cities || []).forEach(mv);
+    if (m.edits) m.edits = rekey(m.edits);
+    if (m.done) m.done = rekey(m.done);
+    if (Array.isArray(m.growSkip)) m.growSkip = m.growSkip.map(mk);
+  }
+  function hasMarks() {
+    const st = S(), m = st.market || {}, b = st.build || {};
+    return Object.values(st.tiles || {}).some(t => t && t.src !== 'auto') || (m.cities || []).length || (st.units || []).some(u => u && u.src !== 'auto') ||
+      (st.notes || []).some(n => n && Number.isFinite(n.c)) || (b.placements || []).length || (st.marks || []).length;
+  }
+  function runMerge() {
+    const pm = pendingMerge; pendingMerge = null; if (!pm) return;
+    let best = { dc: 0, dr: 0 }, sure = false;
+    try {
+      const res = alignDescs(pm.old, tileDescs(imagePixels(), S().grid));
+      if (res.length) { best = res[0]; sure = res.length < 2 || res[1].d >= 1.5 * res[0].d; }
+    } catch (e) { console.warn('merge failed', e); }
+    shiftState(best.dc, best.dr);
+    mergeBar = { sure, dc: 0, dr: 0 };
+    commit(); showMergeBar();
+  }
+  function showMergeBar() {
+    let el = $('#mergeBar');
+    if (!mergeBar) { if (el) el.hidden = true; return; }
+    if (!el) { el = document.createElement('div'); el.id = 'mergeBar'; $('#stage').appendChild(el); el.addEventListener('click', onMergeBar); }
+    el.hidden = false;
+    el.innerHTML = `<div class="mt">${mergeBar.sure ? '✓ Your marks were moved onto the new screenshot.' : '⚠ Not sure where the old screenshot fits – please check.'}<br><small>Do cities, units and marked tiles sit right? Otherwise move them one tile:</small></div>` +
+      '<div class="mb"><button data-mv="-1,0" title="up-left">↖</button><button data-mv="0,-1" title="up-right">↗</button><button data-mv="0,1" title="down-left">↙</button><button data-mv="1,0" title="down-right">↘</button>' +
+      '<button class="ok" data-mv="ok">✓ Fits</button></div>';
+  }
+  function onMergeBar(ev) {
+    const b = ev.target.closest('button[data-mv]'); if (!b || !mergeBar) return;
+    if (b.dataset.mv === 'ok') { mergeBar = null; showMergeBar(); toast('Screenshot updated – your marks are kept'); return; }
+    const [dc, dr] = b.dataset.mv.split(',').map(Number);
+    // the (c, r) axes point down-right / down-left on the screen (Polytopia's fixed camera)
+    const g = S().grid, right = g.ux >= 0;
+    shiftState(right ? dc : -dc, dr);
+    commit();
+  }
   function newScreenshot(file, force) {
     if (!file || (!force && !(file.type || '').startsWith('image/'))) { if (file) toast('Please choose an image file'); return Promise.resolve(null); }
+    if (S().board === 'image' && img && hasMarks()) {
+      return new Promise(resolve => {
+        PP.ui.openSheet(`<div class="sheethead"><b>New screenshot</b><button class="x" data-m="x" aria-label="Close">✕</button></div>
+          <div class="menu"><button data-m="upd">🔄 Update this game <span>keep my marks</span></button>
+          <button data-m="new">🆕 New game <span>start over</span></button></div>
+          <p class="note">Update: the new screenshot is lined up with the old one automatically – cities, units, marked tiles and plans stay.</p>`,
+        (ev, b) => {
+          if (!b) return;
+          const m = b.dataset.m; PP.ui.closeSheet();
+          if (m === 'upd') {
+            try { pendingMerge = { old: tileDescs(imagePixels(), Object.assign({}, S().grid)) }; } catch (e) { pendingMerge = null; }
+            resolve(loadImageBlob(file, true));
+          } else if (m === 'new') { clearBoardItems(); resolve(loadImageBlob(file, true)); }
+          else resolve(null);
+        });
+      });
+    }
     clearBoardItems(); // coins, marks, tiles, plans belong to the old picture
     return loadImageBlob(file, true);
   }

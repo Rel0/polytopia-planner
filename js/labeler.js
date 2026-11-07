@@ -63,13 +63,49 @@ window.PP = window.PP || {};
   }
   const labelText = l => (l.t === 'skip' ? 'skip' : [l.t].concat(l.ex || [], l.b ? [l.b] : []).join('+'));
 
+  // v38: unit details (side, type, HP) – training data for unit type / HP reading. Stored as l.u = { side, type, hp }
+  const COMMON_UNITS = ['warrior', 'archer', 'defender', 'rider', 'swordsman', 'catapult', 'knight', 'mindbender', 'giant', 'cloak', 'dagger', 'raft', 'scout', 'rammer', 'bomber'];
+  function unitName(id) { return (PP.UNITS && PP.UNITS[id] && PP.UNITS[id].name) || id; }
+  function unitEditor(t) {
+    const st = store(); if (!st) return;
+    const { P, L } = st, k = t.c + ',' + t.r, cur = labelOf(P, L, t);
+    const l = { t: cur.t, ex: (cur.ex || []).slice(), b: cur.b || null, user: true, u: Object.assign({ side: ui.lastSide || 'me', type: ui.lastType || 'warrior', hp: 10 }, cur.u || {}) };
+    if (l.ex.indexOf('unit') < 0) l.ex.push('unit');
+    const more = Object.keys(PP.UNITS || {}).filter(id => COMMON_UNITS.indexOf(id) < 0);
+    const html = () => `<div class="sheethead"><b>🪖 Unit on ${t.c}/${t.r}</b><button class="x" data-ue="close" aria-label="Close">✕</button></div>
+      <div style="padding:2px 4px 8px;font-size:13px">
+        <div style="margin:4px 0 4px;opacity:.75">Whose unit?</div>
+        <div style="display:flex;gap:6px">${[['me', '🔵 Mine'], ['enemy', '🔴 Enemy']].map(([v, n]) => `<button data-ue="side" data-v="${v}" style="flex:1;padding:9px;border-radius:10px;border:1px solid ${l.u.side === v ? '#4cc9f0' : 'var(--line,#33406e)'};background:${l.u.side === v ? 'rgba(76,201,240,.2)' : 'var(--panel2,#252e52)'};color:inherit;font-weight:700">${n}</button>`).join('')}</div>
+        <div style="margin:10px 0 4px;opacity:.75">HP (the white number next to the unit)</div>
+        <div style="display:flex;gap:6px;align-items:center"><button data-ue="hp" data-v="-1" style="width:44px;height:40px;border-radius:10px;border:0;background:var(--panel2,#252e52);color:inherit;font-size:20px">−</button>
+          <b style="min-width:44px;text-align:center;font-size:20px">${l.u.hp}</b>
+          <button data-ue="hp" data-v="1" style="width:44px;height:40px;border-radius:10px;border:0;background:var(--panel2,#252e52);color:inherit;font-size:20px">+</button>
+          ${[5, 10, 15, 20, 40].map(v => `<button data-ue="hpset" data-v="${v}" style="padding:8px 9px;border-radius:9px;border:1px solid var(--line,#33406e);background:transparent;color:inherit">${v}</button>`).join('')}</div>
+        <div style="margin:10px 0 4px;opacity:.75">Type</div>
+        <div style="display:flex;flex-wrap:wrap;gap:5px">${COMMON_UNITS.map(id => tbtn(id)).join('')}</div>
+        <details style="margin-top:6px"><summary style="opacity:.75">More types</summary><div style="display:flex;flex-wrap:wrap;gap:5px;margin-top:5px">${more.map(id => tbtn(id)).join('')}</div></details>
+        <div style="display:flex;gap:6px;margin-top:12px"><button data-ue="del" style="flex:1;padding:10px;border-radius:10px;border:1px solid var(--line,#33406e);background:transparent;color:inherit">No unit here</button>
+          <button data-ue="ok" style="flex:2;padding:10px;border-radius:10px;border:0;background:#4cc9f0;color:#08121f;font-weight:800">✓ Save</button></div></div>`;
+    const tbtn = id => `<button data-ue="type" data-v="${id}" style="padding:6px 8px;border-radius:9px;border:1px solid ${l.u.type === id ? '#4cc9f0' : 'var(--line,#33406e)'};background:${l.u.type === id ? 'rgba(76,201,240,.2)' : 'var(--panel2,#252e52)'};color:inherit;font-size:12.5px">${esc(unitName(id))}</button>`;
+    const open = () => PP.ui.openSheet(html(), (ev, b) => {
+      if (!b) return; const a = b.dataset.ue, v = b.dataset.v;
+      if (a === 'close') { PP.ui.closeSheet(); return; }
+      if (a === 'side') l.u.side = v; else if (a === 'type') l.u.type = v;
+      else if (a === 'hp') l.u.hp = Math.max(1, Math.min(99, l.u.hp + +v)); else if (a === 'hpset') l.u.hp = +v;
+      else if (a === 'del') { l.ex = l.ex.filter(x => x !== 'unit'); delete l.u; L.tiles[k] = l; PP.ui.closeSheet(); PP.app.commit(); return; }
+      else if (a === 'ok') { ui.lastSide = l.u.side; ui.lastType = l.u.type; L.tiles[k] = l; PP.ui.closeSheet(); PP.app.commit(); toast('Unit saved'); return; }
+      open();
+    });
+    open();
+  }
   function apply(t) {
     const st = store(); if (!st) { toast('Load a screenshot first'); return; }
+    if (ui.brush === 'unitd') { unitEditor(t); return; }
     const { P, L } = st, k = t.c + ',' + t.r, cur = labelOf(P, L, t);
-    const l = { t: cur.t, ex: (cur.ex || []).slice(), b: cur.b || null, user: true };
+    const l = { t: cur.t, ex: (cur.ex || []).slice(), b: cur.b || null, user: true, u: cur.u };
     const b = ui.brush;
     if (TERRAIN.some(x => x[0] === b)) l.t = b;
-    else if (EXTRA.some(x => x[0] === b)) { const i = l.ex.indexOf(b); if (i >= 0) l.ex.splice(i, 1); else l.ex.push(b); }
+    else if (EXTRA.some(x => x[0] === b)) { const i = l.ex.indexOf(b); if (i >= 0) { l.ex.splice(i, 1); if (b === 'unit') delete l.u; } else l.ex.push(b); }
     else if (BUILD.some(x => x[0] === b)) l.b = l.b === b ? null : b;
     else if (b === 'reset') { delete L.tiles[k]; PP.app.commit(); return; }
     L.tiles[k] = l;
@@ -81,7 +117,9 @@ window.PP = window.PP || {};
     const st = store(); if (!st) { toast('Load a screenshot first'); return; }
     const { P, L } = st, w = tileW(), tiles = tilesOn(P).map(t => {
       const l = labelOf(P, L, t);
-      return { c: t.c, r: t.r, x: +t.x.toFixed(1), y: +t.y.toFixed(1), label: labelText(l), user: !!l.user, conf: l.conf != null ? +l.conf.toFixed(2) : null };
+      const o = { c: t.c, r: t.r, x: +t.x.toFixed(1), y: +t.y.toFixed(1), label: labelText(l), user: !!l.user, conf: l.conf != null ? +l.conf.toFixed(2) : null };
+      if (l.u && (l.ex || []).indexOf('unit') >= 0) o.unit = { side: l.u.side, type: l.u.type, hp: l.u.hp }; // v38
+      return o;
     });
     // the screenshot itself (JPEG) so the file is complete on its own
     const cv = document.createElement('canvas'); cv.width = P.w; cv.height = P.h;
@@ -115,7 +153,7 @@ window.PP = window.PP || {};
       ctx.strokeStyle = l.user ? '#fff' : (l.conf != null && l.conf < 0.6 ? 'rgba(255,183,3,.95)' : 'rgba(255,255,255,.45)');
       if (!l.user) ctx.setLineDash([3, 3]); ctx.stroke(); ctx.setLineDash([]);
       if (ts.h < 18) continue;
-      const q = PP.board.tileToScreen(t.c, t.r), txt = labelText(l).replace(/\+/g, ' ');
+      const q = PP.board.tileToScreen(t.c, t.r), txt = labelText(l).replace(/\+/g, ' ') + (l.u ? ' · ' + (l.u.side === 'me' ? '🔵' : '🔴') + unitName(l.u.type) + ' ' + l.u.hp : '');
       ctx.font = `bold ${fs}px system-ui,sans-serif`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
       ctx.lineWidth = 3; ctx.strokeStyle = 'rgba(0,0,0,.75)'; ctx.strokeText(txt, q.x, q.y); ctx.fillStyle = l.user ? '#fff' : '#ffe08a'; ctx.fillText(txt, q.x, q.y);
     }
@@ -138,6 +176,7 @@ window.PP = window.PP || {};
       ${row('Terrain (sets it)', TERRAIN)}
       ${row('On the tile (toggles)', EXTRA)}
       ${row('Building (toggles)', BUILD)}
+      ${row('Units – for the unit detection (tap a unit: whose, type, HP)', [['unitd', 'Unit details', '🪖']])}
       <div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:10px">${btn('reset', 'Back to guess', '↺')}
         <button data-lba="export" style="padding:8px 12px;border-radius:10px;border:0;background:#4cc9f0;color:#08121f;font-weight:700">⬇️ Export labels (.json)</button>
         <button data-lba="clear" style="padding:8px 10px;border-radius:10px;border:1px solid var(--line,#33406e);background:transparent;color:inherit">Clear my labels</button></div>
@@ -153,7 +192,7 @@ window.PP = window.PP || {};
 
   PP.modes.register('label', {
     label: 'Label', icon: '🏷️',
-    hint: () => 'Brush: ' + ((TERRAIN.concat(EXTRA, BUILD).find(x => x[0] === ui.brush) || [0, ui.brush === 'reset' ? 'Back to guess' : ui.brush])[1]) + ' – tap tiles',
+    hint: () => (ui.brush === 'unitd' ? 'Tap a unit: whose it is, its type and HP' : 'Brush: ' + ((TERRAIN.concat(EXTRA, BUILD).find(x => x[0] === ui.brush) || [0, ui.brush === 'reset' ? 'Back to guess' : ui.brush])[1]) + ' – tap tiles'),
     onTap(t) { apply(t); },
     drawOver(ctx) { draw(ctx); },
     renderPanel,

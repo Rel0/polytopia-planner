@@ -96,6 +96,12 @@ body.drag #empty .card{border-color:var(--accent)}
 #hint{position:absolute;bottom:10px;left:50%;transform:translateX(-50%);background:rgba(0,0,0,.7);padding:6px 12px;border-radius:14px;font-size:12.5px;line-height:1.3;pointer-events:none;max-width:calc(100% - 20px);width:max-content;text-align:center;z-index:3}
 #mapAct{position:absolute;bottom:10px;left:50%;transform:translateX(-50%);z-index:6;background:rgba(20,26,50,.96);border:1px solid var(--line,#33406e);border-radius:14px;padding:6px 6px 6px 10px;box-shadow:0 6px 20px rgba(0,0,0,.5);display:flex;align-items:center;gap:8px;font-size:13px;box-sizing:border-box;touch-action:manipulation}
 #mapAct[hidden]{display:none}
+#mergeBar{position:absolute;top:10px;left:50%;transform:translateX(-50%);z-index:7;width:min(440px,calc(100% - 16px));box-sizing:border-box;background:rgba(20,26,50,.97);border:1px solid var(--accent,#4cc9f0);border-radius:14px;padding:8px 10px;box-shadow:0 6px 20px rgba(0,0,0,.5);font-size:13px}
+#mergeBar[hidden]{display:none}
+#mergeBar .mt small{color:var(--muted,#9aa5c8)}
+#mergeBar .mb{display:flex;gap:6px;margin-top:6px}
+#mergeBar .mb button{flex:1;border:0;border-radius:10px;background:var(--panel2,#252e52);color:var(--text,#e8ecf8);font-size:18px;min-height:40px;font-weight:800}
+#mergeBar .mb button.ok{flex:2;background:var(--accent,#4cc9f0);color:#08121f;font-size:14px}
 #mapAct{border-left:5px solid #3ddc84}
 #mapAct .ma-ok:disabled{background:rgba(255,255,255,.12);color:var(--muted,#9aa5c8);opacity:1}
 #mapAct .ma-tx{flex:1;min-width:0;line-height:1.25;overflow:hidden}
