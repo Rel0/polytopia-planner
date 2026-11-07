@@ -119,7 +119,22 @@ window.PP = window.PP || {};
     '.un-peek .sd1.as{font-size:9px}',
     '.un-peek .sum .city{font-weight:800}',
     '.un-btns{display:flex;gap:6px;margin-top:8px;flex-wrap:wrap}',
-    '.un-sort{margin-top:8px}',
+    '.un-seqb{display:block;width:100%;border:0;border-radius:11px;padding:10px;margin:0 0 8px;font-weight:800;font-size:14px;background:var(--accent,#4cc9f0);color:#08121f;min-height:44px}',
+    '.un-seqb small{font-weight:600;opacity:.75}',
+    '.un-seqb.on{background:var(--panel2,#252e52);color:var(--text,#e8ecf8);box-shadow:inset 0 0 0 2px var(--accent,#4cc9f0)}',
+    '.un-seq{margin:0 0 10px;padding:8px 10px;border:1px solid var(--line,#33406e);border-radius:12px;background:rgba(76,201,240,.06);font-size:13px}',
+    '.un-seq .sum{font-size:14px;margin-bottom:6px}',
+    '.un-seq .tg{margin:6px 0;padding:6px 8px;border-radius:9px;background:rgba(255,255,255,.04)}',
+    '.un-seq .th{display:flex;align-items:center;gap:6px;flex-wrap:wrap}',
+    '.un-seq .th button{margin-left:auto;border:0;border-radius:8px;padding:5px 9px;font-weight:700;font-size:12px;background:var(--panel2,#252e52);color:var(--accent,#4cc9f0)}',
+    '.un-seq .st{display:flex;align-items:center;gap:6px;margin:4px 0 0 4px}',
+    '.un-seq .st small,.un-seq .th small{color:var(--muted,#9aa5c8)}',
+    '.un-seq .die{color:#ff6b81;font-weight:700}',
+    '.un-seq .free{margin-top:6px;color:var(--muted,#9aa5c8)}',
+    '.un-seq .nt{display:block;margin-top:6px;color:var(--muted,#9aa5c8);font-size:11.5px}',
+    '.un-seq .bar{height:7px;border-radius:4px;background:rgba(255,255,255,.12);overflow:hidden;margin:2px 0 4px}',
+    '.un-seq .bar i{display:block;height:100%;background:var(--accent,#4cc9f0)}',
+    '.un-sort{margin:0 0 12px}',
     '.un-sort>span{display:block;font-size:11px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;color:var(--muted,#9aa5c8);margin-bottom:4px}',
     '.un-sort>div{display:flex;gap:4px;background:var(--bg,#12172b);border-radius:11px;padding:3px}',
     '.un-sort button{flex:1 1 0;min-width:0;border:0;background:none;border-radius:9px;padding:7px 4px;font-size:12px;font-weight:700;color:var(--muted,#9aa5c8);min-height:36px;line-height:1.15}',
@@ -883,6 +898,152 @@ window.PP = window.PP || {};
     return best && better(bestS, cur) ? best.map(function (u) { return u.id; }) : null;
   }
 
+  // ================================================================ v32 best attack sequence (several targets)
+  // Which attacker attacks which target, and in which order. Every attacker attacks at most once. Goal, in this order:
+  // most targets defeated, fewest own units lost, least damage taken, most damage dealt, fewest attacks used.
+  // Per target: the best order for every set of attackers that can reach it (all orders up to 6 attackers; a set is
+  // skipped if a smaller one already defeats the target). Then the best split of the attackers over the targets (DP).
+  // Targets are computed one by one on the current HP (splash on another target is not carried over).
+  var SEQ_MAX_A = 8, SEQ_MAX_T = 5, SEQ_PERM = 6;
+  var seq = null; // { sig, side, state: 'running'|'done'|'too', plan: [{ t, order: [units], res }], tot, ms, pct }
+  function seqSig() {
+    var cb = sel();
+    return JSON.stringify([atkSide(), cb.attackers, cb.targets, units().map(function (u) {
+      return [u.id, u.c, u.r, u.hp, u.type, u.side, !!u.vet, u.bonus, u.bonusMode, !!u.poison, !!u.frozen, !!u.boom, u.carry || ''];
+    })]);
+  }
+  function seqNow() { return seq && seq.sig === seqSig() ? seq : null; }
+  function seqVal(res) {
+    var taken = 0, used = 0, dealt = 0;
+    res.steps.forEach(function (s) { if (s.dmg != null) { used++; taken += s.aBefore - Math.max(0, s.aAfter); dealt += s.tBefore - s.tAfter; } });
+    (res.fx || []).forEach(function (e) { dealt += e.before - e.hp; });
+    return [done(res) ? 1 : 0, -res.losses.length, -taken, dealt, -used];
+  }
+  function vAdd(a, b) { return a.map(function (x, i) { return x + b[i]; }); }
+  var V0 = [0, 0, 0, 0, 0];
+  function bits(m) { var c = 0; for (; m; m &= m - 1) c++; return c; }
+  function startSeq() {
+    var cb = sel(), A = cb.attackers.map(byId).filter(Boolean), T = cb.targets.map(byId).filter(Boolean);
+    var me = seq = { sig: seqSig(), state: 'running', pct: 0, t0: Date.now(), show: true };
+    if (A.length > SEQ_MAX_A || T.length > SEQ_MAX_T || !PP.engine || !PP.engine.attack) { me.state = 'too'; me.nA = A.length; me.nT = T.length; refresh(); return; }
+    var n = A.length, m = T.length, best = [], reach = T.map(function (t) {
+      var r = 0; A.forEach(function (a, i) { if ((U(a.type).atk > 0 || U(a.type).convert || U(a.type).freeze) && canReach(a, t, dist(a, t))) r |= 1 << i; }); return r;
+    });
+    // work list: per target, the subsets of its reachable attackers by size
+    var jobs = [];
+    T.forEach(function (t, ti) {
+      best[ti] = {}; best[ti][0] = { v: V0, order: [] };
+      var subs = []; for (var sm = reach[ti]; sm; sm = (sm - 1) & reach[ti]) subs.push(sm);
+      subs.sort(function (a, b) { return bits(a) - bits(b); });
+      subs.forEach(function (sm) { jobs.push([ti, sm]); });
+    });
+    var ji = 0, total = jobs.length || 1;
+    var evalSet = function (ti, sm) {
+      var t = T[ti], idx = []; for (var i = 0; i < n; i++) if (sm & (1 << i)) idx.push(i);
+      // a smaller set that already defeats the target makes this one pointless (the extra attacker stays free)
+      for (var k = 0; k < idx.length; k++) { var sub = best[ti][sm & ~(1 << idx[k])]; if (sub && sub.v[0] === 1) return; }
+      var bv = null, bo = null, tryOrder = function (o) {
+        var r = simulate(t, o.map(function (i) { return A[i]; })), v = seqVal(r);
+        if (!bv || better(v, bv)) { bv = v; bo = o.slice(); }
+      };
+      if (idx.length <= SEQ_PERM) {
+        (function perm(pre, rest) {
+          if (!rest.length) { tryOrder(pre); return; }
+          for (var q = 0; q < rest.length; q++) perm(pre.concat([rest[q]]), rest.slice(0, q).concat(rest.slice(q + 1)));
+        })([], idx);
+      } else {
+        // big set: best order of the set without one attacker, that attacker put first or last
+        idx.forEach(function (i) { var b = best[ti][sm & ~(1 << i)]; if (b) { tryOrder([i].concat(b.order)); tryOrder(b.order.concat([i])); } });
+        if (!bo) tryOrder(idx);
+      }
+      best[ti][sm] = { v: bv, order: bo };
+    };
+    var finish = function () {
+      // DP over the targets: F[ti][mask] = best total of targets ti… with the attackers in mask
+      var full = (1 << n) - 1, F = [], C = [];
+      for (var ti = m; ti >= 0; ti--) { F[ti] = new Array(full + 1); C[ti] = new Array(full + 1); }
+      for (var mk = 0; mk <= full; mk++) F[m][mk] = V0;
+      for (ti = m - 1; ti >= 0; ti--) {
+        for (mk = 0; mk <= full; mk++) {
+          var bv = null, bs = 0, opts = mk & reach[ti];
+          for (var sm = opts; ; sm = (sm - 1) & opts) {
+            var b = best[ti][sm];
+            if (b) { var v = vAdd(b.v, F[ti + 1][mk & ~sm]); if (!bv || better(v, bv)) { bv = v; bs = sm; } }
+            if (!sm) break;
+          }
+          F[ti][mk] = bv; C[ti][mk] = bs;
+        }
+      }
+      var plan = [], left = full;
+      for (ti = 0; ti < m; ti++) {
+        var smk = C[ti][left], o = best[ti][smk].order;
+        left &= ~smk;
+        if (!o.length) { plan.push({ t: T[ti], order: [], res: null }); continue; }
+        var ord = o.map(function (i) { return A[i]; }), r = simulate(T[ti], ord);
+        // attackers after the deciding blow are not needed
+        if (r.killedAt && r.killedAt < ord.length) { ord = ord.slice(0, r.killedAt); r = simulate(T[ti], ord); }
+        plan.push({ t: T[ti], order: ord, res: r });
+      }
+      // defeated targets first, then the others
+      plan.sort(function (a, b) { return (b.res && done(b.res) ? 1 : 0) - (a.res && done(a.res) ? 1 : 0); });
+      var tot = { kills: 0, losses: 0, taken: 0, used: 0 };
+      plan.forEach(function (p) { if (!p.res) return; var v = seqVal(p.res); tot.kills += v[0]; tot.losses -= v[1]; tot.taken -= v[2]; tot.used -= v[4]; });
+      me.plan = plan; me.tot = tot; me.free = A.filter(function (a) { return !plan.some(function (p) { return p.order.indexOf(a) >= 0; }); });
+      me.state = 'done'; me.ms = Date.now() - me.t0; me.nT = m;
+      refresh(); redraw();
+    };
+    var tick = function () {
+      if (seq !== me) return;
+      var t0 = Date.now();
+      while (ji < jobs.length && Date.now() - t0 < 40) { evalSet(jobs[ji][0], jobs[ji][1]); ji++; }
+      me.pct = Math.round(100 * ji / total);
+      if (ji < jobs.length) { refresh(); setTimeout(tick, 0); return; }
+      finish();
+    };
+    refresh();
+    setTimeout(tick, 0);
+  }
+  // load one target of the sequence into the normal calculator
+  function seqLoad(tid) {
+    var S = seqNow(); if (!S || !S.plan) return;
+    var p = S.plan.filter(function (x) { return x.t.id === tid; })[0]; if (!p) return;
+    var cb = sel(); cb.active = tid; cb.attackers = p.order.map(function (u) { return u.id; });
+    S.show = false; uiPrefs().sortBy = null;
+    commit();
+    seq.sig = seqSig(); // the selection changed on purpose – keep the result
+  }
+  function seqBtnHtml() {
+    var cb = sel(), nA = cb.attackers.length, nT = cb.targets.length;
+    if (!nA || !nT || (nA < 2 && nT < 2)) return '';
+    var S = seqNow();
+    var b = '<button class="un-seqb' + (S && S.show && S.state === 'done' ? ' on' : '') + '" data-un="seq">⚔️ ' + (S && S.state === 'done' ? (S.show ? 'Hide best attack sequence' : 'Show best attack sequence') : 'Best attack sequence') +
+      ' <small>(' + nA + ' attacker' + (nA > 1 ? 's' : '') + ' → ' + nT + ' target' + (nT > 1 ? 's' : '') + ')</small></button>';
+    if (!S) return b;
+    if (S.state === 'too') return b + '<div class="un-seq"><small>Too many for an exact search: at most ' + SEQ_MAX_A + ' attackers and ' + SEQ_MAX_T + ' targets (now ' + S.nA + ' and ' + S.nT + ').</small></div>';
+    if (S.state === 'running') return b + '<div class="un-seq"><div class="bar"><i style="width:' + S.pct + '%"></i></div><small>Trying every order and split… ' + S.pct + '%</small></div>';
+    if (!S.show) return b;
+    var w = words(), h = '<div class="un-seq">', T = S.tot;
+    h += '<div class="sum">' + (T.kills ? '☠ <b>' + T.kills + ' of ' + S.nT + '</b> ' + (S.nT > 1 ? 'targets' : 'target') + ' defeated' : 'No target can be defeated') +
+      ' · ' + (T.losses ? '<span class="die">' + T.losses + ' unit' + (T.losses > 1 ? 's' : '') + ' lost</span>' : 'no unit lost') + ' · ' + T.taken + ' damage taken</div>';
+    var no = 0;
+    S.plan.forEach(function (p) {
+      var t = p.t, r = p.res, nm = esc(U(t.type).name);
+      h += '<div class="tg"><div class="th">' + coinSvg(t.type, t.side, 22) + '<b>🎯 ' + nm + '</b> <small>' + t.hp + ' HP → ' +
+        (!r ? t.hp + ' (nobody can reach it)' : r.converted ? '🌀 converted' : r.hpAfter <= 0 ? '☠' : r.hpAfter) + '</small>' +
+        (p.order.length ? '<button data-un="seqload" data-id="' + t.id + '">Show in calculator</button>' : '') + '</div>';
+      if (r) r.steps.forEach(function (s) {
+        if (s.dmg == null) return;
+        no++;
+        h += '<div class="st"><span class="un-n">' + no + '</span>' + coinSvg(s.a.type, s.a.side, 18) + esc(U(s.a.type).name) + ' <small>→ −' + s.dmg +
+          (s.tAfter <= 0 ? ' ☠' : ' (' + s.tAfter + ' left)') + (s.ret ? ' · ↩ ' + s.ret + (s.aAfter <= 0 ? ' <span class="die">☠ dies</span>' : ' (' + s.aAfter + ' HP)') : '') + '</small></div>';
+      });
+      h += '</div>';
+    });
+    if (S.free.length) h += '<div class="free">Not needed: ' + S.free.map(function (a) { return esc(U(a.type).name); }).join(', ') + '</div>';
+    h += '<small class="nt">' + (S.ms != null ? 'Checked in ' + (S.ms < 1000 ? S.ms + ' ms' : Math.round(S.ms / 100) / 10 + ' s') + '. ' : '') + 'Splash damage on another target is not carried over between targets.</small></div>';
+    return b + h;
+  }
+
   // ================================================================ actions
   function placeCoin(c, r, type, side) {
     var u = { id: uid(), c: c, r: r, side: side, type: type, hp: 10, vet: false, bonus: 1, bonusMode: 'auto', src: 'user' };
@@ -1118,7 +1279,6 @@ window.PP = window.PP || {};
       h += verdictHtml(cityVerdict(res));
     }
     h += '</div>';
-    h += sortHtml();
     h += '<div class="un-btns">' + (res.used ? '<button class="go" data-un="apply">⚔️ Apply</button>' : '') +
       '<button class="lt" data-un="all">+ All in range</button></div>';
     return h;
@@ -1354,7 +1514,7 @@ window.PP = window.PP || {};
         '<small class="un-stat">' + esc(statLine(p.brush)) + '</small></div>';
       h += autoHtml();
     } else {
-      h += battlePeekHtml() + '<div style="height:8px"></div>' + modeHtml(p) + calcHtml();
+      h += battlePeekHtml() + '<div style="height:8px"></div>' + seqBtnHtml() + sortHtml() + modeHtml(p) + calcHtml();
       if (units().length) h += '<div class="un-foot"><button data-un="wipe">Remove all units</button></div>';
     }
     el.innerHTML = h + '</div>';
@@ -1392,6 +1552,13 @@ window.PP = window.PP || {};
     var a = b.getAttribute('data-un'), id = b.getAttribute('data-id'), v = b.getAttribute('data-v'), p = uiPrefs(), cb = sel();
     var u = id ? byId(id) : null;
     if (u && editAction(u, a, b)) return;
+    if (a === 'seq') {
+      var S0 = seqNow();
+      if (S0 && S0.state === 'done') { S0.show = !S0.show; refresh(); redraw(); }
+      else if (!S0 || S0.state !== 'running') startSeq();
+      return;
+    }
+    if (a === 'seqload') { seqLoad(id); return; }
     if (a === 'sub') {
       if (v === 'battle' && !units().length) { toast('Place some units first'); return; }
       p.sub = v; p.selId = null; p.eraser = false; closeEditor(); commit();
@@ -1625,6 +1792,25 @@ window.PP = window.PP || {};
     });
     if (dragId) { var du = byId(dragId); if (du) drawCoin(ctx, du, drag.sx, drag.sy - Math.max(R * 1.3, 24), Math.max(R * 1.3, 10)); }
     if (!showSel) return;
+    // v32: the best attack sequence is open → its arrows and numbers instead of the calculator's
+    var SQ = seqNow();
+    if (SQ && SQ.state === 'done' && SQ.show) {
+      var no = 0, nr0 = clamp(R * 0.45, 6, 9.5);
+      SQ.plan.forEach(function (pl) {
+        if (!pl.res) return;
+        var tq = cpos(pl.t.c, pl.t.r);
+        pl.res.steps.forEach(function (st2) {
+          if (st2.dmg == null) return;
+          no++;
+          var ap = cpos(st2.a.c, st2.a.r);
+          thinArrow(ctx, ap, tq, st2.aAfter <= 0 ? '#ff6b81' : '#4cc9f0', R, no, false);
+          numBadge(ctx, ap.x - R * 0.8 - nr0 * 0.35, ap.y - R * 0.8 - nr0 * 0.35, String(no), nr0, '#4cc9f0', '#08121f');
+        });
+        var fs3 = clamp(R * 0.55, 10, 16), kill3 = pl.res.hpAfter <= 0 || pl.res.converted;
+        chip(ctx, tq.x, tq.y - R - fs3 * 1.05, kill3 ? '☠ ' + pl.t.hp + '→0' : pl.t.hp + '→' + pl.res.hpAfter, fs3, kill3 ? '#06a77d' : '#b3122f', '#fff', '#fff');
+      });
+      return;
+    }
     // 3) arrows attacker → active target
     if (tAct) {
       var tp = cpos(tAct.c, tAct.r);

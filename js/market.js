@@ -2066,13 +2066,12 @@
     if (ui.step === 1) {
       const A = area(), nEd = Object.keys(m.edits).length;
       h += `<div data-peek="cities:${ui.borders ? 'b' : 'c'}:${A.cities.length}">${stepsHtml()}`;
+      // v32: Edit borders right at the top
+      if (A.cities.length) h += `<button class="mk-btn ${ui.borders ? 'pri' : ''}" data-a="borders" style="margin:6px 0 4px">${ui.borders ? '✓ Done editing borders' : '✏️ Edit city borders'}</button>`;
       if (ui.borders) h += '<div class="mk-note" style="margin:2px 0 4px">✏️ <b>Edit borders:</b> tap a tile <b>next to</b> the territory to add it (it joins the nearest city), tap a territory tile to remove it. Drag for several.</div>';
       else h += `<div class="mk-note" style="margin:2px 0 4px">${A.cities.length ? 'Tap more of <b>your cities</b> – or tap one again: 3×3 → 5×5 → off.' : 'Tap <b>your own cities</b> on the map (the city tile). Each gets a 3×3 territory – 5×5 after Border Growth.'}</div>`;
       h += chipsHtml(A);
-      h += '<div class="mk-row">';
-      if (A.cities.length) h += `<button class="mk-btn sm ${ui.borders ? 'pri' : ''}" data-a="borders">${ui.borders ? '✓ Done' : '✏️ Edit borders'}</button>`;
-      if (nEd) h += `<button class="mk-btn sm" data-a="resetBorders">↺ Reset borders (${nEd})</button>`;
-      h += '</div>';
+      if (nEd) h += `<div class="mk-row"><button class="mk-btn sm" data-a="resetBorders">↺ Reset borders (${nEd})</button></div>`;
       const ko = knownOwn();
       if (ko.length) h += `<button class="mk-btn sm" data-a="addKnown">＋ Add my ${plural(ko.length, 'city', 'cities')}: ${ko.slice(0, 4).map(q => esc(cityLabel(q.c, q.r))).join(', ')}${ko.length > 4 ? ' …' : ''}</button>`;
       if (A.cities.length) h += `<button class="mk-btn pri" data-step="2">Next: ② What’s here ▶</button>`;
