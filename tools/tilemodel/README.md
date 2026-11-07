@@ -75,6 +75,24 @@ The app fills in a resource only when the model is sure about it.
 The ring features are what helps with units: a unit covers the centre of its tile, while the outer band of the
 diamond stays visible. More screenshots per tribe, labelled with the Label tool, are the biggest lever from here.
 
+## Crop (v3, Nov 2026)
+
+Crop shows up as many small light sprouts on a field. Their shape and colour differ per tribe. The 14 × 14 lattice of
+the tile features was too coarse for them: only 28 of 124 crop fields were found at the 0.7 the app used.
+
+`feat.crop_features` adds 14 numbers from a fine lattice over the tile diamond. It counts specks that are lighter
+or darker than their neighbours and little peaks along each row. It also measures how even the ground is and what
+colour the specks have. Only the field model uses these features, in `js/tilemodel.js` (`cropFeatures`); the terrain
+and mountain models are unchanged.
+
+Crop on fields, leave-one-screenshot-out (124 crop fields, 402 other fields):
+
+| | found | wrongly called crop |
+|---|---|---|
+| v2, threshold 0.7 (old) | 28 | 4 |
+| v3, threshold 0.6 (`CROP_SURE`, used) | 81 | 5 |
+| v3, threshold 0.7 | 57 | 0 |
+
 ## City detector (v3, Nov 2026)
 
 Every city, own or enemy, has a **name plate** centred on its tile: white italic text with a dark shadow on a

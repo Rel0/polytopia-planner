@@ -361,8 +361,9 @@ window.PP = window.PP || {};
       else if (it.terrain && it.terrain.indexOf(T) < 0) why = 'not possible on ' + terName(T);
       else if (it.needs && resNow().indexOf(it.needs) < 0) why = 'needs ' + resName(it.needs);
       else if (occ && (isBuilding(it.id) || it.turnsInto)) why = 'tile has a building (' + ((item(occ) || {}).name || occ) + ')';
-      else if (needsFreeTile(it) && resNow().indexOf('crop') >= 0) why = 'Crop tile – only Farm or Road';
-      else if (needsFreeTile(it) && resNow().length) why = 'tile has ' + resNow().map(resName).join(', ') + ' – use it first';
+      // a building (Windmill, Market …) can stand right on Crop; Grow Forest can't, other resources are used first
+      else if (it.id === 'plant' && resNow().indexOf('crop') >= 0) why = 'Crop tile – Farm, a building or Road';
+      else if (needsFreeTile(it) && resNow().filter(function (x) { return x !== 'crop'; }).length) why = 'tile has ' + resNow().filter(function (x) { return x !== 'crop'; }).map(resName).join(', ') + ' – use it first';
       else if (it.id === 'road' && road) why = 'duplicate';
       steps.push({ p: p, it: it, ok: !why, why: why });
       if (why || !it) return;
@@ -702,7 +703,8 @@ window.PP = window.PP || {};
         if (it.turnsInto && T !== T0) return;                                  // no way straight back (Clear → Grow)
         if (it.needs && T !== T0 && fl.res.indexOf(it.needs) < 0) return;      // resource can't be there (after a change)
         if (it.needs && EXPLICIT_RES.indexOf(it.needs) >= 0 && fl.res.indexOf(it.needs) < 0) return; // Farm only on Crop
-        if ((fl.res.indexOf('crop') >= 0 || fl.res.indexOf('fruit') >= 0) && (needsFreeTile(it) || (it.needs && fl.res.indexOf(it.needs) < 0))) return; // Crop / Fruit tile: its resource action + Road only
+        if (fl.res.indexOf('fruit') >= 0 && (needsFreeTile(it) || (it.needs && fl.res.indexOf(it.needs) < 0))) return; // Fruit tile: harvest + Road only
+        if (fl.res.indexOf('crop') >= 0 && ((it.needs && it.needs !== 'crop') || it.id === 'plant')) return;            // Crop tile: Farm, buildings, Road
         if (fl.base.bld && (isBuilding(it.id) || it.turnsInto || it.id === 'road')) return; // tile already built
         if (it.id === 'road' && fl.road) return;
       }

@@ -92,12 +92,9 @@
     return out;
   }
   // terrain path of a tile (building ignored) → list of actions, or null if impossible
-  // Market / Windmill / Forge / Sawmill need Empty without resource (as in the Costs tool)
+  // Market / Windmill / Forge / Sawmill go on a field – also on one with Crop (built right on it); Fruit is harvested first
   function fieldPath(x, o) {
-    if (x.t === 'field') {
-      if (x.crop) return o.grow && o.clear ? ['plant', 'clear'] : null;
-      return x.fruit ? ['fruit'] : [];
-    }
+    if (x.t === 'field') return x.fruit ? ['fruit'] : [];
     if (x.t === 'forest') return o.clear ? ['clear'] : null;
     return null;
   }
@@ -987,7 +984,7 @@
         // "outside" (space / map edge): only when the model is sure – unsure stays water (also not usable)
         const t = /^(field|forest|mountain|water)$/.test(p.terrain) ? p.terrain : p.terrain === 'outside' && p.conf >= TM.SURE ? 'space' : 'water';
         // v2 models: a resource is only filled in when the model is sure about it (crop / fruit on fields, metal on mountains)
-        const rs = p.res && p.resConf >= (TM.RES_SURE || 0.7) ? (p.res === 'metal' ? 'ore' : p.res) : null;
+        const rs = p.res && p.resConf >= (p.res === 'crop' ? TM.CROP_SURE || 0.6 : TM.RES_SURE || 0.7) ? (p.res === 'metal' ? 'ore' : p.res) : null; // v3: crop from 0.6
         out = { terrain: t, model: p.terrain, conf: p.conf, sure: p.conf >= TM.SURE, res: rs && RES_TER[rs] === t ? [rs] : [] };
       }
     } catch (e) { out = null; }
@@ -1949,7 +1946,7 @@
       res = res.concat(id);
       // Market / workshops need a tile without resource; Farm needs Crop, Mine needs Metal
       let bld = x.terrain === ter ? x.bld : null;
-      if (bld && (UNIQUE.indexOf(bld) >= 0 || (bld === 'farm' && id !== 'crop'))) bld = null;
+      if (bld && ((UNIQUE.indexOf(bld) >= 0 && id !== 'crop') || (bld === 'farm' && id !== 'crop'))) bld = null; // a Market / workshop may stand on Crop
       storeTile(c, r, { terrain: ter, res, bld: bld === 'other' ? x.other : bld });
       return;
     }
@@ -1967,7 +1964,7 @@
       }
     }
     const ter = BASE[id];
-    const res = id === 'farm' ? ['crop'] : id === 'mine' ? ['ore'] : [];
+    const res = id === 'farm' ? ['crop'] : id === 'mine' ? ['ore'] : UNIQUE.indexOf(id) >= 0 && x.res.indexOf('crop') >= 0 ? ['crop'] : [];
     storeTile(c, r, { terrain: ter, res, bld: id });
   }
   function paintAt(c, r) {

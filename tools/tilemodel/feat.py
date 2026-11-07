@@ -126,3 +126,34 @@ def plate_features(a, x, y, w):
             eu, ed, fu, fd, l3, m3, r3, min(l3, r3) / (m3 + 1e-3), abs(l3 - r3)]
 def city_features(a, x, y, w):
     return np.array(list(all_features(a, x, y, w)) + plate_features(a, x, y, w), dtype=np.float32)
+
+# ---- v3: crop. Crop are many small light sprouts on a field (shape and colour differ per tribe). The 14 × 14 lattice
+# of the tile features is too coarse for them, so a fine lattice over the tile diamond counts specks that are lighter /
+# darker than their neighbours, little peaks along each row, and how uniform the ground is. float64 like the browser.
+CX, CY = 36, 22
+def crop_features(a, x, y, w):
+    H, W = a.shape[:2]
+    gx = ((np.arange(CX) + 0.5) / CX - 0.5) * 0.9 * w
+    gy = ((np.arange(CY) + 0.5) / CY - 0.5) * 0.66 * w - 0.04 * w
+    X, Y = np.meshgrid(gx, gy)
+    M = (np.abs(X) / (0.45 * w) + np.abs(Y + 0.04 * w) / (0.33 * w)) <= 1.0
+    xs = np.clip((x + X).astype(int), 0, W - 1); ys = np.clip((y + Y).astype(int), 0, H - 1)
+    h, s, v = hsv(a[ys, xs].astype(np.float64))
+    n = max(1, M.sum())
+    pad = np.pad(v, 1, mode='edge')
+    nbm = (pad[:-2, 1:-1] + pad[2:, 1:-1] + pad[1:-1, :-2] + pad[1:-1, 2:]) / 4
+    c = v - nbm
+    bright = (c > 0.06) & M; dark = (c < -0.06) & M
+    gxe = np.abs(np.diff(v, axis=1))[M[:, 1:] & M[:, :-1]]; gye = np.abs(np.diff(v, axis=0))[M[1:] & M[:-1]]
+    ex = gxe.mean() if gxe.size else 0.0; ey = gye.mean() if gye.size else 0.0
+    peaks = (v[:, 1:-1] > v[:, :-2]) & (v[:, 1:-1] > v[:, 2:]) & (c[:, 1:-1] > 0.04) & M[:, 1:-1]
+    vm = v[M]; hm = h[M]; sm = s[M]
+    mv = np.median(vm) if vm.size else 0.0; mh = np.median(hm) if hm.size else 0.0
+    dh = np.abs(hm - mh); dh = np.minimum(dh, 360 - dh)
+    uni = ((dh < 15) & (np.abs(vm - mv) < 0.08)).mean() if vm.size else 0.0
+    bh = h[bright]; bs = s[bright]
+    green = ((bh >= 60) & (bh < 200)).mean() if bh.size else 0.0
+    yellow = ((bh >= 30) & (bh < 60)).mean() if bh.size else 0.0
+    bsat = (bs.mean() - sm.mean()) if bs.size and sm.size else 0.0
+    return [bright.sum() / n, dark.sum() / n, ex, ey, ex / (ey + 1e-3), peaks.sum() / n, uni, mv, mh / 360,
+            green, yellow, bsat, sm.mean() if sm.size else 0.0, vm.std() if vm.size else 0.0]

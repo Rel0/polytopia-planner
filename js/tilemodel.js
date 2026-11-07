@@ -205,6 +205,48 @@ window.PP = window.PP || {};
     return [sm[k], tw[k], tdB / (hi - lo), tsB / (hi - lo), width, cen, contrast, nrows, bar, bartt, conc,
       k / PY, sT / n, sD / n, sS / n, vm, vs, eu, ed, fu, fd, l3, m3, r3, Math.min(l3, r3) / (m3 + 1e-3), Math.abs(l3 - r3)];
   }
+  // ---------------------------------------------------------------- v3 crop (feat.crop_features)
+  const CX = 36, CY = 22;
+  function cropFeatures(P, x, y, w) {
+    const n0 = CX * CY, H = new Float64Array(n0), S = new Float64Array(n0), V = new Float64Array(n0), M = new Uint8Array(n0);
+    for (let j = 0; j < CY; j++) {
+      const gy = ((j + 0.5) / CY - 0.5) * 0.66 * w - 0.04 * w;
+      for (let i = 0; i < CX; i++) {
+        const gx = ((i + 0.5) / CX - 0.5) * 0.9 * w, k = j * CX + i, t = px(P, x + gx, y + gy);
+        H[k] = t[0]; S[k] = t[1]; V[k] = t[2];
+        M[k] = Math.abs(gx) / (0.45 * w) + Math.abs(gy + 0.04 * w) / (0.33 * w) <= 1 ? 1 : 0;
+      }
+    }
+    const at = (j, i) => V[Math.min(CY - 1, Math.max(0, j)) * CX + Math.min(CX - 1, Math.max(0, i))];
+    const C = new Float64Array(n0);
+    let nm = 0, nb = 0, nd = 0, np2 = 0;
+    for (let j = 0; j < CY; j++) for (let i = 0; i < CX; i++) {
+      const k = j * CX + i;
+      C[k] = V[k] - (at(j - 1, i) + at(j + 1, i) + at(j, i - 1) + at(j, i + 1)) / 4;
+      if (M[k]) { nm++; if (C[k] > 0.06) nb++; if (C[k] < -0.06) nd++; }
+    }
+    const n = Math.max(1, nm);
+    let sx = 0, cx = 0, sy = 0, cy = 0;
+    for (let j = 0; j < CY; j++) for (let i = 0; i < CX - 1; i++) { const k = j * CX + i; if (M[k] && M[k + 1]) { sx += Math.abs(V[k + 1] - V[k]); cx++; } }
+    for (let j = 0; j < CY - 1; j++) for (let i = 0; i < CX; i++) { const k = j * CX + i; if (M[k] && M[k + CX]) { sy += Math.abs(V[k + CX] - V[k]); cy++; } }
+    const ex = cx ? sx / cx : 0, ey = cy ? sy / cy : 0;
+    for (let j = 0; j < CY; j++) for (let i = 1; i < CX - 1; i++) { const k = j * CX + i; if (V[k] > V[k - 1] && V[k] > V[k + 1] && C[k] > 0.04 && M[k]) np2++; }
+    const vm = [], hm = [], smv = [];
+    for (let k = 0; k < n0; k++) if (M[k]) { vm.push(V[k]); hm.push(H[k]); smv.push(S[k]); }
+    const median = a => { if (!a.length) return 0; const b = a.slice().sort((p, q) => p - q), m = b.length >> 1; return b.length % 2 ? b[m] : (b[m - 1] + b[m]) / 2; };
+    const mean = a => (a.length ? a.reduce((p, q) => p + q, 0) / a.length : 0);
+    const mv = median(vm), mh = median(hm);
+    let uni = 0;
+    for (let q = 0; q < vm.length; q++) { let dh = Math.abs(hm[q] - mh); dh = Math.min(dh, 360 - dh); if (dh < 15 && Math.abs(vm[q] - mv) < 0.08) uni++; }
+    uni = vm.length ? uni / vm.length : 0;
+    let gr = 0, ye = 0, bsS = 0, bn = 0;
+    for (let k = 0; k < n0; k++) if (M[k] && C[k] > 0.06) { bn++; bsS += S[k]; if (H[k] >= 60 && H[k] < 200) gr++; else if (H[k] >= 30 && H[k] < 60) ye++; }
+    const sMean = mean(smv), vMean = mean(vm);
+    let vv = 0; for (const a of vm) vv += (a - vMean) * (a - vMean);
+    return [nb / n, nd / n, ex, ey, ex / (ey + 1e-3), np2 / n, uni, mv, mh / 360, bn ? gr / bn : 0, bn ? ye / bn : 0,
+      bn && smv.length ? bsS / bn - sMean : 0, sMean, vm.length ? Math.sqrt(vv / vm.length) : 0];
+  }
+
   // probability that (x, y) is the centre of a city tile (its name plate) – PP.CITY_MODEL (tools/tilemodel/city.py)
   function cityProb(P, x, y, w) {
     const M = PP.CITY_MODEL;
@@ -219,11 +261,12 @@ window.PP = window.PP || {};
     const f = features(P, x, y, w), t = forest(M.terrain, f);
     const out = { terrain: t.cls, conf: t.conf, probs: t.probs, res: null, resConf: 0 };
     const R = t.cls === 'field' ? M.field : t.cls === 'mountain' ? M.mountain : null;
-    if (R) { const r = forest(R, f); out.res = r.cls === 'none' ? null : r.cls; out.resConf = r.conf; out.resProbs = r.probs; }
+    // v3 models: the field model also gets the crop features
+    if (R) { const r = forest(R, t.cls === 'field' && M.fieldFeat ? f.concat(cropFeatures(P, x, y, w)) : f); out.res = r.cls === 'none' ? null : r.cls; out.resConf = r.conf; out.resProbs = r.probs; }
     return out;
   }
 
   // terrain below SURE is shown as "please check"; resources are only filled in at RES_SURE or above
-  PP.tilemodel = { classify, features, plateFeatures, cityProb, forest, SURE: 0.6, RES_SURE: 0.7, CITY_SURE: 0.5,
+  PP.tilemodel = { classify, features, plateFeatures, cropFeatures, cityProb, forest, SURE: 0.6, RES_SURE: 0.7, CROP_SURE: 0.6, CITY_SURE: 0.5,
     get ready() { return !!(PP.TILE_MODEL && PP.TILE_MODEL.terrain); }, get cityReady() { return !!(PP.CITY_MODEL && PP.CITY_MODEL.trees); } };
 })(window.PP);
