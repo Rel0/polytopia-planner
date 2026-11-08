@@ -1,44 +1,8 @@
-/* Polytopia Planner – damage calculator page (/damage-calculator/): sunset sky, low-poly horizon, turquoise water.
-   Loaded after pages.css; only for body.sun. The calculator itself (js/dmgpage.js) is styled under #calc. */
-@font-face{font-family:'Jost';font-style:normal;font-weight:400 700;font-display:swap;src:url(/fonts/jost-latin.woff2) format('woff2');
-  unicode-range:U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD}
-body.sun{
-  --sky1:#e46aa3;--sky2:#ef8fa0;--sky3:#f6c48c;--water1:#62cbf1;--water2:#2b87b5;
-  --ink:#1c2633;--ink2:#4a5868;--muted:#8592a1;--line:#e6e9ee;--card:rgba(255,255,255,.95);--soft:#f2f4f7;
-  --blue:#3a93ee;--blue2:#2a72c2;--att:#3a93ee;--def:#e2477c;--good:#3fae4a;--bad:#e2477c;--gold:#f4b53f;--splash:#f08a24;
-  --font:'Jost',system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
-  background:linear-gradient(180deg,var(--sky1) 0,var(--sky2) 180px,var(--sky3) 330px,var(--water1) 330px,var(--water2) 1200px,#1f6f97 2400px);
-  color:var(--ink);font-family:var(--font);font-variant-numeric:tabular-nums}
-body.sun .top{background:rgba(28,38,51,.35);border-bottom:0;backdrop-filter:blur(8px)}
-body.sun .brand,body.sun .nav a{color:#fff}
-body.sun .nav a:hover,body.sun .nav a.on{background:rgba(255,255,255,.18);color:#fff}
-body.sun .nav a.app{background:#1c2633;color:#fff;box-shadow:inset 0 0 0 2px #fff}
-body.sun main{max-width:600px;padding:0 10px 40px}
-body.sun .sky{position:relative;height:250px;margin:0 -10px;overflow:hidden;text-align:center;color:#fff}
-body.sun .sky svg{position:absolute;left:0;right:0;bottom:0;width:100%;height:110px}
-body.sun .sky h1{position:relative;margin:0;padding:34px 16px 0;font:600 clamp(30px,8vw,40px)/1.05 var(--font);letter-spacing:.03em}
-body.sun .sky h1 span{display:block;font-size:13px;font-weight:600;letter-spacing:.32em;text-transform:uppercase;margin:0 0 6px;opacity:.92}
-body.sun .sky h1 span::before,body.sun .sky h1 span::after{content:'';display:inline-block;width:34px;height:1.5px;background:#fff;vertical-align:middle;margin:0 10px;opacity:.8}
-body.sun .sky p{position:relative;margin:8px auto 0;max-width:420px;font-size:15.5px;opacity:.95}
+/* Polytopia Planner – the damage calculator on /damage-calculator/ (js/dmgpage.js), on top of css/sun.css */
+body.sun.narrow main{max-width:600px}
 body.sun #calculator{margin:-70px 0 0;position:relative}
 body.sun .calc{background:var(--card);border:0;border-radius:18px;padding:12px;box-shadow:0 10px 30px -14px rgba(20,40,70,.45)}
-/* the text below: light, calm sheets on the water */
-body.sun section:not(#calculator){background:rgba(255,255,255,.93);border-radius:16px;padding:16px 16px 12px;margin-top:14px}
-body.sun h2{font:600 21px/1.25 var(--font);margin:0 0 8px}
-body.sun h3{font:600 16.5px var(--font)}
-body.sun p,body.sun .steps span,body.sun details p,body.sun td.sk,body.sun .muted{color:var(--ink2)}
-body.sun a{color:var(--blue2)}
-body.sun pre{background:var(--soft);border:0;color:var(--ink);font-size:12.5px}
-body.sun .tw{border:1px solid var(--line)}
-body.sun table{background:#fff}
-body.sun th{background:var(--soft);color:var(--muted)}
-body.sun th,body.sun td{border-bottom:1px solid var(--line)}
-body.sun .steps li,body.sun details{background:var(--soft);border:0}
-body.sun .steps li::before{background:var(--blue);color:#fff}
-body.sun summary{font-weight:600}
-body.sun .chips a{background:var(--soft);border:0;color:var(--ink)}
-body.sun footer{border-top:0;color:#d7ecf7}
-body.sun footer a{color:#d7ecf7}
+body.sun.narrow .sky{padding-bottom:0;height:250px}
 @keyframes tst{0%{opacity:0;transform:translateY(6px)}10%,80%{opacity:1;transform:none}100%{opacity:0}}
 #calc{font:500 16px/1.35 var(--font);color:var(--ink)}
 #calc .go{display:block;margin:12px 0 0;padding:13px;border-radius:12px;background:var(--blue);color:#fff;text-align:center;text-decoration:none;font:500 18px var(--font);letter-spacing:.02em}

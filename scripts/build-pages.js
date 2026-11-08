@@ -70,10 +70,12 @@ function layout(p, o) {
 <meta name="twitter:image" content="${SITE}/og-image.png">
 <link rel="icon" type="image/png" href="/icons/icon-192.png">
 <link rel="apple-touch-icon" href="/icons/icon-180.png">
-<link rel="stylesheet" href="/css/pages.css?v=3">${o.css ? `\n<link rel="preload" href="/fonts/jost-latin.woff2" as="font" type="font/woff2" crossorigin>\n<link rel="stylesheet" href="${o.css}">` : ''}
+<link rel="stylesheet" href="/css/pages.css?v=3">
+<link rel="preload" href="/fonts/jost-latin.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="/css/sun.css?v=1">${o.css ? `\n<link rel="stylesheet" href="${o.css}">` : ''}
 <script type="application/ld+json">${JSON.stringify(ld.length === 1 ? ld[0] : ld)}</script>
 </head>
-<body${o.bodyClass ? ` class="${o.bodyClass}"` : ''}>
+<body class="sun${o.bodyClass ? ' ' + o.bodyClass : ''}">
 <div class="top"><div class="in">
   <a class="brand" href="/"><img src="/icons/icon-192.png" alt="" width="28" height="28"><span>Polytopia Planner</span></a>
   <nav class="nav" aria-label="Pages">${nav}<a class="app" href="/?tool=${p.tool}">Open app</a></nav>
@@ -95,9 +97,10 @@ ${o.scripts || ''}
 }
 
 function hero(h1, lead, tool, ctaText, extra) {
-  return `<div class="hero"><h1>${h1}</h1><p class="lead">${lead}</p>
-<div class="ctas"><a class="cta" href="/?tool=${tool}">${ctaText} →</a>${extra || ''}</div>
-<p class="note">Free · no sign-up · works on phone, tablet and desktop · your screenshots stay on your device</p></div>`;
+  const t = h1.replace(/^Polytopia /, '<span>Polytopia</span>');
+  return `<div class="sky"><h1>${t}</h1><p>${lead}</p>
+<div class="ctas"><a class="cta" href="/?tool=${tool}">${ctaText} →</a>${(extra || '').replace(/class="cta sec"/g, 'class="cta sec"')}</div>
+<p class="note">Free · no sign-up · works on phone, tablet and desktop · your screenshots stay on your device</p>${horizon()}</div>`;
 }
 
 // low-poly horizon for the damage calculator's sky: grey / white mountains and green hills (drawn here, no game art)
@@ -170,7 +173,7 @@ ${skillRows.map(r => `<tr><td><b>${esc(r[0])}</b></td><td class="sk">${esc(r[1])
   return layout(p, {
     title: 'Polytopia Damage Calculator – Terrain, Tech & Screenshot (all units)',
     desc: 'Free Polytopia damage calculator: put any number of attackers and defenders on a small battlefield and get the best attack order – damage, retaliation, splash, terrain and the tech for the defense bonus, for all units.',
-    appName: 'Polytopia Damage Calculator', crumb: 'Damage Calculator', body, faq, bodyClass: 'sun', css: '/css/dmg.css?v=1',
+    appName: 'Polytopia Damage Calculator', crumb: 'Damage Calculator', body, faq, bodyClass: 'narrow', css: '/css/dmg.css?v=1',
     scripts: '<script src="/js/data.js?v=1"></script>\n<script src="/js/engine.js?v=1"></script>\n<script src="/js/dmgpage.js?v=1"></script>'
   });
 }
