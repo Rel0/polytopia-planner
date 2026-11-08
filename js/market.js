@@ -1166,16 +1166,31 @@
   // growth = { sig, state: 'running'|'done', steps: [{ key, name, k, income, cost, gain }], all: { income, cost }, base, done, total }
   let growth = null, growthAuto = false;
   const GROW_PROOF_SECS = 10, GROW_COST_SECS = 5; // HiGHS time per Border Growth plan (alone usually a few seconds)
-  const growthNow = () => (growth && growth.sig === cacheSig && growth.noT3 === ringNoWs().join() && (!growth.prio || growth.prio === (GROW_PRIO[M().growPrio] ? M().growPrio : 'bal')) ? growth : null);
+  const growthNow = () => (growth && growth.sig === cacheSig && growth.noT3 === ringNoWs().join() && growth.quick === (M().growQuick === true) && (!growth.prio || growth.prio === (GROW_PRIO[M().growPrio] ? M().growPrio : 'bal')) ? growth : null);
   const growVerdict = k => { const g = growthNow(); return g && g.state === 'done' && g.byKey ? g.byKey[k] || null : null; };
   // one configuration: group search / exact search first, then HiGHS proves the maximum ★ (same model as the main proof),
   // so the numbers are the same on every run. → { income, cost, proven }
-  function growthWorker(g) {
-    if (g.worker !== undefined) return g.worker;
-    g.worker = null;
-    if (PP.marketMilp && typeof Worker !== 'undefined') try { g.worker = new Worker('js/market-worker.js?v=STAMP'); } catch (e) { g.worker = null; }
-    return g.worker;
+  // v48: a small pool of HiGHS workers – several plans are proven at the same time (one per CPU core, at most 4)
+  const GROW_PAR = Math.max(1, Math.min(4, ((typeof navigator !== 'undefined' && navigator.hardwareConcurrency) || 2) - 1));
+  function poolWorker(g) {
+    if (!PP.marketMilp || typeof Worker === 'undefined') return null;
+    g.pool = g.pool || [];
+    let w = g.pool.find(x => !x.busy);
+    if (!w) { try { w = { w: new Worker('js/market-worker.js?v=STAMP'), busy: false }; } catch (e) { return null; } g.pool.push(w); }
+    return w;
   }
+  function stopPool(g) { if (g && g.pool) { g.pool.forEach(x => { try { x.w.terminate(); } catch (e) { /* gone */ } }); g.pool = []; } }
+  // run fn over the items, at most GROW_PAR at a time; results in the order of the items (null → stop: returns null)
+  async function parMap(items, fn) {
+    const out = new Array(items.length); let next = 0, bad = false;
+    const lane = async () => { while (!bad && next < items.length) { const i = next++; const v = await fn(items[i], i); if (v == null) { bad = true; return; } out[i] = v; } };
+    await Promise.all(Array.from({ length: Math.min(GROW_PAR, items.length) }, lane));
+    return bad ? null : out;
+  }
+  let searchQ = Promise.resolve();
+  function searchLock() { let rel; const p = new Promise(ok => { rel = ok; }), prev = searchQ; searchQ = prev.then(() => p); return prev.then(() => rel); }
+  // v48: plans already solved in this session (same tiles + options → same result), also across checks
+  const scenCache = new Map();
   function runJob(g, job) {
     return new Promise(done => {
       const step = () => { if (!alive(g)) return done(null); if (job.step(Date.now() + 20)) done(job.result); else setTimeout(step, 0); };
@@ -1184,9 +1199,12 @@
   }
   // HiGHS in the Border Growth worker. spec = { mode: 'income' } or { mode: 'cost', minIncome } → { p, D, optimal, bound } | null
   function milpRun(g, P, spec, D, secs) {
-    const w = growthWorker(g);
-    if (!w) return Promise.resolve(null);
-    return new Promise(done => {
+    const pw = poolWorker(g);
+    if (!pw) return Promise.resolve(null);
+    pw.busy = true;
+    const w = pw.w;
+    return new Promise(done0 => {
+      const done = v => { pw.busy = false; done0(v); };
       const model = PP.marketMilp.build(P, spec), id = (g.msg = (g.msg || 0) + 1);
       let names = null;
       w.onmessage = ev => {
@@ -1206,17 +1224,39 @@
   // more ★ than the search, a short cost run makes the cost of that plan comparable. → { income, cost, proven }
   // a background check (Border Growth, tech advisor) is still wanted? g.alive() for the tech advisor
   const alive = g => (g.alive ? g.alive() : growth === g);
-  async function solveGrowCfg(g, set) { return solveScenario(g, optCells(areaCells(area(set))), M().opts); }
+  async function solveGrowCfg(g, set) { return solveScenario(g, optCells(areaCells(area(set))), M().opts, g.quick); }
   // best plan for these cells and options: quick search, then HiGHS proves the maximum ★ → { income, cost, proven }
-  async function solveScenario(g, cells, opts) {
+  // quick = true (v48 Quick check): only the quick search, no HiGHS – faster, but a plan can come out 1–3 ★ too low.
+  // Its results are kept apart (an exact check never uses them); an exact result is fine for a quick check.
+  async function solveScenario(g, cells, opts, quick) {
+    const ck = JSON.stringify([cells, opts]);
+    if (scenCache.has(ck)) return Object.assign({}, scenCache.get(ck));
+    if (quick && scenCache.has('q' + ck)) return Object.assign({}, scenCache.get('q' + ck));
+    // the plan shown in ③ – once it is proven there is nothing to do
+    const mr = cache && cacheSig === ck ? cache : null;
+    if (mr && mr.best && (!mr.large || (mr.proof && mr.proof.inc === 'proven' && mr.proof.cost === 'proven'))) {
+      const v = { income: mr.best.income, cost: mr.best.cost, proven: true }; scenCache.set(ck, v); return Object.assign({}, v);
+    }
+    const out = await solveScenario0(g, cells, opts, quick);
+    if (out && alive(g)) { if (scenCache.size > 400) scenCache.delete(scenCache.keys().next().value); scenCache.set(quick && !out.proven ? 'q' + ck : ck, out); }
+    return out ? Object.assign({}, out) : out;
+  }
+  async function solveScenario0(g, cells, opts, quick) {
     const o = Object.assign({}, opts, { alts: false });
-    let job = createJob(cells, o);
-    if (job.combos > QUICK_EXACT) job = createLargeJob(cells, Object.assign(o, { largeMs: 3000, quick: false }));
-    const r = await runJob(g, job);
+    // the quick search runs on the page (one CPU) and has a time budget: one after the other, so every search gets the
+    // same time as before; the HiGHS proofs (own workers) run at the same time
+    const unlock = await searchLock();
+    let r, job;
+    try {
+      if (!alive(g)) return null;
+      job = createJob(cells, o);
+      if (job.combos > QUICK_EXACT) job = createLargeJob(cells, Object.assign(o, { largeMs: 3000, quick: false }));
+      r = await runJob(g, job);
+    } finally { unlock(); }
     if (!alive(g) || !r) return null;
     const b = r.best;
     let out = { income: b ? b.income : 0, cost: b ? b.cost : 0, proven: !r.large || !!(b && b.income >= r.large.ub) };
-    if (out.proven) return out;
+    if (out.proven || quick) return out;
     const P = prepare(cells, Object.assign({}, opts));
     const pr = await milpRun(g, P, { mode: 'income' }, r.decision, GROW_PROOF_SECS);
     if (!alive(g)) return null;
@@ -1242,29 +1282,28 @@
     if (!cand.length) return;
     stopGrowth(); if (tech && tech.state !== 'done') stopTech(); // only one check at a time; finished results stay
     const n = cand.length, exhaustive = n <= GROW_ALL_MAX;
-    const g = growth = { sig: cacheSig, noT3: ringNoWs().join(), state: 'running', exhaustive, n, done: 0, total: growSolves(n), t0: Date.now(), open: 0, cities: [], best: null, base: null };
+    const g = growth = { sig: cacheSig, noT3: ringNoWs().join(), quick: M().growQuick === true, state: 'running', exhaustive, n, done: 0, total: growSolves(n), t0: Date.now(), open: 0, cities: [], best: null, base: null };
     const memo = new Map(), cfgKey = set => [...set].sort().join('|');
     const refresh = () => { if (growth === g && PP.modes && PP.modes.current === 'market') PP.app.refresh(); };
-    const solve = async set => {
-      const k = cfgKey(set);
-      if (!memo.has(k)) {
-        const v = await solveGrowCfg(g, set); if (!v) return null;
+    // v48 plans run in parallel – a plan asked for twice at the same time is solved once
+    const pend = new Map();
+    const track = (k, run) => {
+      if (memo.has(k)) return Promise.resolve(memo.get(k));
+      if (!pend.has(k)) pend.set(k, run().then(v => {
+        pend.delete(k); if (!v) return null;
         if (!v.proven) g.open++; memo.set(k, v); g.done++; if (g.done > g.total) g.total = g.done; refresh();
-      }
-      return memo.get(k);
+        return v;
+      }));
+      return pend.get(k);
     };
+    const solve = set => track(cfgKey(set), () => solveGrowCfg(g, set));
     const got = set => memo.get(cfgKey(set));
     // v47 one growth ORDER: the city that grows first gets the free tiles between growing cities. Same tiles as
     // "all at the same time" → the same plan (memo of the set); else its own plan.
     const sameOwners = (A, B) => A.owner.size === B.owner.size && [...A.owner].every(([k, v]) => B.owner.get(k) === v);
     const solveOrd = async ord => {
       const A = area(ord); if (ord.length < 2 || sameOwners(A, area(new Set(ord)))) return solve(new Set(ord));
-      const k = 'o:' + ord.join('>');
-      if (!memo.has(k)) {
-        const v = await solveScenario(g, optCells(areaCells(A)), M().opts); if (!v) return null;
-        if (!v.proven) g.open++; memo.set(k, v); g.done++; if (g.done > g.total) g.total = g.done; refresh();
-      }
-      return memo.get(k);
+      return track('o:' + ord.join('>'), () => solveScenario(g, optCells(areaCells(A)), M().opts, g.quick));
     };
     // best order of the chosen cities: each step the city that adds the most on top of the ones before
     g.orderOf = async set => {
@@ -1272,13 +1311,9 @@
       if (keys.length > 1) g.total = Math.max(g.total, g.done + keys.length * (keys.length - 1) / 2);
       while (ord.length < keys.length) {
         let best = null;
-        for (const k of keys) {
-          if (ord.indexOf(k) >= 0) continue;
-          const r = await solveOrd(ord.concat(k)); if (!r) return null;
-          const v = (r.income - prev.income) * PR.H - (r.cost - prev.cost);
-          if (!best || v > best.v + 1e-9) best = { k, r, v };
-          if (keys.length - ord.length === 1) break;
-        }
+        const left = keys.filter(k => ord.indexOf(k) < 0);
+        const rs = await parMap(left, k => solveOrd(ord.concat(k))); if (!rs) return null;
+        left.forEach((k, i) => { const r = rs[i], v = (r.income - prev.income) * PR.H - (r.cost - prev.cost); if (!best || v > best.v + 1e-9) best = { k, r, v }; });
         ord.push(best.k);
         const c = cand.find(x => x.key === best.k);
         steps.push({ key: best.k, k: c.k, name: c.name, gain: best.r.income - prev.income, dcost: best.r.cost - prev.cost, income: best.r.income, cost: best.r.cost });
@@ -1303,14 +1338,12 @@
         const masks = []; for (let m = 1; m < (1 << n); m++) masks.push(m);
         const bits = m => { let c = 0; for (; m; m &= m - 1) c++; return c; };
         masks.sort((a, b) => bits(a) - bits(b) || a - b);
-        for (const m of masks) {
-          const set = new Set(cand.filter((c, i) => m & (1 << i)).map(c => c.key));
-          const r = await solve(set); if (!r) return;
-          if (better(r, set, bestR, bestSet)) { bestR = r; bestSet = set; }
-        }
+        const setOf = m => new Set(cand.filter((c, i) => m & (1 << i)).map(c => c.key));
+        const rs = await parMap(masks, m => solve(setOf(m))); if (!rs) return;
+        masks.forEach((m, i) => { const set = setOf(m); if (better(rs[i], set, bestR, bestSet)) { bestR = rs[i]; bestSet = set; } });
       } else {
         g.total = 3 * n + 4;
-        for (const c of cand) if (!(await solve(new Set([c.key])))) return;
+        if (!(await parMap(cand, c => solve(new Set([c.key]))))) return;
         const aloneOf = c => got(new Set([c.key])).income - base.income;
         const order = cand.slice().sort((a, b) => aloneOf(b) - aloneOf(a));
         const tryAdd = async keys => {
@@ -1330,16 +1363,16 @@
           inn.forEach(c => moves.push({ add: [], del: [c.key] }));
           inn.forEach(a => out.forEach(b => { if (near(a, b)) moves.push({ add: [b.key], del: [a.key] }); }));
           for (let a = 0; a < out.length; a++) for (let b = a + 1; b < out.length; b++) if (near(out[a], out[b])) moves.push({ add: [out[a].key, out[b].key], del: [] });
-          for (const mv of moves) {
-            if (g.done >= lsCap) break;
-            const set = new Set([...bestSet].filter(k => mv.del.indexOf(k) < 0).concat(mv.add));
-            const r = await solve(set); if (!r) return;
-            if (better(r, set, bestR, bestSet)) { bestSet = set; bestR = r; improved = true; break; }
+          // a few moves at the same time; the first one (in this order) that helps wins – as one after the other
+          const setMv = mv => new Set([...bestSet].filter(k => mv.del.indexOf(k) < 0).concat(mv.add));
+          for (let i = 0; i < moves.length && !improved && g.done < lsCap; i += GROW_PAR) {
+            const batch = moves.slice(i, i + GROW_PAR), rs = await parMap(batch, mv => solve(setMv(mv))); if (!rs) return;
+            for (let j = 0; j < batch.length; j++) { const set = setMv(batch[j]); if (better(rs[j], set, bestR, bestSet)) { bestSet = set; bestR = rs[j]; improved = true; break; } }
           }
         }
       }
       // what each chosen city adds on top of the others (exact: the choice without it)
-      for (const k of bestSet) if (!(await solve(new Set([...bestSet].filter(x => x !== k))))) return;
+      if (bestSet.size && !(await parMap([...bestSet], k => solve(new Set([...bestSet].filter(x => x !== k)))))) return;
       g.verdicts = (bestSet, bestR) => {
       // verdict per city
       g.best = { set: bestSet, income: bestR.income, cost: bestR.cost };
@@ -1374,17 +1407,15 @@
         for (const [k, r] of memo) { if (k.startsWith('o:')) continue; const set = new Set(k ? k.split('|') : []); if (better(r, set, br, bs)) { br = r; bs = set; } }
         g.verdicts(bs, br);
         // v47 the order of the new choice may need a few more plans (the worker was closed – a new one is made)
-        g.order = null; g.ordering = true; g.worker = undefined;
+        g.order = null; g.ordering = true;
         g.orderOf(bs).then(o => {
           if (!alive(g)) return;
           g.order = o; g.ordering = false;
-          if (g.worker) try { g.worker.terminate(); } catch (e) { /* gone */ }
-          g.worker = undefined; refresh();
+          stopPool(g); refresh();
         });
       };
       g.state = 'done'; g.ms = Date.now() - g.t0;
-      if (g.worker) try { g.worker.terminate(); } catch (e) { /* gone */ }
-      g.worker = undefined;
+      stopPool(g);
       resumeProof(g);
       refresh();
     })();
@@ -1406,7 +1437,7 @@
   }
   function stopGrowth() {
     const g = growth;
-    if (g && g.worker) try { g.worker.terminate(); } catch (e) { /* gone */ }
+    stopPool(g);
     growth = null;
     if (g && g.state !== 'done') resumeProof(g);
   }
@@ -1442,7 +1473,7 @@
   }
   function stopTech() {
     const g = tech;
-    if (g && g.worker) try { g.worker.terminate(); } catch (e) { /* gone */ }
+    stopPool(g);
     tech = null;
     if (g && g.state !== 'done') resumeProof(g);
   }
@@ -1489,7 +1520,7 @@
         refresh();
       }
       g.state = 'done'; g.ms = Date.now() - g.t0;
-      if (g.worker) try { g.worker.terminate(); } catch (e) { /* gone */ }
+      stopPool(g);
       resumeProof(g);
       refresh();
     })();
@@ -1572,7 +1603,9 @@
     if (!g) {
       // v33: a plain button; tapping it opens a small menu: which cities may grow, then Start
       if (!ui.growMenu) return `<button class="mk-btn" data-a="growthMenu">🌱 Check Border Growth ▾</button>`;
-      const est = Math.max(5, Math.round(solves * (res.large ? 6 : 1.5)));
+      // measured (4 cities, 16 plans): exact ≈ 6.5 s per plan (HiGHS in parallel), quick ≈ 3.5 s
+      // (the plans with 5×5 are bigger than the plan shown, so its size says little)
+      const qk = M().growQuick === true, est = Math.max(5, Math.round(solves * (qk ? 3.5 : 6.5)));
       const PRn = growPrio();
       let h = '<div class="gw-menu"><div class="gw-mh"><b>🌱 Border Growth or Population Growth?</b><button class="lnk" data-a="growthMenu">close ▴</button></div>';
       h += '<div class="gw-prio">' +
@@ -1583,6 +1616,7 @@
       h += '</div>';
       if (grown.length) h += `<div class="mk-note" style="margin:4px 0">Already 5×5: ${grown.map(ci => esc(cityName(ci, ci.k))).join(', ')} <button class="lnk" data-a="growthAll">set all to 3×3 and check</button></div>`;
       h += ringWarn + t3Btn();
+      h += `<button class="mk-opt wide${qk ? ' on' : ''}" data-a="growQuick" aria-pressed="${qk}" style="margin:0 0 6px;width:100%"><span class="bx">${qk ? '✓' : ''}</span><span>⚡ Quick check<small>less exact: ★ can be 1–3 too low</small></span></button>`;
       h += n ? `<button class="mk-btn pri" data-a="growth">▶ Start <small style="opacity:.8">(${n <= GROW_ALL_MAX ? '' : 'about '}${plural(solves, 'plan', 'plans')} · about ${est < 90 ? est + ' s' : Math.round(est / 60) + ' min'})</small></button>`
         : '<button class="mk-btn" disabled>Pick at least one city</button>';
       return h + '</div>';
@@ -1622,7 +1656,8 @@
     };
     h += take.concat(noTake).map(card).join('');
     h += ringWarn + t3Btn();
-    if (g.open) h += `<p class="mk-note" style="margin:8px 0 0;color:#ffb703">⚠ ${plural(g.open, 'plan', 'plans')} not proven</p>`;
+    if (g.quick) h += `<div class="gw-warn">⚡ Quick check – ★ can be 1–3 too low <button class="lnk" data-a="growExact">check exactly</button></div>`;
+    else if (g.open) h += `<p class="mk-note" style="margin:8px 0 0;color:#ffb703">⚠ ${plural(g.open, 'plan', 'plans')} not proven</p>`;
     const left = small.filter(ci => skip.has(key(ci.c, ci.r)));
     if (left.length) h += `<div class="mk-note" style="margin:4px 0 0">Not checked (your choice): ${left.map(ci => esc(cityName(ci, ci.k))).join(', ')}</div>`;
     h += '<button class="mk-btn sm" data-a="growthAgain" style="margin-top:8px">↻ Choose cities and check again</button>';
@@ -2709,6 +2744,8 @@
     if (a === 'techAgain') { stopTech(); ui.techMenu = true; PP.app.refresh(); return; }
     if (a === 'tech') { ui.techMenu = false; startTech(); PP.app.refresh(); return; }
     if (a === 'growthMenu') { ui.growMenu = !ui.growMenu; PP.app.refresh(); return; }
+    if (a === 'growQuick') { M().growQuick = M().growQuick !== true; PP.app.commit(); return; }
+    if (a === 'growExact') { M().growQuick = false; growthAuto = true; PP.app.commit(); return; }
     if (a === 'growthAgain') { stopGrowth(); ui.growMenu = true; PP.app.refresh(); return; }
     if (a === 'growth') { ui.growMenu = false; }
     if (a === 'growth') { const r = planResult(); if (r && r.best) { startGrowth(r); PP.app.refresh(); } return; }
