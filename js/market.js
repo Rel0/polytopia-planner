@@ -1899,14 +1899,36 @@
       return;
     }
     if (!isCityAt(c, r)) {
-      if (inArea(c, r)) { toast('Tap a city tile – or use ✏️ Edit borders to change single tiles'); return; }
-      // a known / detected city right next to the tapped tile (name plates sit below the city)
-      const near = S().cities.filter(ci => ci && !selAt(ci.c, ci.r) && Math.max(Math.abs(ci.c - c), Math.abs(ci.r - r)) <= 1 && isCityAt(ci.c, ci.r))
-        .concat(detectedList().filter(d => !selAt(d.c, d.r) && Math.max(Math.abs(d.c - c), Math.abs(d.r - r)) <= 1));
-      if (near.length === 1 || (near.length > 1 && near.every(q => q.c === near[0].c && q.r === near[0].r))) { c = near[0].c; r = near[0].r; }
+      // v46: a tile right next to a selected city: the detection sat one tile off → the city moves here
+      // (before, the tap snapped back to the wrong tile and the real city could not be picked)
+      const adj = selCities().filter(q => Math.max(Math.abs(q.c - c), Math.abs(q.r - r)) === 1);
+      if (adj.length === 1) { moveCity(adj[0], c, r); return; }
+      if (inArea(c, r)) { toast('Tap the city itself – or ✏️ Edit borders for single tiles'); return; }
     }
     const was = isCityAt(c, r), n = selectCity(c, r, 1);
     if (n) toast(cityLabel(c, r) + (was ? '' : ' (marked as city)') + ': 3×3 territory · tap again for 5×5');
+  }
+  // the selected city s really is on (c, r): no city on the old tile any more, territory, name and border edits move along
+  function moveCity(s, c, r) {
+    const m = M(), oldK = key(s.c, s.r), newK = key(c, r), ce = cityEntry(s.c, s.r);
+    const keep = ce ? { name: ce.name, side: ce.side, color: ce.color, level: ce.level, pop: ce.pop, capital: ce.capital } : null;
+    const d = detectedList().find(q => q.c === c && q.r === r);
+    removeCity(s.c, s.r);
+    const ne = upsertCity(c, r, 'user', d ? { color: detColor(d), side: sideOf(detColor(d)) || 'me', conf: d.conf } : { side: (keep && keep.side) || 'me' });
+    if (ne && keep) {
+      if (keep.name && !ne.name) ne.name = keep.name;
+      if (keep.side) ne.side = keep.side;
+      if (keep.color && !ne.color) ne.color = keep.color;
+      ['level', 'pop', 'capital'].forEach(f => { if (keep[f] && !ne[f]) ne[f] = keep[f]; });
+    }
+    // same entry, same place in the list: City A stays City A, the territory size stays
+    m.cities = m.cities.filter(x => x === s || !(x.c === c && x.r === r));
+    s.c = c; s.r = r;
+    for (const k in m.edits) if (m.edits[k] === oldK) m.edits[k] = newK;
+    delete m.edits[newK];
+    if (ui.editCity === oldK) ui.editCity = newK;
+    m.touched = true; ui.alt = 0;
+    toast(cityLabel(c, r) + ' moved here · ↶ to undo');
   }
   // name as shown in the chips (City A, B … by selection order)
   const cityLabel = (c, r) => {
@@ -2077,7 +2099,7 @@
     hint() {
       if (ui.step === 1 || !selCities().length) {
         if (ui.borders) { const A = area(), ek = editCityK(A), ci = A.cities.find(x => key(x.c, x.r) === ek); return ci ? 'Editing ' + cityName(ci, ci.k) + ': tap a tile to give it to ' + cityName(ci, ci.k) + ' · tap one of its tiles to remove it' : ''; }
-        return selCities().length ? 'Tap more cities · tap a city again: 3×3 → 5×5 → off' : 'Tap your own cities (the city tile) to plan their Markets';
+        return selCities().length ? 'Tap a city: 3×3 → 5×5 → off · wrong tile? tap the right one' : 'Tap your own cities (the city tile) to plan their Markets';
       }
       if (ui.step === 2) return ui.brush ? 'Tap or drag: ' + nm(ui.brush) + ' (tap again = remove)' : 'Pick a brush, then tap tiles';
       if (ui.onlyForest) return '🪓 Only the forests to cut down (🔥 = burn) · tap 🪓 again for the whole plan';
@@ -2791,7 +2813,9 @@
         disc(ctx, q.x, q.y, R, null, me ? 'rgba(76,201,240,.95)' : 'rgba(255,255,255,.9)', 2, [5, 4]);
       };
       S().cities.forEach(ci => { if (ci && isCityAt(ci.c, ci.r)) ring(ci.c, ci.r, ci.side === 'me'); });
-      detectedList().forEach(d => ring(d.c, d.r, sideOf(detColor(d)) === 'me'));
+      // a detected plate right next to a selected city is the same city (detection one tile off) – no second ring
+      const sc = selCities();
+      detectedList().forEach(d => { if (!sc.some(q => Math.max(Math.abs(q.c - d.c), Math.abs(q.r - d.r)) === 1)) ring(d.c, d.r, sideOf(detColor(d)) === 'me'); });
       drawCities(ctx, D, u, big);
       drawGrowBadges(ctx, D, u, big);
       ctx.restore();

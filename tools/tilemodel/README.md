@@ -119,6 +119,17 @@ because a plate also reaches into the tiles next to it. The top and bottom game 
 python3 tools/tilemodel/city.py dataset.json,dataset_city_extra.json js/citymodel-data.js
 ```
 
+**v4 (8 Nov 2026).** 38 screenshots, including 11 contributed ones (see below). The trees are deeper now
+(100 trees, depth 16, leaves of one sample) and the app threshold is 0.4 (`CITY_TH` in `js/vision.js`). The test works like the
+app: every grid tile, the neighbour check, leave-one-screenshot-out.
+
+| | old 27 screenshots | 11 new screenshots | false alarms on labelled tiles |
+|---|---|---|---|
+| v3 model, 0.5 | 58 / 68 | 57 / 59 | 11 |
+| v4 model, 0.4 (used) | 61 / 68 | 58 / 59 | 9 |
+
+No city lands one tile off any more (v3: 1).
+
 The extra file holds cities and non-cities that were checked by hand. The 8 neighbour tiles of every city are added
 as non-cities. Big cities rise into the tile above, and without these negatives that tile could win the neighbour
 check, so the city ended up one tile too high.
@@ -136,3 +147,25 @@ On the training screenshots, 59 of 61 cities land on the right tile and none is 
 
 Python and the browser give the same plate features: 377 of 377 tiles. Both compute the plate HSV in float64 and
 the row smoothing in the same order.
+
+## Contributed screenshots (Nov 2026)
+
+`tools/contrib/pull.sh` writes the contributions as a dataset with `src: "contrib:<id>"`. Two things to know:
+
+- **People mark the resources they care about, not every one.** A contributed field or mountain without a mark is
+  often a crop / fruit / metal tile. So `export.py` uses only the *marked* resources of contributed tiles for the field
+  and mountain models (their terrain is used as is). Leave-one-screenshot-out, threshold 0.6:
+
+  | | crop, old | fruit, old | crop, new | fruit, new |
+  |---|---|---|---|---|
+  | old data only | 83 / 145 | 66 / 143 | 12 / 50 | 14 / 56 |
+  | + contributed, all tiles | 90 / 145 | 51 / 143 | 11 / 50 | 30 / 56 |
+  | + contributed, marked resources only (used) | 96 / 145 | 63 / 143 | 19 / 50 | 47 / 56 |
+
+  Metal on mountains: using unmarked contributed mountains dropped the old screenshots from 79 to 61 of 94.
+- **Check the city marks before training.** Villages came in as `city`, and so did a "Game Stats" button in older
+  label files. Draw every city label onto its screenshot and relabel or drop the wrong ones (first batch: 8 of 67 contributed
+  city marks were villages; the older label files had 2 villages and 2 buttons).
+
+Terrain on land tiles, leave-one-screenshot-out: old screenshots 80.8 % → 83.5 %; the 11 new ones 81 % (shipped v3
+model) → 82 %, and 93 % of the sure ones are right (520 of 776 tiles are sure).

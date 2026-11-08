@@ -780,7 +780,7 @@ window.PP = window.PP || {};
   // v34: learned city detector (PP.tilemodel.cityProb – name plate + tile, tools/tilemodel/city.py) on every tile of the
   // grid; a city only where its tile beats all 8 neighbours (a plate also reaches into the tiles next to it).
   // Old plate finder (per tribe colour) still runs: it gives the plate colour / progress bar and helps borderline tiles.
-  const CITY_TH = 0.5, CITY_TH_OLD = 0.3; // leave-one-screenshot-out with the neighbour check: 50/61 cities, 4 false alarms
+  const CITY_TH = 0.4, CITY_TH_OLD = 0.3; // v4 model, app-like test (every tile, neighbour check, leave-one-screenshot-out): 119/127 cities, 7 false alarms on labelled tiles
   function modelCities(src, grid, tribes) {
     const TM = PP.tilemodel; if (!TM || !TM.cityReady || !TM.cityProb) return null;
     const I = imageData(src); if (!I) return null;
