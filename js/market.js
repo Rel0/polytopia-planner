@@ -1046,14 +1046,17 @@
       base.add(k);
       if (m.edits[k] === 0) continue;
       if (cellAt(t.c, t.r).terrain === 'space') continue; // outside the map
-      owner.set(k, nearestOf(t.c, t.r, t.by).k);
+      // v44: a tile given to a city in "Edit borders" belongs to that city, else to the nearest one
+      const as = typeof m.edits[k] === 'string' && cityK.has(m.edits[k]) ? cityK.get(m.edits[k]) : null;
+      owner.set(k, as != null ? as : nearestOf(t.c, t.r, t.by).k);
     }
     if (cities.length) {
       for (const k of Object.keys(m.edits)) {
-        if (m.edits[k] !== 1 || owner.has(k) || cand.has(k)) continue;
+        const v = m.edits[k];
+        if (!(v === 1 || typeof v === 'string') || owner.has(k) || cand.has(k)) continue;
         const [c, r] = k.split(',').map(Number);
         if (!isFinite(c) || !isFinite(r) || isCityAt(c, r) || cellAt(c, r).terrain === 'space') continue;
-        owner.set(k, nearestOf(c, r, cities).k);
+        owner.set(k, typeof v === 'string' && cityK.has(v) ? cityK.get(v) : nearestOf(c, r, cities).k);
       }
     }
     const ownerOf = (c, r) => { const v = owner.get(key(c, r)); return v === undefined ? -1 : v; };
@@ -1913,17 +1916,26 @@
     return k >= 0 ? cityName({}, k) : 'City ' + c + '/' + r;
   };
   // Edit borders: add a tile next to the territory / remove a territory tile (want: true add, false remove, null toggle)
+  // v44: borders are edited for ONE city (ui.editCity = 'c,r'): tap a tile → it belongs to that city (also when it
+  // belonged to another one); tap one of its tiles → it is removed. want: true add, false remove, null toggle.
+  function editCityK(A) {
+    A = A || area();
+    if (!A.cities.some(ci => key(ci.c, ci.r) === ui.editCity)) ui.editCity = A.cities.length ? key(A.cities[0].c, A.cities[0].r) : null;
+    return ui.editCity;
+  }
   function editBorder(c, r, want) {
-    const m = M(), A = area(), k = key(c, r);
-    if (!A.cities.length) return 'none';
+    const m = M(), A = area(), k = key(c, r), ek = editCityK(A);
+    if (!A.cities.length || !ek) return 'none';
     if (isCityAt(c, r)) return 'city';
-    if (A.has(c, r)) {
+    const ci = A.cities.find(x => key(x.c, x.r) === ek), mine = A.ownerOf(c, r) === ci.k;
+    if (mine) {
       if (want === true) return 'same';
-      if (A.base.has(k)) m.edits[k] = 0; else delete m.edits[k];
+      m.edits[k] = 0;                                                     // not part of any territory any more
     } else {
       if (want === false) return 'same';
-      if (!NB.some(([dc, dr]) => A.has(c + dc, r + dr))) return 'far';
-      if (A.base.has(k)) delete m.edits[k]; else m.edits[k] = 1;
+      const near = Math.max(Math.abs(c - ci.c), Math.abs(r - ci.r)) <= ci.rad || NB.some(([dc, dr]) => A.ownerOf(c + dc, r + dr) === ci.k);
+      if (!near) return 'far';
+      m.edits[k] = ek;                                                    // belongs to the chosen city
     }
     m.touched = true; ui.alt = 0;
     return 'ok';
@@ -2050,7 +2062,7 @@
     mapActClick,
     hint() {
       if (ui.step === 1 || !selCities().length) {
-        if (ui.borders) return 'Tap a tile next to the territory to add it, a territory tile to remove it (drag for several)';
+        if (ui.borders) { const A = area(), ek = editCityK(A), ci = A.cities.find(x => key(x.c, x.r) === ek); return ci ? 'Editing ' + cityName(ci, ci.k) + ': tap a tile to give it to ' + cityName(ci, ci.k) + ' · tap one of its tiles to remove it' : ''; }
         return selCities().length ? 'Tap more cities · tap a city again: 3×3 → 5×5 → off' : 'Tap your own cities (the city tile) to plan their Markets';
       }
       if (ui.step === 2) return ui.brush ? 'Tap or drag: ' + nm(ui.brush) + ' (tap again = remove)' : 'Pick a brush, then tap tiles';
@@ -2069,14 +2081,15 @@
       if (!t) return false;
       if (ui.step === 1 || !selCities().length) {
         if (!ui.borders) return false;
-        const A = area();
-        return A.has(t.c, t.r) || NB.some(([dc, dr]) => A.has(t.c + dc, t.r + dr));
+        const A = area(), ek = editCityK(A), ci = A.cities.find(x => key(x.c, x.r) === ek);
+        if (!ci) return false;
+        return A.ownerOf(t.c, t.r) === ci.k || Math.max(Math.abs(t.c - ci.c), Math.abs(t.r - ci.r)) <= ci.rad || NB.some(([dc, dr]) => A.ownerOf(t.c + dc, t.r + dr) === ci.k);
       }
       return ui.step === 2 && !!ui.brush && inPaint(t.c, t.r);
     },
     onDrag(phase, t) {
       if (ui.step === 1 || !selCities().length) {
-        if (phase === 'start') { ui.edit = { want: !inArea(t.c, t.r), done: new Set() }; }
+        if (phase === 'start') { const A = area(), ek = editCityK(A), ci = A.cities.find(x => key(x.c, x.r) === ek); ui.edit = { want: !(ci && A.ownerOf(t.c, t.r) === ci.k), done: new Set() }; }
         if (ui.edit && t && (phase === 'start' || phase === 'move' || phase === 'end')) {
           const k = key(t.c, t.r);
           if (!ui.edit.done.has(k)) { ui.edit.done.add(k); editBorder(t.c, t.r, ui.edit.want); }
@@ -2095,10 +2108,14 @@
     onTap(t) {
       if (ui.step === 1 || !selCities().length) {
         if (ui.borders) {
+          const A0 = area(), sel = A0.cities.find(x => x.c === t.c && x.r === t.r);
+          if (sel) { ui.editCity = key(sel.c, sel.r); toast('Editing ' + cityName(sel, sel.k)); PP.app.commit(); return; } // tap a city: edit that one
           const r = editBorder(t.c, t.r, null);
-          if (r === 'far') toast('Only tiles next to the territory can be added');
+          const A = area(), ci = A.cities.find(x => key(x.c, x.r) === ui.editCity);
+          if (r === 'far') toast('Too far from ' + cityName(ci, ci.k) + ' – pick another city above');
           else if (r === 'city') tapCity(t.c, t.r);
           else if (r === 'none') toast('Tap a city first');
+          else if (r === 'ok' && ci) toast(A.ownerOf(t.c, t.r) === ci.k ? '→ ' + cityName(ci, ci.k) : 'Removed from ' + cityName(ci, ci.k), 1200);
         } else tapCity(t.c, t.r);
         PP.app.commit(); return;
       }
@@ -2106,6 +2123,9 @@
         if (!inPaint(t.c, t.r)) { toast('Outside the cities’ territories – change them in ① Cities'); return; }
         ui.paint = null;
         applyBrush(t.c, t.r, ui.brush, !brushOn(ui.brush, cellAt(t.c, t.r)));
+        // v44: say whose tile it is
+        { const A = area(), o = A.ownerOf(t.c, t.r), ci = A.cities[o];
+          toast((ci ? cityName(ci, o) : inRing(t.c, t.r) ? 'Border Growth ring' : 'Outside the territories') + ' · ' + t.c + '/' + t.r, 1200); }
         PP.app.commit(); return;
       }
       ui.sel = ui.sel && ui.sel.c === t.c && ui.sel.r === t.r ? null : (inArea(t.c, t.r) ? { c: t.c, r: t.r } : null);
@@ -2185,6 +2205,10 @@
 .mk .gw-menu{margin:6px 0;padding:8px 10px;border:1px solid var(--line,#33406e);border-radius:12px;background:rgba(255,255,255,.03)}
 .mk .gw-mh{display:flex;align-items:center;justify-content:space-between;margin-bottom:6px}
 .mk .gw-pick{display:flex;flex-wrap:wrap;gap:6px}
+.mk .mk-ecity{display:flex;flex-wrap:wrap;align-items:center;gap:5px;margin:2px 0 6px}
+.mk .mk-ecity span{color:var(--muted,#9aa5c8);font-size:12.5px;font-weight:700;margin-right:2px}
+.mk .mk-ecity button{border:2px solid transparent;border-radius:9px;padding:6px 10px;background:var(--panel2,#252e52);color:var(--text,#e8ecf8);font-weight:800;font-size:13px;box-shadow:inset 4px 0 0 var(--cc)}
+.mk .mk-ecity button.on{border-color:var(--cc);background:color-mix(in srgb,var(--cc) 25%,transparent)}
 .mk .gw-prio{display:flex;gap:5px}
 .mk .gw-prio button{flex:1;display:flex;flex-direction:column;align-items:center;gap:2px;border:1px solid rgba(255,255,255,.12);border-radius:10px;padding:7px 4px;background:var(--panel2,#252e52);color:var(--text,#e8ecf8);font-size:12.5px;min-width:0}
 .mk .gw-prio button small{color:var(--muted,#9aa5c8);font-size:10.5px;text-align:center}
@@ -2266,6 +2290,11 @@
       h += `<div data-peek="cities:${ui.borders ? 'b' : 'c'}:${A.cities.length}">${stepsHtml()}`;
       // v32: Edit borders right at the top
       if (A.cities.length) h += `<button class="mk-btn ${ui.borders ? 'pri' : ''}" data-a="borders" style="margin:6px 0 4px">${ui.borders ? '✓ Done editing borders' : '✏️ Edit city borders'}</button>`;
+      if (ui.borders && A.cities.length) {
+        const ek = editCityK(A);
+        h += '<div class="mk-ecity"><span>Editing:</span>' + A.cities.map(ci => { const k = key(ci.c, ci.r);
+          return `<button data-ecity="${k}" class="${k === ek ? 'on' : ''}" style="--cc:${cityCol(ci.k)}">${esc(cityName(ci, ci.k))}</button>`; }).join('') + '</div>';
+      }
       h += chipsHtml(A);
       if (nEd) h += `<div class="mk-row"><button class="mk-btn sm" data-a="resetBorders">↺ Reset borders (${nEd})</button></div>`;
       const ko = knownOwn();
@@ -2502,6 +2531,7 @@
     if (d.alt) { ui.alt = d.alt === 'best' ? 0 : d.alt; ui.sel = null; PP.app.refresh(); requestAnimationFrame(fitPlan); return; }
     if (d.opt) { m.opts[d.opt] = !m.opts[d.opt]; ui.alt = 0; PP.app.commit(); return; }
     if (d.tech) { const b = S().build || (S().build = {}); if (!Array.isArray(b.owned)) b.owned = []; const i = b.owned.indexOf(d.tech); if (i >= 0) b.owned.splice(i, 1); else b.owned.push(d.tech); PP.app.commit(); return; }
+    if (d.ecity) { ui.editCity = d.ecity; PP.app.refresh(); return; }
     if (d.gprio) {
       M().growPrio = d.gprio;
       if (growth && growth.state === 'done' && growth.rechoose && growth.sig === cacheSig) growth.rechoose(growPrio()); // instant
@@ -2648,8 +2678,15 @@
     }
     ctx.fillStyle = ui.step === 1 ? 'rgba(6,9,22,.42)' : 'rgba(6,9,22,.55)'; ctx.fill('nonzero');
     if (ui.step === 1 && ui.borders) {
-      for (const [c, r] of fringe(A)) {
-        diamondPath(ctx, c, r, 0.86); ctx.lineWidth = 1.5; ctx.strokeStyle = 'rgba(255,255,255,.7)'; ctx.setLineDash([4, 4]); ctx.stroke(); ctx.setLineDash([]);
+      const ek = editCityK(A), eci = A.cities.find(x => key(x.c, x.r) === ek);
+      if (eci) {
+        const col = cityCol(eci.k), seen = new Set();
+        for (const [k, o] of A.owner) if (o === eci.k) { const [c, r] = k.split(',').map(Number); diamondPath(ctx, c, r, 0.96); ctx.fillStyle = hexA(col, 0.32); ctx.fill(); }
+        // tiles it can take: inside its radius or next to its territory, not its own
+        const tryAdd = (c, r) => { const k = key(c, r); if (seen.has(k) || A.ownerOf(c, r) === eci.k || isCityAt(c, r)) return; seen.add(k);
+          diamondPath(ctx, c, r, 0.82); ctx.lineWidth = 2; ctx.strokeStyle = hexA(col, 0.9); ctx.setLineDash([4, 4]); ctx.stroke(); ctx.setLineDash([]); };
+        for (let dr = -eci.rad; dr <= eci.rad; dr++) for (let dc = -eci.rad; dc <= eci.rad; dc++) tryAdd(eci.c + dc, eci.r + dr);
+        for (const [k, o] of A.owner) if (o === eci.k) { const [c, r] = k.split(',').map(Number); NB.forEach(([dc, dr]) => tryAdd(c + dc, r + dr)); }
       }
       for (const k of Object.keys(M().edits)) {
         if (M().edits[k] !== 0 || !A.base.has(k)) continue;
