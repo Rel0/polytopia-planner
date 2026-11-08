@@ -70,10 +70,10 @@ function layout(p, o) {
 <meta name="twitter:image" content="${SITE}/og-image.png">
 <link rel="icon" type="image/png" href="/icons/icon-192.png">
 <link rel="apple-touch-icon" href="/icons/icon-180.png">
-<link rel="stylesheet" href="/css/pages.css?v=3">
+<link rel="stylesheet" href="/css/pages.css?v=3">${o.css ? `\n<link rel="preload" href="/fonts/jost-latin.woff2" as="font" type="font/woff2" crossorigin>\n<link rel="stylesheet" href="${o.css}">` : ''}
 <script type="application/ld+json">${JSON.stringify(ld.length === 1 ? ld[0] : ld)}</script>
 </head>
-<body>
+<body${o.bodyClass ? ` class="${o.bodyClass}"` : ''}>
 <div class="top"><div class="in">
   <a class="brand" href="/"><img src="/icons/icon-192.png" alt="" width="28" height="28"><span>Polytopia Planner</span></a>
   <nav class="nav" aria-label="Pages">${nav}<a class="app" href="/?tool=${p.tool}">Open app</a></nav>
@@ -100,6 +100,20 @@ function hero(h1, lead, tool, ctaText, extra) {
 <p class="note">Free · no sign-up · works on phone, tablet and desktop · your screenshots stay on your device</p></div>`;
 }
 
+// low-poly horizon for the damage calculator's sky: grey / white mountains and green hills (drawn here, no game art)
+function horizon() {
+  let seed = 3; const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647, r1 = v => Math.round(v * 10) / 10;
+  let s = '';
+  for (let i = -1; i < 9; i++) {
+    const x = i * 75 + rnd() * 30, w = 90 + rnd() * 60, h = 45 + rnd() * 40, b = 110;
+    s += `<path d="M${r1(x)} ${b}L${r1(x + w / 2)} ${r1(b - h)}L${r1(x + w / 2)} ${b}Z" fill="#c9ced6"/><path d="M${r1(x + w / 2)} ${r1(b - h)}L${r1(x + w)} ${b}L${r1(x + w / 2)} ${b}Z" fill="#aab1bb"/>`;
+    s += `<path d="M${r1(x + w / 2)} ${r1(b - h)}L${r1(x + w / 2 - w * .12)} ${r1(b - h * .72)}L${r1(x + w / 2)} ${r1(b - h * .78)}L${r1(x + w / 2 + w * .12)} ${r1(b - h * .72)}Z" fill="#f4f6f8"/>`;
+  }
+  const g = ['#7bd54a', '#68c43f', '#8fe05a', '#5fb53a'];
+  for (let i = -1; i < 8; i++) { const x = i * 90 + rnd() * 40, w = 140 + rnd() * 60, h = 18 + rnd() * 20; s += `<path d="M${r1(x)} 110L${r1(x + w * .45)} ${r1(110 - h)}L${r1(x + w)} 110Z" fill="${g[i & 3]}"/>`; }
+  return `<svg viewBox="0 0 600 110" preserveAspectRatio="none" aria-hidden="true">${s}</svg>`;
+}
+
 // ======================================================================== battle calculator
 function battlePage(p) {
   const KIND = [['None', '×1'], ['Forest (Archery)', '×1.5'], ['Mountain (Climbing)', '×1.5'], ['Water / ocean (Aquatism)', '×1.5'], ['City (units with Fortify)', '×1.5'], ['City Wall (units with Fortify)', '×4']];
@@ -122,15 +136,15 @@ function battlePage(p) {
     ['How does splash damage work in Polytopia?', 'Units with Splash (Bomber, Fire Dragon) also hit every enemy next to the target. Each of them takes half the damage a normal hit would deal to it, without rounding – an odd damage leaves the unit at x.5 HP. The Exida’s splash only poisons the neighbours.'],
     ['How much damage does an explosion do?', 'Exploding units (Boomchi, Doomux, Segment, Insect Egg) deal half of their normal damage to every adjacent enemy and poison them. The exploding unit dies.'],
     ['What does poison do in Polytopia?', 'Poison halves the defense bonus of the unit (×1 becomes 0.5, ×1.5 becomes 0.7, a city wall ×4 becomes 2), so it takes more damage. It also prevents healing until the unit recovers.'],
-    ['Does a unit in a forest always get a defense bonus?', 'No. The ×1.5 bonus on Forest needs Archery, on Mountain Climbing and on Water / ocean Aquatism – for the tribe of the defending unit. Without that tech the unit fights with ×1. In the calculator above, tick or untick the tech and compare both results.'],
+    ['Does a unit in a forest always get a defense bonus?', 'No. The ×1.5 bonus on Forest needs Archery, on Mountain Climbing and on Water / ocean Aquatism – for the tribe of the defending unit. Without that tech the unit fights with ×1. In the calculator above, tap the defender and tick or untick “Has Archery” (or Climbing / Aquatism) to compare both results.'],
     ['Which units get the city defense bonus?', 'Only units with the Fortify skill (e.g. Warrior, Archer, Defender, Rider, Knight). A Giant, Swordsman or Catapult gets no bonus in a city, but still gets terrain bonuses.'],
-    ['Does the calculator work for all tribes?', 'Yes – all 55 current units, including ships and the special tribes Aquarion, ∑∫ỹriȱŋ, Polaris and Cymanti. Pick your tribe and the enemy’s tribe in the Units tool.'],
+    ['Does the calculator work for all tribes?', 'Yes – all 55 current units, including ships and the special tribes Aquarion, ∑∫ỹriȱŋ, Polaris and Cymanti. Pick the tribe in the menu above the unit list.'],
+    ['How does the calculator find the best attack order?', 'Every attacker attacks once. The calculator tries how to split your units over the enemies and in which order they attack – splash first if it weakens the neighbours, the next unit on another enemy if a target is already dead. “Sort by” sets what counts most: most kills, most damage, no own losses or fewest attacks. “Custom” uses only the attacks you choose, in your order.'],
   ];
-  const body = `<div class="hero"><h1>Polytopia Damage Calculator<br><span class="muted" style="font-size:.6em;font-weight:700">with terrain, tech &amp; your own screenshot</span></h1>
-<p class="lead">Damage, retaliation and kills for every unit – with the defender’s terrain and whether its tribe has the tech for the defense bonus.</p>
-</div>
-<section id="calculator" aria-label="Damage calculator"><div id="calc" class="calc"><noscript>Please turn on JavaScript to use the calculator.</noscript></div>
-<div class="more"><a class="cta" href="/?tool=units">Try even more features – on your own screenshot →</a></div></section>
+  const body = `<div class="sky"><h1><span>Polytopia</span>Damage Calculator</h1>
+<p>Any number of attackers and defenders – splash, terrain, tech and the best attack order.</p>${horizon()}</div>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true"><defs><symbol id="i-check" viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7.5"/></symbol></defs></svg>
+<section id="calculator" aria-label="Damage calculator"><div id="calc" class="calc"><noscript>Please turn on JavaScript to use the calculator.</noscript></div></section>
 ` + `
 <section><h2>On your own screenshot</h2><ol class="steps">
 <li><b>Add a screenshot</b><span>Take a screenshot in Polytopia and open it – the tiles, units and cities are detected automatically.</span></li>
@@ -155,8 +169,8 @@ ${skillRows.map(r => `<tr><td><b>${esc(r[0])}</b></td><td class="sk">${esc(r[1])
 </tbody></table></div></section>`;
   return layout(p, {
     title: 'Polytopia Damage Calculator – Terrain, Tech & Screenshot (all units)',
-    desc: 'Free Polytopia damage calculator: choose the terrain and the tech for the defense bonus and see if the unit survives – damage, retaliation, best attack order for all units, also on your own screenshot.',
-    appName: 'Polytopia Damage Calculator', crumb: 'Damage Calculator', body, faq,
+    desc: 'Free Polytopia damage calculator: put any number of attackers and defenders on a small battlefield and get the best attack order – damage, retaliation, splash, terrain and the tech for the defense bonus, for all units.',
+    appName: 'Polytopia Damage Calculator', crumb: 'Damage Calculator', body, faq, bodyClass: 'sun', css: '/css/dmg.css?v=1',
     scripts: '<script src="/js/data.js?v=1"></script>\n<script src="/js/engine.js?v=1"></script>\n<script src="/js/dmgpage.js?v=1"></script>'
   });
 }
