@@ -74,3 +74,38 @@ footer nav{display:flex;flex-wrap:wrap;gap:6px 16px;margin-bottom:10px}
 .tt.t1{border-color:#4cc9f0}.tt.t2{border-color:#7a6cf0}.tt.t3{border-color:#ffd166}
 @media (max-width:860px){.ttree{grid-template-columns:repeat(auto-fit,minmax(240px,1fr))}.tk{grid-template-columns:1fr 1fr}}
 @media (max-width:520px){.tk{grid-template-columns:1fr}}
+/* v43 instant damage calculator */
+.calc{background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:14px}
+.cgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(290px,1fr));gap:14px}
+.cbox{display:flex;flex-direction:column;gap:8px}
+.chead{display:flex;align-items:center;gap:10px;min-height:28px}
+.chead b{font-size:13px;margin-right:auto;text-transform:uppercase;letter-spacing:.06em;color:var(--muted)}
+.lk{border:0;background:none;color:var(--accent);font:inherit;font-size:14px;font-weight:700;padding:4px 2px;cursor:pointer}
+.crow{display:flex;align-items:center;gap:6px}
+.crow .no{color:var(--muted);font-weight:800;font-size:13px;width:14px;text-align:center;flex:none}
+.crow select{flex:1 1 auto;min-width:0;height:40px;background:var(--panel2);color:var(--text);border:1px solid var(--line);border-radius:10px;padding:0 8px;font-size:15px}
+.hp{display:inline-flex;align-items:center;height:40px;background:var(--panel2);border:1px solid var(--line);border-radius:10px;flex:none}
+.hp button{border:0;background:none;color:var(--text);font-size:18px;width:30px;height:100%;cursor:pointer}
+.hp input{width:36px;background:none;border:0;color:var(--text);font-size:15px;font-weight:700;text-align:center;-moz-appearance:textfield}
+.hp input::-webkit-inner-spin-button,.hp input::-webkit-outer-spin-button{-webkit-appearance:none;margin:0}
+.tg{height:40px;flex:none;border:1px solid var(--line);background:var(--panel2);color:var(--muted);border-radius:10px;padding:0 10px;font-size:14px;font-weight:700;cursor:pointer}
+.tg.on{border-color:var(--accent);color:var(--text);background:rgba(76,201,240,.16)}
+.crow .x{border:0;background:none;color:var(--muted);font-size:20px;width:24px;flex:none;cursor:pointer}
+.seg{display:grid;grid-template-columns:repeat(3,1fr);gap:4px;background:var(--bg);border-radius:11px;padding:4px}
+.seg button{height:34px;border:0;border-radius:8px;background:none;color:var(--muted);font-size:14px;font-weight:700;cursor:pointer}
+.seg button.on{background:var(--panel2);color:var(--text);box-shadow:inset 0 0 0 1px var(--accent)}
+.opts .tg{height:34px}
+.opts .bon{margin-left:auto;color:var(--muted);font-size:13.5px;font-weight:700}
+.cres{margin-top:14px;border-top:1px solid var(--line);padding-top:12px}
+.cres .vline{font-size:20px;font-weight:800}
+.cres .vline small{font-weight:600;color:var(--muted);font-size:15px}
+.cres .vline.kill{color:var(--ok)}.cres .vline.ok{color:var(--gold)}
+.cres table{width:100%;border-collapse:collapse;margin-top:6px;font-size:14.5px}
+.cres td{padding:5px 4px;border-top:1px solid rgba(255,255,255,.06)}
+.cres td:first-child{color:var(--muted);width:18px}
+.cres td small{color:var(--muted)}
+.cres tr.skip td{color:var(--muted)}
+.cres .alt{margin-top:8px;color:var(--muted);font-size:14.5px}
+.cres .alt.flip{color:var(--accent);font-weight:700}
+.more{margin-top:14px}
+#calculator{margin-top:4px;padding-top:0}

@@ -119,6 +119,8 @@ window.PP = window.PP || {};
     '.un-peek .sd1.as{font-size:9px}',
     '.un-peek .sum .city{font-weight:800}',
     '.un-btns{display:flex;gap:6px;margin-top:8px;flex-wrap:wrap}',
+    '.un-tech{margin-left:4px;border:1px solid var(--line,#33406e);border-radius:8px;padding:3px 8px;background:var(--panel2,#252e52);color:var(--text,#e8ecf8);font-size:12px;font-weight:700}',
+    '.un-tech.on{border-color:#06d6a0;color:#06d6a0}',
     '.un-seqb{display:block;width:100%;border:0;border-radius:11px;padding:10px;margin:0 0 8px;font-weight:800;font-size:14px;background:var(--accent,#4cc9f0);color:#08121f;min-height:44px}',
     '.un-seqb small{font-weight:600;opacity:.75}',
     '.un-seqb.on{background:var(--panel2,#252e52);color:var(--text,#e8ecf8);box-shadow:inset 0 0 0 2px var(--accent,#4cc9f0)}',
@@ -320,7 +322,7 @@ window.PP = window.PP || {};
   }
   // the kind a unit's bonus stands for (legacy units without bonusKind: guessed from the value / auto result)
   function kindOf(u) {
-    if (isAuto(u)) return autoFor(u.c, u.r).kind || 'none';
+    if (isAuto(u)) return autoValue(u).kind; // v42: no tech → none
     if (KINDS[u.bonusKind] && KINDS[u.bonusKind].v === (u.bonus || 1)) return u.bonusKind;
     var b = u.bonus || 1;
     if (b >= 4) return 'wall';
@@ -420,21 +422,38 @@ window.PP = window.PP || {};
     return res;
   }
   // apply auto bonuses (cheap after the first call: cached per image + grid + tile); false while calibrating
+  // v42: the terrain bonus needs the tech (Forest: Archery, Mountain: Climbing, Water: Aquatism). Own units: your techs
+  // (Costs tool); enemy units: the enemy techs you set here (unknown → no bonus). City / City Wall need no tech.
+  function sideHasTech(side, tech) {
+    var id = String(tech || '').toLowerCase(); if (!id) return true;
+    if (side === 'me') { var b = st().build || {}; return Array.isArray(b.owned) && b.owned.indexOf(id) >= 0; }
+    var et = uiPrefs().enemyTech || {}; return !!et[id];
+  }
+  function autoValue(u) {
+    var a = autoFor(u.c, u.r);
+    if (a.tech && a.v > 1 && !sideHasTech(u.side, a.tech)) return { v: 1, kind: 'none', noTech: a.tech, a: a };
+    return { v: a.v, kind: a.kind || 'none', a: a };
+  }
+  function toggleTech(side, tech) {
+    var id = String(tech).toLowerCase();
+    if (side === 'me') { var b = st().build; if (!Array.isArray(b.owned)) b.owned = []; var i = b.owned.indexOf(id); if (i >= 0) b.owned.splice(i, 1); else b.owned.push(id); }
+    else { var p = uiPrefs(); p.enemyTech = p.enemyTech || {}; p.enemyTech[id] = !p.enemyTech[id]; }
+  }
   function syncAuto() {
     if (!PP.state || calibrating()) return false;
     var ch = false;
     units().forEach(function (u) {
       if (!isAuto(u)) return;
-      var a = autoFor(u.c, u.r);
+      var a = autoValue(u);
       if (u.bonus !== a.v) { u.bonus = a.v; ch = true; }
-      if (u.bonusKind !== (a.kind || 'none')) { u.bonusKind = a.kind || 'none'; ch = true; }
+      if (u.bonusKind !== a.kind) { u.bonusKind = a.kind; ch = true; }
       if (u.bonusMode !== 'auto') u.bonusMode = 'auto';
     });
     return ch;
   }
   // v = 'auto' | kind name ('forest', 'wall', …) | legacy number
   function setBonus(u, v) {
-    if (v === 'auto') { var a = autoFor(u.c, u.r); u.bonusMode = 'auto'; u.bonus = a.v; u.bonusKind = a.kind || 'none'; return; }
+    if (v === 'auto') { var a = autoValue(u); u.bonusMode = 'auto'; u.bonus = a.v; u.bonusKind = a.kind; return; }
     if (!KINDS[v]) { var n = +v || 1; v = n >= 4 ? 'wall' : n > 1 ? 'city' : 'none'; }
     u.bonusMode = 'manual'; u.bonusKind = v; u.bonus = KINDS[v].v;
   }
@@ -1271,7 +1290,7 @@ window.PP = window.PP || {};
       else if (res.killedAt) h += '<div class="un-res kill">☠ Target dies on attack ' + res.killedAt + (res.killedAt < res.steps.length ? '<small>Remaining units stay free</small>' : '') + '</div>';
       else h += '<div class="un-res">Target survives with ' + res.hpAfter + ' HP' + (res.poison || res.frozen ? '<small>' + [res.poison ? '🧪 poisoned' : '', res.frozen ? '❄️ frozen' : ''].filter(Boolean).join(' · ') + '</small>' : '') + '</div>';
       var fxk = (res.fx || []).filter(function (e) { return e.hp <= 0; });
-      if (res.fx && res.fx.length) h += '<div class="un-res hold" style="margin-top:4px">Also hit: ' + res.fx.map(function (e) {
+      if (res.fx && res.fx.length) h += '<div class="un-res hold" style="margin-top:4px">💦 Splash / 💥 explosion also hits: ' + res.fx.map(function (e) {
         return esc(U(e.u.type).name) + ' ' + (e.hp <= 0 ? '☠' : e.hp !== e.before ? e.before + '→' + e.hp : '') + (e.poison && e.hp > 0 ? ' 🧪' : '');
       }).join(', ') + (fxk.length ? '<small>' + fxk.length + ' more unit' + (fxk.length > 1 ? 's' : '') + ' defeated</small>' : '') + '</div>';
       if (res.losses.length) h += '<div class="un-res" style="margin-top:4px">Lost: ' + res.losses.map(function (u) { return esc(U(u.type).name); }).join(', ') + '</div>';
@@ -1408,12 +1427,12 @@ window.PP = window.PP || {};
   // v16: defense bonus as a wrapping chip row with descriptive kinds:
   // [Auto: Forest ×1.5 (Archery)] [None] [🌲 Forest ×1.5 Archery] [⛰️ Mountain …] [🌊 Water …] [🏠 City ×1.5] [🧱 City Wall ×4]
   function bonusHtml(u) {
-    var a = autoFor(u.c, u.r), au = isAuto(u), k = kindOf(u), img = !!boardImg();
+    var av = autoValue(u), a = av.a, au = isAuto(u), k = kindOf(u), img = !!boardImg();
     var chip = function (v, label, cls, on, title) {
       return '<button data-un="bonus" data-id="' + u.id + '" data-v="' + v + '" class="' + cls + (on ? ' on' : '') + '" title="' + esc(title) + '" aria-pressed="' + on + '">' + label + '</button>';
     };
     var h = '<div class="un-bon4">';
-    if (img) h += chip('auto', 'Auto: ' + (a.kind && a.kind !== 'none' ? KINDS[a.kind].ic + ' ' : '') + esc(kindText(a.kind || 'none')), 'au', au, 'Detect from the screenshot');
+    if (img) h += chip('auto', 'Auto: ' + (a.kind && a.kind !== 'none' ? KINDS[a.kind].ic + ' ' : '') + (av.noTech ? esc(KINDS[a.kind].name) + ' – no ' + esc(av.noTech) + ' ×1' : esc(kindText(a.kind || 'none'))), 'au', au, 'Detect from the screenshot');
     KIND_ORDER.forEach(function (kk) {
       var K = KINDS[kk], lbl = kk === 'none' ? 'None' : K.ic + ' ' + esc(K.name) + ' ×' + K.v + (K.tech ? ' <small>' + esc(K.tech) + '</small>' : '');
       h += chip(kk, lbl, kk === 'wall' ? 'w4' : '', !au && k === kk, kindText(kk));
@@ -1422,7 +1441,8 @@ window.PP = window.PP || {};
     var why;
     if (!img) why = '';
     else if (a.city) why = 'Auto: <b>City ×1.5</b> (name plate seen) · has a City Wall? → pick <b>City Wall ×4</b>';
-    else if (a.v > 1) why = 'Auto: <b>' + esc(kindText(a.kind)) + '</b> – unit on ' + esc(a.why.toLowerCase()) + ', bonus needs ' + esc(a.tech || 'the tech');
+    else if (a.v > 1) why = 'Unit on ' + esc(a.why.toLowerCase()) + ' – ' + (av.noTech ? 'no bonus without ' : 'bonus with ') + esc(a.tech) +
+      ' <button class="un-tech' + (av.noTech ? '' : ' on') + '" data-un="tech" data-id="' + u.id + '" data-v="' + esc(a.tech) + '">' + (av.noTech ? '' : '✓ ') + (u.side === 'me' ? 'I have ' : 'Enemy has ') + esc(a.tech) + '</button>';
     else why = 'Auto: <b>none</b>' + (a.terrain ? ' (' + esc(a.why) + ')' : '');
     if (img && !a.city && a.conf != null && a.conf < 0.6) why += ' · unsure';
     if (!au) why = 'Set: <b>' + (k ? esc(kindText(k)) : '×' + fmt(u.bonus || 1)) + '</b>' + (img ? ' · auto would be ' + esc(kindText(a.kind || 'none')) : '');
@@ -1558,6 +1578,7 @@ window.PP = window.PP || {};
       return;
     }
     if (a === 'seqload') { seqLoad(id); return; }
+    if (a === 'tech' && u) { toggleTech(u.side, v); syncAuto(); commit(); return; }
     if (a === 'sub') {
       if (v === 'battle' && !units().length) { toast('Place some units first'); return; }
       p.sub = v; p.selId = null; p.eraser = false; closeEditor(); commit();
@@ -1807,6 +1828,7 @@ window.PP = window.PP || {};
         });
         var fs3 = clamp(R * 0.55, 10, 16), kill3 = pl.res.hpAfter <= 0 || pl.res.converted;
         chip(ctx, tq.x, tq.y - R - fs3 * 1.05, kill3 ? '☠ ' + pl.t.hp + '→0' : pl.t.hp + '→' + pl.res.hpAfter, fs3, kill3 ? '#06a77d' : '#b3122f', '#fff', '#fff');
+        drawFx(ctx, pl.res, R);
       });
       return;
     }
@@ -1827,17 +1849,28 @@ window.PP = window.PP || {};
       numBadge(ctx, p.x - R * 0.8 - nr * 0.35, p.y - R * 0.8 - nr * 0.35, String(i + 1), nr, '#ffd23f', '#1d1a10');
       if (s && s.dmg != null && s.ret) chip(ctx, p.x, p.y + R + clamp(R * 0.48, 9, 14) * 1.1, s.aAfter <= 0 ? '☠ ' + s.aBefore + '→0' : s.aBefore + '→' + s.aAfter, clamp(R * 0.48, 9, 14), s.aAfter <= 0 ? '#b3122f' : 'rgba(14,18,34,.92)', '#fff', 'rgba(255,210,63,.9)');
     });
-    if (res && res.fx) res.fx.forEach(function (e) {
-      if (e.hp === e.before) return;
-      var q2 = cpos(e.u.c, e.u.r), fs2 = clamp(R * 0.48, 9, 14);
-      chip(ctx, q2.x, q2.y - R - fs2 * 1.05, e.hp <= 0 ? '☠ ' + e.before + '→0' : e.before + '→' + e.hp, fs2, e.hp <= 0 ? '#06a77d' : '#8a1a2e', '#fff', 'rgba(255,255,255,.8)');
-    });
+    if (res) drawFx(ctx, res, R);
     if (tAct && res && res.used) {
       var q = cpos(tAct.c, tAct.r), kill = res.hpAfter <= 0;
       chip(ctx, q.x, q.y - R - clamp(R * 0.55, 10, 16) * 1.05, kill ? '☠ ' + tAct.hp + '→0' : tAct.hp + '→' + res.hpAfter, clamp(R * 0.55, 10, 16), kill ? '#06a77d' : '#b3122f', '#fff', '#fff');
     }
   }
 
+  // v43: splash / explosion damage on the units around the target – orange dashed ring + 💦 / 💥 chip with the HP change
+  function drawFx(ctx, res, R) {
+    if (!res || !res.fx || !res.fx.length) return;
+    var kind = {};
+    (res.steps || []).forEach(function (s) { (s.fx || []).forEach(function (f) { if (f.kind === 'explode') kind[f.u.id] = 'explode'; else if (!kind[f.u.id]) kind[f.u.id] = 'splash'; }); });
+    res.fx.forEach(function (e) {
+      if (e.hp === e.before && !e.poison) return;
+      var q2 = cpos(e.u.c, e.u.r), fs2 = clamp(R * 0.48, 9, 14), dead = e.hp <= 0;
+      ctx.save(); ctx.beginPath(); ctx.arc(q2.x, q2.y, R * DR + Math.max(3, R * 0.2), 0, Math.PI * 2);
+      ctx.setLineDash([Math.max(3, R * 0.25), Math.max(2, R * 0.15)]); ctx.lineWidth = clamp(R * 0.09, 1.6, 3); ctx.strokeStyle = '#ff9f1c'; ctx.stroke(); ctx.restore();
+      var ic = kind[e.u.id] === 'explode' ? '💥 ' : '💦 ', fmtH = function (v) { return String(+(+v).toFixed(1)); };
+      var txt = ic + (e.hp === e.before ? '🧪 poisoned' : dead ? '☠ ' + fmtH(e.before) + '→0' : fmtH(e.before) + '→' + fmtH(e.hp) + (e.poison ? ' 🧪' : ''));
+      chip(ctx, q2.x, q2.y - R - fs2 * 1.05, txt, fs2, dead ? '#06a77d' : '#b85c00', '#fff', 'rgba(255,255,255,.85)');
+    });
+  }
   // slim arrow with dark outline, slim head and a number badge
   function thinArrow(ctx, p, q, col, R, n, dashed) {
     var dx = q.x - p.x, dy = q.y - p.y, L = Math.hypot(dx, dy);

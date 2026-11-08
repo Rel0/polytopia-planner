@@ -88,6 +88,7 @@ ${o.faq && o.faq.length ? `<section id="faq"><h2>FAQ</h2>${o.faq.map(f => `<deta
   Free, unofficial fan tool – not affiliated with or endorsed by Midjiwan AB. “The Battle of Polytopia” is a trademark of Midjiwan AB.
   Unit data from the community wiki, last checked ${TODAY}.
 </div></footer>
+${o.scripts || ''}
 </body>
 </html>
 `;
@@ -121,14 +122,18 @@ function battlePage(p) {
     ['How does splash damage work in Polytopia?', 'Units with Splash (Bomber, Fire Dragon) also hit every enemy next to the target. Each of them takes half the damage a normal hit would deal to it, without rounding – an odd damage leaves the unit at x.5 HP. The Exida’s splash only poisons the neighbours.'],
     ['How much damage does an explosion do?', 'Exploding units (Boomchi, Doomux, Segment, Insect Egg) deal half of their normal damage to every adjacent enemy and poison them. The exploding unit dies.'],
     ['What does poison do in Polytopia?', 'Poison halves the defense bonus of the unit (×1 becomes 0.5, ×1.5 becomes 0.7, a city wall ×4 becomes 2), so it takes more damage. It also prevents healing until the unit recovers.'],
+    ['Does a unit in a forest always get a defense bonus?', 'No. The ×1.5 bonus on Forest needs Archery, on Mountain Climbing and on Water / ocean Aquatism – for the tribe of the defending unit. Without that tech the unit fights with ×1. In the calculator above, tick or untick the tech and compare both results.'],
     ['Which units get the city defense bonus?', 'Only units with the Fortify skill (e.g. Warrior, Archer, Defender, Rider, Knight). A Giant, Swordsman or Catapult gets no bonus in a city, but still gets terrain bonuses.'],
     ['Does the calculator work for all tribes?', 'Yes – all 55 current units, including ships and the special tribes Aquarion, ∑∫ỹriȱŋ, Polaris and Cymanti. Pick your tribe and the enemy’s tribe in the Units tool.'],
   ];
-  const body = hero('Polytopia Damage Calculator<br><span class="muted" style="font-size:.6em;font-weight:700">Battle, attack &amp; combat calculator</span>',
-    'Place your and enemy units on your own screenshot and see the exact damage, retaliation and kills before you attack – with the best attack order for several attackers.',
-    'units', 'Open the Damage Calculator', `<a class="cta sec" href="/units/">All unit stats</a>`) + `
-<section><h2>How it works</h2><ol class="steps">
-<li><b>Add a screenshot</b><span>Take a screenshot in Polytopia and open it – or start with a blank board.</span></li>
+  const body = `<div class="hero"><h1>Polytopia Damage Calculator<br><span class="muted" style="font-size:.6em;font-weight:700">with terrain, tech &amp; your own screenshot</span></h1>
+<p class="lead">Damage, retaliation and kills for every unit – with the defender’s terrain and whether its tribe has the tech for the defense bonus.</p>
+</div>
+<section id="calculator" aria-label="Damage calculator"><div id="calc" class="calc"><noscript>Please turn on JavaScript to use the calculator.</noscript></div>
+<div class="more"><a class="cta" href="/?tool=units">Try even more features – on your own screenshot →</a></div></section>
+` + `
+<section><h2>On your own screenshot</h2><ol class="steps">
+<li><b>Add a screenshot</b><span>Take a screenshot in Polytopia and open it – the tiles, units and cities are detected automatically.</span></li>
 <li><b>Place units</b><span>Pick your tribe and the enemy’s, then tap tiles to place units. Set HP, veteran, poisoned or frozen.</span></li>
 <li><b>Battle</b><span>Tap your attackers in order, then the target: damage, retaliation, splash and kills appear instantly.</span></li>
 </ol></section>
@@ -149,9 +154,10 @@ ${KIND.map(k => `<tr><td>${esc(k[0])}</td><td class="n">${k[1]}</td></tr>`).join
 ${skillRows.map(r => `<tr><td><b>${esc(r[0])}</b></td><td class="sk">${esc(r[1])}</td><td class="sk">${esc(r[2])}</td></tr>`).join('')}
 </tbody></table></div></section>`;
   return layout(p, {
-    title: 'Polytopia Damage Calculator – Battle & Attack Calculator (all units)',
-    desc: 'Free Polytopia damage calculator: damage formula, retaliation, splash and kills for every unit (incl. Aquarion, Polaris, Cymanti) and the best attack order – on your own screenshot.',
-    appName: 'Polytopia Damage Calculator', crumb: 'Damage Calculator', body, faq
+    title: 'Polytopia Damage Calculator – Terrain, Tech & Screenshot (all units)',
+    desc: 'Free Polytopia damage calculator: choose the terrain and the tech for the defense bonus and see if the unit survives – damage, retaliation, best attack order for all units, also on your own screenshot.',
+    appName: 'Polytopia Damage Calculator', crumb: 'Damage Calculator', body, faq,
+    scripts: '<script src="/js/data.js?v=1"></script>\n<script src="/js/engine.js?v=1"></script>\n<script src="/js/dmgpage.js?v=1"></script>'
   });
 }
 
