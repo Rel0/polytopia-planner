@@ -41,6 +41,7 @@
       const allowNew = allD && (T === 'market' ? o.market !== false : o[T]);
       if (allowNew) for (const x of P.terrTiles[k]) {
         if (Ek.indexOf(x) >= 0 || !pField[x]) continue;
+        if (cells[x].noWs && cells[x].noWs.indexOf(T) >= 0) continue; // Border Growth ring: no new workshop of this type
         const b = cells[x].bld;
         if (b && !dOK[x]) continue;
         if (T !== 'market' && !nb[x].some(t => P.canProd[t][PROD[T]])) continue; // a workshop that can never have a level

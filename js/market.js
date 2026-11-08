@@ -74,6 +74,9 @@
     };
     if (t === 'city' && x.name) o.name = String(x.name);
     if (t !== 'city' && x.own != null) o.own = String(x.own);
+    // v47: tile of the ring a city only gets with Border Growth – no new Windmill / Forge / Sawmill there (the city needs
+    // them inside its 3×3 to reach Level 4 and grow at all); Markets and producers are fine
+    if (Array.isArray(x.noWs) && t !== 'city') { const l = x.noWs.filter(T => WS.indexOf(T) >= 0); if (l.length) o.noWs = l; }
     return o;
   }
   // v36 tech limits (only set by the tech advisor): market = new Markets (Trade), farm / mine / lumber = new producers
@@ -239,7 +242,7 @@
         if (Ek.length && allD) list.push({ kind: 'destroy', tiles: [], frees: Ek, w: Ek.length * wD, cost: Ek.length * C.destroy, act: Ek.length });
         if (allD && P.o[T]) {
           for (const x of terrTiles[k]) {
-            if (!mAdj.has(x) || occ0.has(x) || Ek.indexOf(x) >= 0 || !pField[x]) continue;
+            if (!mAdj.has(x) || occ0.has(x) || Ek.indexOf(x) >= 0 || !pField[x] || (cells[x].noWs && cells[x].noWs.indexOf(T) >= 0)) continue;
             const b = cells[x].bld;
             if (b && !dOK[x]) continue;
             if (P.potLevel(x, T) === 0) continue;
@@ -723,7 +726,7 @@
         if (ci != null) { out.push({ c: x.c, r: x.r, terrain: 'city', name: o.name }); return; }
         if (inWin(i)) {
           const k = P.owner[i], cc = P.cities[k];
-          out.push({ c: x.c, r: x.r, terrain: o.t, res: (o.crop ? ['crop'] : []).concat(o.ore ? ['ore'] : [], o.fruit ? ['fruit'] : []), bld: o.bld, own: key(cc.c, cc.r) });
+          out.push({ c: x.c, r: x.r, terrain: o.t, res: (o.crop ? ['crop'] : []).concat(o.ore ? ['ore'] : [], o.fruit ? ['fruit'] : []), bld: o.bld, own: key(cc.c, cc.r), noWs: o.noWs });
           return;
         }
         if (o.t === 'city') { out.push({ c: x.c, r: x.r, terrain: 'water', own: '-' }); return; } // another city: blocked
@@ -1026,26 +1029,39 @@
   // { cities: [{ c, r, rad, name, k }], owner: Map 'c,r' → k, base: Set (inside some radius), ownerOf(c, r), has(c, r) }
   // Base territory: every tile within the city's radius (3×3 / 5×5), nearest selected city wins; foreign city tiles
   // are left out. Edits: 0 removes a base tile, 1 adds a tile (to the nearest selected city).
-  // grow: 'c,r' of a city whose territory is taken as 5×5 (v29: "what if this city gets Border Growth?")
+  // grow: 'c,r' of a city whose territory is taken as 5×5 (v29: "what if this city gets Border Growth?"), a Set of
+  // them (they grow at the same time), or an Array (v47: they grow in this order).
+  // v47 like in the game: a city that grows only gets the tiles nobody owns yet – the 3×3 of the other cities stay
+  // theirs, and of two growing cities the one that grows first gets the tiles between them (same time: the nearer one).
+  // Cities of the plan with sc.grow = n (Border Growth planned, n = order) grow the same way after the others.
+  // A.ring: tiles a city only gets by growing (no new workshops of the types in ringNoWs() there)
   function area(grow) {
     const m = M(), sel = selCities();
-    const grows = k => (grow instanceof Set ? grow.has(k) : grow === k);
-    const cities = sel.map((s, k) => { const ce = cityEntry(s.c, s.r); return { c: s.c, r: s.r, rad: grows(key(s.c, s.r)) ? 2 : s.rad, name: (ce && ce.name) || '', k, implicit: false }; });
-    const owner = new Map(), base = new Set(), cand = new Map();
+    const seqOf = (s, k) => {
+      if (Array.isArray(grow)) { const i = grow.indexOf(k); if (i >= 0) return i + 1; }
+      else if (grow instanceof Set ? grow.has(k) : grow === k) return 1;
+      return s.rad === 2 && s.grow > 0 ? 100 + s.grow : 0;
+    };
+    const cities = sel.map((s, k) => {
+      const ce = cityEntry(s.c, s.r), ck = key(s.c, s.r), seq = seqOf(s, ck);
+      return { c: s.c, r: s.r, rad: seq ? 2 : s.rad, rad0: seq ? 1 : s.rad, seq, name: (ce && ce.name) || '', k, implicit: false };
+    });
+    const owner = new Map(), base = new Set(), ring = new Set(), cand = new Map();
     const cityK = new Map(cities.map(ci => [key(ci.c, ci.r), ci.k]));
+    const blocked = (k, t) => isCityAt(t.c, t.r) || m.edits[k] === 0 || cellAt(t.c, t.r).terrain === 'space';
     for (const ci of cities) {
       for (let dr = -ci.rad; dr <= ci.rad; dr++) for (let dc = -ci.rad; dc <= ci.rad; dc++) {
         const k = key(ci.c + dc, ci.r + dr);
-        if (!cand.has(k)) cand.set(k, { c: ci.c + dc, r: ci.r + dr, by: [] });
-        cand.get(k).by.push(ci);
+        if (!cand.has(k)) cand.set(k, { c: ci.c + dc, r: ci.r + dr, by: [], grow: [] });
+        (Math.max(Math.abs(dc), Math.abs(dr)) <= ci.rad0 ? cand.get(k).by : cand.get(k).grow).push(ci);
       }
     }
+    // today's territories (before any planned growth)
     for (const [k, t] of cand) {
       if (cityK.has(k)) { owner.set(k, cityK.get(k)); continue; }
       if (isCityAt(t.c, t.r)) continue; // someone else's city
       base.add(k);
-      if (m.edits[k] === 0) continue;
-      if (cellAt(t.c, t.r).terrain === 'space') continue; // outside the map
+      if (!t.by.length || blocked(k, t)) continue;
       // v44: a tile given to a city in "Edit borders" belongs to that city, else to the nearest one
       const as = typeof m.edits[k] === 'string' && cityK.has(m.edits[k]) ? cityK.get(m.edits[k]) : null;
       owner.set(k, as != null ? as : nearestOf(t.c, t.r, t.by).k);
@@ -1053,14 +1069,25 @@
     if (cities.length) {
       for (const k of Object.keys(m.edits)) {
         const v = m.edits[k];
-        if (!(v === 1 || typeof v === 'string') || owner.has(k) || cand.has(k)) continue;
+        if (!(v === 1 || typeof v === 'string') || owner.has(k) || (cand.has(k) && cand.get(k).by.length)) continue;
         const [c, r] = k.split(',').map(Number);
         if (!isFinite(c) || !isFinite(r) || isCityAt(c, r) || cellAt(c, r).terrain === 'space') continue;
         owner.set(k, typeof v === 'string' && cityK.has(v) ? cityK.get(v) : nearestOf(c, r, cities).k);
       }
     }
+    // Border Growth, step by step: each step takes the free tiles of its 5×5
+    const seqs = [...new Set(cities.filter(ci => ci.seq).map(ci => ci.seq))].sort((a, b) => a - b);
+    for (const q of seqs) {
+      const claim = [];
+      for (const [k, t] of cand) {
+        if (owner.has(k) || blocked(k, t)) continue;
+        const gs = t.grow.filter(ci => ci.seq === q); if (!gs.length) continue;
+        claim.push([k, nearestOf(t.c, t.r, gs).k]);
+      }
+      claim.forEach(([k, own]) => { owner.set(k, own); ring.add(k); });
+    }
     const ownerOf = (c, r) => { const v = owner.get(key(c, r)); return v === undefined ? -1 : v; };
-    return { cities, owner, base, ownerOf, has: (c, r) => owner.has(key(c, r)), implicit: false, n: owner.size };
+    return { cities, owner, base, ring, ownerOf, has: (c, r) => owner.has(key(c, r)), implicit: false, n: owner.size };
   }
   const terr = area;
   const inArea = (c, r) => area().has(c, r);
@@ -1104,12 +1131,13 @@
     for (const [k, own] of A.owner) {
       const [c, r] = k.split(',').map(Number), x = cellAt(c, r), ci = A.cities[own];
       if (x.terrain !== 'city') x.own = key(ci.c, ci.r);
+      if (A.ring && A.ring.has(k) && x.terrain !== 'city' && ringNoWs().length) x.noWs = ringNoWs();
       out.push(x);
     }
     out.sort((a, b) => a.r - b.r || a.c - b.c);
     return out;
   }
-  const optCells = list => list.map(x => (x.terrain === 'city' ? { c: x.c, r: x.r, terrain: 'city', name: x.name } : { c: x.c, r: x.r, terrain: x.terrain, res: x.res, bld: x.bld, own: x.own }));
+  const optCells = list => list.map(x => (x.terrain === 'city' ? { c: x.c, r: x.r, terrain: 'city', name: x.name } : { c: x.c, r: x.r, terrain: x.terrain, res: x.res, bld: x.bld, own: x.own, noWs: x.noWs }));
   // tiles next to the area (8-neighbourhood) that could be added
   function fringe(A) {
     const out = new Map();
@@ -1138,7 +1166,7 @@
   // growth = { sig, state: 'running'|'done', steps: [{ key, name, k, income, cost, gain }], all: { income, cost }, base, done, total }
   let growth = null, growthAuto = false;
   const GROW_PROOF_SECS = 10, GROW_COST_SECS = 5; // HiGHS time per Border Growth plan (alone usually a few seconds)
-  const growthNow = () => (growth && growth.sig === cacheSig && (!growth.prio || growth.prio === (GROW_PRIO[M().growPrio] ? M().growPrio : 'bal')) ? growth : null);
+  const growthNow = () => (growth && growth.sig === cacheSig && growth.noT3 === ringNoWs().join() && (!growth.prio || growth.prio === (GROW_PRIO[M().growPrio] ? M().growPrio : 'bal')) ? growth : null);
   const growVerdict = k => { const g = growthNow(); return g && g.state === 'done' && g.byKey ? g.byKey[k] || null : null; };
   // one configuration: group search / exact search first, then HiGHS proves the maximum ★ (same model as the main proof),
   // so the numbers are the same on every run. → { income, cost, proven }
@@ -1214,7 +1242,7 @@
     if (!cand.length) return;
     stopGrowth(); if (tech && tech.state !== 'done') stopTech(); // only one check at a time; finished results stay
     const n = cand.length, exhaustive = n <= GROW_ALL_MAX;
-    const g = growth = { sig: cacheSig, state: 'running', exhaustive, n, done: 0, total: growSolves(n), t0: Date.now(), open: 0, cities: [], best: null, base: null };
+    const g = growth = { sig: cacheSig, noT3: ringNoWs().join(), state: 'running', exhaustive, n, done: 0, total: growSolves(n), t0: Date.now(), open: 0, cities: [], best: null, base: null };
     const memo = new Map(), cfgKey = set => [...set].sort().join('|');
     const refresh = () => { if (growth === g && PP.modes && PP.modes.current === 'market') PP.app.refresh(); };
     const solve = async set => {
@@ -1226,6 +1254,38 @@
       return memo.get(k);
     };
     const got = set => memo.get(cfgKey(set));
+    // v47 one growth ORDER: the city that grows first gets the free tiles between growing cities. Same tiles as
+    // "all at the same time" → the same plan (memo of the set); else its own plan.
+    const sameOwners = (A, B) => A.owner.size === B.owner.size && [...A.owner].every(([k, v]) => B.owner.get(k) === v);
+    const solveOrd = async ord => {
+      const A = area(ord); if (ord.length < 2 || sameOwners(A, area(new Set(ord)))) return solve(new Set(ord));
+      const k = 'o:' + ord.join('>');
+      if (!memo.has(k)) {
+        const v = await solveScenario(g, optCells(areaCells(A)), M().opts); if (!v) return null;
+        if (!v.proven) g.open++; memo.set(k, v); g.done++; if (g.done > g.total) g.total = g.done; refresh();
+      }
+      return memo.get(k);
+    };
+    // best order of the chosen cities: each step the city that adds the most on top of the ones before
+    g.orderOf = async set => {
+      const keys = [...set], ord = [], steps = []; let prev = g.base;
+      if (keys.length > 1) g.total = Math.max(g.total, g.done + keys.length * (keys.length - 1) / 2);
+      while (ord.length < keys.length) {
+        let best = null;
+        for (const k of keys) {
+          if (ord.indexOf(k) >= 0) continue;
+          const r = await solveOrd(ord.concat(k)); if (!r) return null;
+          const v = (r.income - prev.income) * PR.H - (r.cost - prev.cost);
+          if (!best || v > best.v + 1e-9) best = { k, r, v };
+          if (keys.length - ord.length === 1) break;
+        }
+        ord.push(best.k);
+        const c = cand.find(x => x.key === best.k);
+        steps.push({ key: best.k, k: c.k, name: c.name, gain: best.r.income - prev.income, dcost: best.r.cost - prev.cost, income: best.r.income, cost: best.r.cost });
+        prev = best.r;
+      }
+      return steps;
+    };
     // v40: a city only grows if Border Growth beats Population Growth (+3 pop ≈ 7.5 ★ + a bonus for the Giant sooner):
     // value of a choice = extra Market ★/turn × horizon − extra building cost − (cities that grow) × value of Pop Growth
     const PR = growPrio(); g.prio = PR.id; g.PR = PR;
@@ -1306,15 +1366,25 @@
       g.byKey = {}; g.cities.forEach(ci => { g.byKey[ci.key] = ci; });
       };
       g.verdicts(bestSet, bestR);
+      g.order = await g.orderOf(bestSet); if (!g.order) return;
       // v40: all combinations known → another priority is just another choice among them (no new plans needed)
       if (exhaustive) g.rechoose = P2 => {
         Object.assign(PR, P2); g.prio = P2.id;
         let bs = new Set(), br = g.base;
-        for (const [k, r] of memo) { const set = new Set(k ? k.split('|') : []); if (better(r, set, br, bs)) { br = r; bs = set; } }
+        for (const [k, r] of memo) { if (k.startsWith('o:')) continue; const set = new Set(k ? k.split('|') : []); if (better(r, set, br, bs)) { br = r; bs = set; } }
         g.verdicts(bs, br);
+        // v47 the order of the new choice may need a few more plans (the worker was closed – a new one is made)
+        g.order = null; g.ordering = true; g.worker = undefined;
+        g.orderOf(bs).then(o => {
+          if (!alive(g)) return;
+          g.order = o; g.ordering = false;
+          if (g.worker) try { g.worker.terminate(); } catch (e) { /* gone */ }
+          g.worker = undefined; refresh();
+        });
       };
       g.state = 'done'; g.ms = Date.now() - g.t0;
       if (g.worker) try { g.worker.terminate(); } catch (e) { /* gone */ }
+      g.worker = undefined;
       resumeProof(g);
       refresh();
     })();
@@ -1471,7 +1541,22 @@
     war: { id: 'war', name: '🛡️ War – Giants first', H: 5, giant: 20, note: 'only if it pays back very fast' },
   };
   function growPrio() { const id = M().growPrio; const P = GROW_PRIO[id] || GROW_PRIO.bal; return Object.assign({ pg: 7.5 + P.giant }, P); }
+  function ringNoWs() { const m = M(); if (Array.isArray(m.ringNoWs)) return m.ringNoWs; return m.growNoT3 === false ? [] : WS.slice(); }
   function growSkip() { const m = M(); if (!Array.isArray(m.growSkip)) m.growSkip = []; return new Set(m.growSkip); }
+  // v47: which workshops may NOT be built new in the ring a city only gets with Border Growth (all three by default)
+  const t3Btn = () => { const l = ringNoWs();
+    return '<div class="gw-t3"><span>Only inside 3×3:</span>' + WS.map(T => { const on = l.indexOf(T) >= 0, it = ITEM(T);
+      return `<button class="${on ? 'on' : ''}" data-not3="${T}" aria-pressed="${on}"><span class="bx">${on ? '✓' : ''}</span>${esc(it && it.name ? it.name : T)}</button>`; }).join('') + '</div>'; };
+  // v47 the order to take Border Growth in (the one that grows first gets the free tiles between growing cities)
+  function orderHtml(g) {
+    if (g.ordering) return '<div class="mk-note" style="margin:0 0 8px"><span class="mk-spin"></span>working out the order…</div>';
+    const o = g.order; if (!o || o.length < 2) return '';
+    const nm = s => `<b style="color:${cityCol(s.k)}">${esc(s.name)}</b>`;
+    let h = '<div class="gw-ord"><div class="gw-oh">🌱 Order</div>' + o.map((s, i) => `<div class="gw-os"><span class="n">${i + 1}</span>${nm(s)}<span class="v">${s.gain > 0 ? '+' + s.gain + ' ★/turn' : s.gain < 0 ? s.gain + ' ★/turn' : '±0'}</span></div>`).join('');
+    const last = o[o.length - 1];
+    if (last.income !== g.best.income) h += `<div class="mk-note" style="margin:4px 0 0">In this order: ${g.base.income} → <b>${last.income} ★/turn</b></div>`;
+    return h + '</div>';
+  }
   function growthHtml(res) {
     if (!res || res.pending || res.tooBig || res.altPending || !res.best) return '';
     const A = area(), small = A.cities.filter(ci => ci.rad === 1), grown = A.cities.filter(ci => ci.rad === 2);
@@ -1497,7 +1582,7 @@
         return `<button class="${on ? 'on' : ''}" data-gskip="${k}" style="--cc:${cityCol(ci.k)}" aria-pressed="${on}"><span class="bx">${on ? '✓' : ''}</span>${esc(cityName(ci, ci.k))}</button>`; }).join('');
       h += '</div>';
       if (grown.length) h += `<div class="mk-note" style="margin:4px 0">Already 5×5: ${grown.map(ci => esc(cityName(ci, ci.k))).join(', ')} <button class="lnk" data-a="growthAll">set all to 3×3 and check</button></div>`;
-      h += ringWarn;
+      h += ringWarn + t3Btn();
       h += n ? `<button class="mk-btn pri" data-a="growth">▶ Start <small style="opacity:.8">(${n <= GROW_ALL_MAX ? '' : 'about '}${plural(solves, 'plan', 'plans')} · about ${est < 90 ? est + ' s' : Math.round(est / 60) + ' min'})</small></button>`
         : '<button class="mk-btn" disabled>Pick at least one city</button>';
       return h + '</div>';
@@ -1514,7 +1599,8 @@
     h += take.length
       ? `<div class="gw-sum">👉 🌱 Border Growth in <b>${take.length} of ${g.cities.length}</b> ${g.cities.length === 1 ? 'city' : 'cities'}: ${take.map(c => nm(c.k, c.name)).join(', ')}${noTake.length ? `<br>👥 Population Growth in ${noTake.map(c => nm(c.k, c.name)).join(', ')}` : ''}<br>` +
         `<b class="gw-plus">+${sum} ★/turn</b> <small>(${g.base.income} → ${g.best.income}${dc > 0 ? ' · builds ' + dc + ' ★ more · pays back in ' + plural(Math.ceil(dc / Math.max(1, sum)), 'turn', 'turns') : ''})</small></div>` +
-        `<button class="mk-btn pri" data-a="growthApply" style="width:100%;margin:0 0 8px">Plan with 5×5 for ${take.map(c => esc(c.name)).join(', ')}</button>`
+        orderHtml(g) +
+        `<button class="mk-btn pri" data-a="growthApply" style="width:100%;margin:0 0 8px">Plan with 5×5 for ${(g.order && g.order.length > 1 ? g.order : take).map(c => esc(c.name)).join(' → ')}</button>`
       : '<div class="gw-sum">👉 <b>Population Growth in every city</b> – Border Growth doesn\'t pay back fast enough here (Giant sooner).</div>';
     const card = c => {
       const rr = rs[c.k] || { open: 0, unsure: 0 };
@@ -1535,7 +1621,7 @@
         `<span class="gw-v">${c.take ? '🌱 Border Growth' : '👥 Population Growth'}</span></div>${x}</div>`;
     };
     h += take.concat(noTake).map(card).join('');
-    h += ringWarn;
+    h += ringWarn + t3Btn();
     if (g.open) h += `<p class="mk-note" style="margin:8px 0 0;color:#ffb703">⚠ ${plural(g.open, 'plan', 'plans')} not proven</p>`;
     const left = small.filter(ci => skip.has(key(ci.c, ci.r)));
     if (left.length) h += `<div class="mk-note" style="margin:4px 0 0">Not checked (your choice): ${left.map(ci => esc(cityName(ci, ci.k))).join(', ')}</div>`;
@@ -1894,7 +1980,7 @@
     const s = selAt(c, r);
     if (s && isCityAt(c, r)) {
       const nm1 = cityLabel(c, r);
-      if (s.rad === 1) { s.rad = 2; M().touched = true; ui.alt = 0; toast(nm1 + ': 5×5 territory (tap again to remove)'); }
+      if (s.rad === 1) { s.rad = 2; delete s.grow; M().touched = true; ui.alt = 0; toast(nm1 + ': 5×5 territory (tap again to remove)'); }
       else { unselectCity(c, r); toast(nm1 + ' removed'); }
       return;
     }
@@ -2247,6 +2333,17 @@
 .mk .mk-ecity button{border:2px solid transparent;border-radius:9px;padding:6px 10px;background:var(--panel2,#252e52);color:var(--text,#e8ecf8);font-weight:800;font-size:13px;box-shadow:inset 4px 0 0 var(--cc)}
 .mk .mk-ecity button.on{border-color:var(--cc);background:color-mix(in srgb,var(--cc) 25%,transparent)}
 .mk .gw-prio{display:flex;gap:5px}
+.mk .gw-t3{display:flex;align-items:center;gap:5px;flex-wrap:wrap;margin:6px 0}
+.mk .gw-t3>span{font-size:12.5px;color:var(--muted,#9aa5c8);margin-right:2px}
+.mk .gw-t3 button{display:flex;align-items:center;gap:5px;border:1px solid var(--line,#33406e);background:var(--bg,#12172b);color:var(--muted,#9aa5c8);border-radius:9px;padding:5px 8px;min-height:36px;font-size:12.5px}
+.mk .gw-t3 button .bx{width:16px;height:16px;border-radius:4px;border:2px solid var(--line,#33406e);display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:900}
+.mk .gw-t3 button.on{color:var(--text,#e8ecf8);border-color:rgba(76,201,240,.6);background:rgba(76,201,240,.1)}
+.mk .gw-t3 button.on .bx{background:var(--accent,#4cc9f0);border-color:var(--accent,#4cc9f0);color:#08121f}
+.mk .gw-ord{margin:0 0 8px;padding:6px 10px 8px;border-radius:10px;background:rgba(123,211,137,.07);border:1px solid rgba(123,211,137,.25)}
+.mk .gw-oh{font-weight:700;font-size:13px;margin:0 0 4px}
+.mk .gw-os{display:flex;align-items:center;gap:8px;padding:3px 0;font-size:14px}
+.mk .gw-os .n{flex:none;width:22px;height:22px;border-radius:50%;background:#7bd389;color:#08121f;font-weight:800;display:flex;align-items:center;justify-content:center;font-size:13px}
+.mk .gw-os .v{margin-left:auto;color:#7bd389;font-weight:700;font-size:13px}
 .mk .gw-prio button{flex:1;display:flex;flex-direction:column;align-items:center;gap:2px;border:1px solid rgba(255,255,255,.12);border-radius:10px;padding:7px 4px;background:var(--panel2,#252e52);color:var(--text,#e8ecf8);font-size:12.5px;min-width:0}
 .mk .gw-prio button small{color:var(--muted,#9aa5c8);font-size:10.5px;text-align:center}
 .mk .gw-prio button.on{border-color:var(--accent,#4cc9f0);background:rgba(76,201,240,.15)}
@@ -2394,7 +2491,9 @@
       const n = [...A.owner.values()].filter(o => o === k).length - 1, at = ci.c + ',' + ci.r;
       const gi = ci.rad === 1 ? growVerdict(at) : null;
       const gtxt = gi ? (gi.take ? ` · <b style="color:#7bd389">🌱 Grow: +${gi.gain} ★</b>` : ' · 👥 Pop. Growth') : '';
-      return `<div class="mk-chip" style="--cc:${cityCol(k)}"><span class="dot"></span><span class="nmx">${esc(cityName(ci, k))}<small>${ci.c}/${ci.r} · ${n} tiles${gtxt}</small></span>` +
+      // v47 planned Border Growth (from the check): its place in the order
+      const sc = selAt(ci.c, ci.r), gord = sc && sc.rad === 2 && sc.grow > 0 ? ` · <b style="color:#7bd389">🌱 Border Growth ${sc.grow}.</b>` : '';
+      return `<div class="mk-chip" style="--cc:${cityCol(k)}"><span class="dot"></span><span class="nmx">${esc(cityName(ci, k))}<small>${ci.c}/${ci.r} · ${n} tiles${gtxt}${gord}</small></span>` +
         `<span class="seg"><button data-rad="${at},1" class="${ci.rad === 1 ? 'on' : ''}">3×3</button><button data-rad="${at},2" class="${ci.rad === 2 ? 'on' : ''}">5×5</button></span>` +
         `<button class="x" data-unsel="${at}" title="Remove" aria-label="Remove ${esc(cityName(ci, k))}">✕</button></div>`;
     }).join('') + '</div>';
@@ -2574,6 +2673,11 @@
       if (growth && growth.state === 'done' && growth.rechoose && growth.sig === cacheSig) growth.rechoose(growPrio()); // instant
       PP.app.commit(); return;
     }
+    if (d.not3) {
+      const l = ringNoWs().slice(), i = l.indexOf(d.not3); if (i >= 0) l.splice(i, 1); else l.push(d.not3);
+      M().ringNoWs = WS.filter(T => l.indexOf(T) >= 0); delete M().growNoT3;
+      if (growth && growth.state === 'done') growthAuto = true; PP.app.commit(); return;
+    }
     if (d.gskip) { const sk = growSkip(); if (sk.has(d.gskip)) sk.delete(d.gskip); else sk.add(d.gskip); M().growSkip = [...sk]; PP.app.commit(); return; }
     if (d.done) { if (m.done[d.done]) delete m.done[d.done]; else m.done[d.done] = ++doneSeq; PP.app.commit(); return; }
     if (d.go) {
@@ -2584,7 +2688,7 @@
     const a = d.a;
     if (d.rad) {
       const [c, r, rad] = d.rad.split(',').map(Number), sc = selAt(c, r);
-      if (sc) { sc.rad = rad; m.touched = true; ui.alt = 0; PP.app.commit(); requestAnimationFrame(fitRegion); }
+      if (sc) { sc.rad = rad; delete sc.grow; m.touched = true; ui.alt = 0; PP.app.commit(); requestAnimationFrame(fitRegion); }
       return;
     }
     if (d.unsel) {
@@ -2608,12 +2712,13 @@
     if (a === 'growthAgain') { stopGrowth(); ui.growMenu = true; PP.app.refresh(); return; }
     if (a === 'growth') { ui.growMenu = false; }
     if (a === 'growth') { const r = planResult(); if (r && r.best) { startGrowth(r); PP.app.refresh(); } return; }
-    if (a === 'growthAll') { M().cities.forEach(sc => { sc.rad = 1; }); stopGrowth(); growthAuto = true; ui.growMenu = false; M().touched = true; ui.alt = 0; PP.app.commit(); return; }
+    if (a === 'growthAll') { M().cities.forEach(sc => { sc.rad = 1; delete sc.grow; }); stopGrowth(); growthAuto = true; ui.growMenu = false; M().touched = true; ui.alt = 0; PP.app.commit(); return; }
     if (a === 'growthApply') {
       const g = growthNow(); if (!g) return;
-      const keys = new Set((g.cities || []).filter(c => c.take).map(c => c.key));
-      M().cities.forEach(sc => { if (keys.has(key(sc.c, sc.r))) sc.rad = 2; });
-      M().touched = true; ui.alt = 0; PP.app.commit(); toast(plural(keys.size, 'city', 'cities') + ' now planned with 5×5'); return;
+      // v47: in the best order – the city that grows first gets the tiles between growing cities
+      const ord = g.order && g.order.length ? g.order.map(o => o.key) : (g.cities || []).filter(c => c.take).map(c => c.key);
+      M().cities.forEach(sc => { const i = ord.indexOf(key(sc.c, sc.r)); if (i >= 0) { sc.rad = 2; sc.grow = i + 1; } });
+      M().touched = true; ui.alt = 0; PP.app.commit(); toast(plural(ord.length, 'city', 'cities') + ' now planned with 5×5'); return;
     }
     if (a === 'proveMore') { const r = planResult(); if (r && r.best) { startProof(r, cacheSig, COST_MORE_SECS); PP.app.refresh(); } return; }
     if (a === 'suggest') { const n = suggestAll(); toast(n ? n + ' tiles suggested – please check them' : 'Nothing to suggest (all tiles marked)'); PP.app.commit(); return; }
