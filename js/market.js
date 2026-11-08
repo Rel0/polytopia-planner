@@ -2035,11 +2035,25 @@
     for (const [c, r] of list) PP.grid.corners(c, r).forEach(p => pts.push(p));
     const xs = pts.map(p => p.x), ys = pts.map(p => p.y);
     const w = Math.max(...xs) - Math.min(...xs), h = Math.max(...ys) - Math.min(...ys);
-    const vr = PP.board.visibleRect(), g = S().grid, tw = Math.max(Math.abs(g.ux + g.vx), Math.abs(g.ux - g.vx)) || 1;
-    let s = Math.min((vr.w - 16) / w, (vr.h - 30) / h);
+    // fit into the map area above the collapsed panel: an expanded panel would shrink the map to a dot
+    // (and it stayed that small after the panel went back down)
+    const vr = PP.board.visibleRect(), fr = PP.board.fitRect ? PP.board.fitRect() : vr, g = S().grid, tw = Math.max(Math.abs(g.ux + g.vx), Math.abs(g.ux - g.vx)) || 1;
+    let s = Math.min((fr.w - 16) / w, (fr.h - 30) / h);
     if (maxTile) s = Math.min(s, maxTile / tw);
     const cx = (Math.max(...xs) + Math.min(...xs)) / 2, cy = (Math.max(...ys) + Math.min(...ys)) / 2;
+    // centred in what is visible now; panel expanded → centre again in the bigger area once it goes back down
     PP.board.setView({ s, x: vr.x + vr.w / 2 - cx * s, y: vr.y + vr.h / 2 - cy * s });
+    refitOnPeek = vr.h < fr.h - 1 ? { list, maxTile, view: PP.board.view } : null;
+  }
+  let refitOnPeek = null;
+  // core: the bottom sheet switched between peek and expanded
+  function onSheet(peek) {
+    const r = refitOnPeek; refitOnPeek = null;
+    if (!peek || !r) return;
+    // only if the user has not moved the map since
+    const v = PP.board.view;
+    if (Math.abs(v.s - r.view.s) > 1e-6 || Math.abs(v.x - r.view.x) > 0.5 || Math.abs(v.y - r.view.y) > 0.5) return;
+    requestAnimationFrame(() => fitTiles(r.list, r.maxTile));
   }
   function fitRegion() {
     const A = area(); if (!A.n) return;
@@ -2105,6 +2119,7 @@
         PP.board.redraw();
       }
     },
+    onSheet,
     onTap(t) {
       if (ui.step === 1 || !selCities().length) {
         if (ui.borders) {

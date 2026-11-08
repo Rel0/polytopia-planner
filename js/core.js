@@ -218,14 +218,22 @@ window.PP = window.PP || {};
     },
     // part of the stage (stage/canvas coordinates) that is not covered by the overlay drawer or a floating card
     visibleRect: () => visibleRect(),
+    // area to zoom into: like visibleRect, but an expanded bottom sheet counts as collapsed to its peek height
+    fitRect: () => visibleRect(false, true),
     // v6: set to false by a tool (UNITS) that draws the unit coins itself (core then draws no unit markers)
     drawUnits: true,
   };
-  function visibleRect(noAct) {
+  function visibleRect(noAct, asPeek) {
     let x0 = 0, x1 = cw, y0 = 0, y1 = ch;
     if (!stage) return { x: 0, y: 0, w: cw, h: ch };
     const sr = stage.getBoundingClientRect();
-    const dr = drawerEl && !drawerEl.hidden && !drawerEl.classList.contains('collapsed') ? drawerEl.getBoundingClientRect() : null;
+    let dr = drawerEl && !drawerEl.hidden && !drawerEl.classList.contains('collapsed') ? drawerEl.getBoundingClientRect() : null;
+    // asPeek: an expanded bottom sheet ("Less") counts as its small peek height – auto-zoom must not shrink the map
+    // into the few pixels above the expanded panel (it stays tiny after the panel goes back down)
+    if (asPeek && dr && isSheet() && drawerEl.classList.contains('full')) {
+      const ph = parseFloat(drawerEl.style.getPropertyValue('--ph')) || 96;
+      dr = { left: dr.left, right: dr.right, width: dr.width, bottom: dr.bottom, top: Math.max(dr.top, dr.bottom - ph) };
+    }
     if (dr && dr.width > 0 && dr.left < sr.right - 1 && dr.right > sr.left + 1 && dr.top < sr.bottom - 1) {
       // overlay drawer: use the biggest free part – left of it, above it (bottom sheet) or below it
       const left = Math.max(0, dr.left - sr.left), above = Math.max(0, dr.top - sr.top), below = Math.max(0, sr.bottom - dr.bottom);
@@ -698,7 +706,7 @@ window.PP = window.PP || {};
       xb.setAttribute('aria-label', peek ? 'Expand panel' : 'Shrink panel');
       xb.setAttribute('aria-expanded', String(!peek));
     }
-    if (wasPeek !== peek) placeHint();
+    if (wasPeek !== peek) { placeHint(); hook(curMode(), 'onSheet', peek); }
   }
   // optional mini switch on the sheet's top-left edge: mode.sheetSwitch = { items:[{id,label}], value(), set(id) }
   function renderSheetSwitch(pk) {
