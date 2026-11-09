@@ -382,7 +382,9 @@ window.PP = window.PP || {};
   function draw() {
     if (!cv || !cw) return;
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-    ctx.fillStyle = '#0d1122'; ctx.fillRect(0, 0, cw, ch);
+    // the space around the map: dark blue; a look can make it transparent (then #stage's CSS background shows)
+    if (PP.boardBg === 'transparent') ctx.clearRect(0, 0, cw, ch);
+    else { ctx.fillStyle = PP.boardBg || '#0d1122'; ctx.fillRect(0, 0, cw, ch); }
     updateHint();
     const st = S();
     if (!st.board) return;

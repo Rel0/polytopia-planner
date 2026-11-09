@@ -1,0 +1,34 @@
+/* Polytopia Planner – the app's look: a classic tech dark mode (neutral near-black greys, thin borders, one blue accent,
+   no gradients or shadows, system font). Loaded after app.css; applies to <html class="look-dark">.
+   The look before (Nov 2026) is in git tag design-v2. */
+:root.look-dark{--bg:#0d1117;--panel:#161b22;--panel2:#21262d;--line:#30363d;--text:#e6edf3;--muted:#8b949e;--accent:#2f81f7;--gold:#e3b341;
+  --me:#2f81f7;--enemy:#f85149;--ok:#3fb950;--warn:#d29922;--blue:#2f81f7;--blue2:#1f6feb;--sheet:#161b22;--edge:0 0 0 1px #30363d}
+.look-dark body{font-family:system-ui,-apple-system,"Segoe UI",Roboto,"Helvetica Neue",sans-serif;background:#0d1117;color:var(--text)}
+/* sheets: header, tool rail, panel – dark surfaces with a thin border */
+.look-dark header{background:var(--sheet);color:var(--text);margin:8px 8px 0;border:0;border-radius:10px;box-shadow:var(--edge)}
+.look-dark header h1{color:var(--text);font-weight:600;letter-spacing:0}
+.look-dark .hbtn{background:var(--panel2);color:var(--text);border-radius:8px;box-shadow:inset 0 0 0 1px var(--line)}
+.look-dark .budget{background:rgba(227,179,65,.12);color:var(--gold);box-shadow:inset 0 0 0 1px rgba(227,179,65,.35)}
+.look-dark .budget small{color:var(--muted)}
+.look-dark main{padding:8px;gap:8px}
+.look-dark #rail{background:var(--sheet);border:0;border-radius:10px;box-shadow:var(--edge)}
+.look-dark #rail button{border-radius:8px}
+.look-dark #rail button small{color:var(--muted)}
+.look-dark #rail button.on{background:var(--panel2)}
+.look-dark #rail button.on small{color:var(--text)}
+.look-dark #rail button.on::before{background:var(--accent)}
+.look-dark #drawer{background:var(--sheet);border:0;border-radius:10px;box-shadow:var(--edge)}
+.look-dark #drawerHead{border-bottom-color:var(--line);color:var(--text)}
+.look-dark #drawerTab,.look-dark #drawer.haspeek:not(.collapsed) #sheetExpand,.look-dark #drawer.haspeek:not(.collapsed) #sheetSwitch:not([hidden]){background:var(--sheet);color:var(--text);border-color:var(--line);box-shadow:none}
+.look-dark #drawer #sheetSwitch button.on{background:var(--accent);color:#fff}
+/* buttons: blue with white text; choices: blue */
+.look-dark .mk-btn.pri,.look-dark .mk .mk-btn.pri,.look-dark .mk .mk-plan,.look-dark button.pri,.look-dark .btn.primary{background:var(--accent);color:#fff}
+.look-dark .un-mode button.on{background:var(--accent);color:#fff;box-shadow:none}
+/* the map: an almost black window */
+.look-dark #stage{border-radius:10px;background:#010409;box-shadow:var(--edge)}
+.look-dark #empty .card{background:var(--sheet);border-color:var(--line)}
+.look-dark #empty .about{color:var(--muted)}
+.look-dark #boot{background:#0d1117}
+@media (max-width:899px){
+  .look-dark #drawer{left:8px;right:8px;width:auto;max-width:none;bottom:calc(60px + env(safe-area-inset-bottom) + 16px);border-radius:10px}
+}
