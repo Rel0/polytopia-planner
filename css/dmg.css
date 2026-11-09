@@ -3,6 +3,20 @@ body.sun.narrow main{max-width:600px}
 body.sun #calculator{margin:-70px 0 0;position:relative}
 body.sun .calc{background:var(--card);border:0;border-radius:18px;padding:12px;box-shadow:0 10px 30px -14px rgba(20,40,70,.45)}
 body.sun.narrow .sky{padding-bottom:0;height:250px}
+/* computer: the battlefield big on the left; picking units, the selected unit and the attack order on the right */
+@media (min-width:980px){
+  body.sun.narrow main{max-width:1180px}
+  body.sun.narrow .sky{height:300px}
+  body.sun.narrow #calculator{margin-top:-90px}
+  body.sun.narrow section:not(#calculator){max-width:980px;margin-left:auto;margin-right:auto}
+  body.sun .calc{padding:16px}
+  #calc{display:grid;grid-template-columns:minmax(0,1.45fr) minmax(330px,1fr);column-gap:18px;align-items:start}
+  #calc>.board{grid-column:1;grid-row:1 / span 20;margin:0;align-self:stretch;display:flex;align-items:center}
+  #calc>.board svg{width:100%}
+  #calc>*:not(.board){grid-column:2}
+  #calc>.addbar{margin-top:0}
+  #calc .units{grid-auto-columns:31%}
+}
 @keyframes tst{0%{opacity:0;transform:translateY(6px)}10%,80%{opacity:1;transform:none}100%{opacity:0}}
 #calc{font:500 16px/1.35 var(--font);color:var(--ink)}
 #calc .go{display:block;margin:12px 0 0;padding:13px;border-radius:12px;background:var(--blue);color:#fff;text-align:center;text-decoration:none;font:500 18px var(--font);letter-spacing:.02em}

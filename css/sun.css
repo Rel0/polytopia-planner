@@ -18,7 +18,7 @@ body.sun .brand,body.sun .nav a{color:#fff}
 body.sun .nav a:hover,body.sun .nav a.on{background:rgba(255,255,255,.18);color:#fff}
 body.sun .nav a.app{background:#1c2633;color:#fff;box-shadow:inset 0 0 0 2px #fff}
 body.sun main{max-width:980px;padding:0 10px 40px}
-body.sun .sky{position:relative;min-height:250px;margin:0 -10px;padding:0 0 110px;overflow:hidden;text-align:center;color:#fff;
+body.sun .sky{position:relative;min-height:250px;margin:0 calc(50% - 50vw);padding:0 16px 110px;overflow:hidden;text-align:center;color:#fff;
   background:linear-gradient(180deg,var(--sky1) 0,var(--sky2) 45%,var(--sky3) 100%)}
 body.sun .sky::after{content:'';position:absolute;left:0;right:0;bottom:0;height:2px;background:var(--water1)}
 body.sun .sky svg{position:absolute;left:0;right:0;bottom:0;width:100%;height:110px}
@@ -53,3 +53,14 @@ body.sun .ic{background:var(--blue);box-shadow:none}
 body.sun .card{background:var(--soft);border:0}
 body.sun .tt{background:#fff}
 body.sun .shot{border:0;box-shadow:0 10px 30px -14px rgba(20,40,70,.45)}
+/* computer: wider sky text, bigger title, a taller horizon */
+@media (min-width:900px){
+  body.sun .sky{padding-bottom:150px}
+  body.sun .sky svg{height:150px}
+  body.sun .sky h1{padding-top:56px;font-size:54px}
+  body.sun .sky h1 span{font-size:14px}
+  body.sun .sky p{font-size:18px;max-width:640px}
+  body.sun section:not(#calculator){padding:22px 26px 16px}
+  body.sun h2{font-size:24px}
+}
+body.sun{overflow-x:hidden}

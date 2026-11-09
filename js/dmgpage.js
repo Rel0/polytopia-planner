@@ -14,8 +14,7 @@
   const maxHp = u => E.maxHp(Object.assign({ carry: 'warrior' }, u));
   const mk = (side, type, c, r) => { const u = { id: ++uid, side, type, vet: false, c, r, tech: true, poison: false }; u.hp = maxHp(u); return u; };
   const st = {
-    units: [mk('att', 'swordsman', 3, 4), mk('att', 'catapult', 1, 3), mk('att', 'bomber', 0, 5),
-      mk('def', 'defender', 3, 2), mk('def', 'warrior', 4, 2), mk('def', 'archer', 3, 1)],
+    units: [],           // the page opens with an empty battlefield
     ter: { '3,2': 'forest', '0,4': 'water', '0,5': 'water', '1,5': 'water', '5,0': 'mountain', '5,1': 'mountain', '5,5': 'city' },
     side: 'att', tribe: 'standard', sel: null, picking: false,
     force: {},           // attacker id → defender id: "this unit attacks that one" (set by tapping)
@@ -228,6 +227,7 @@
         `<label class="fld"><span>Target</span><select data-target-all><option value="">${same && t0 == null ? 'Best (automatic)' : same ? 'Best (automatic)' : 'mixed'}</option>${defs().map(d => `<option value="${d.id}"${same && t0 === d.id ? ' selected' : ''}>${esc(U[d.type].name)}</option>`).join('')}</select></label>` +
         '<div class="hint" style="text-align:left;margin:4px 2px 0">or tap an enemy on the board</div></div>';
     }
+    if (!st.units.length) return '<div class="hint">Tap a unit above – it appears on the battlefield</div>';
     if (!u) return `<div class="hint">Drag to move · tap your unit, then an enemy, to ${st.goal === 'custom' ? 'add an attack' : 'choose its target'}</div>`;
     const m = maxHp(u), f = u.hp / m, cls = f <= .3 ? 'crit' : f <= .6 ? 'low' : '', isDef = u.side === 'def';
     let h = `<div class="edit"><div class="eh"><span class="dot" style="background:${isDef ? 'var(--def)' : 'var(--att)'}"></span><b>${esc(U[u.type].name)}</b><small>${isDef ? 'defender' : 'attacker'}</small>` +
