@@ -141,3 +141,16 @@ body.sun.narrow .sky{padding-bottom:0;height:250px}
 #calc .dr .l2 .sp,#calc .dr .l2 .sp b{color:#d58a45}
 #calc .dr .l2 .sp em{border-color:#e7b98c;color:#d58a45}
 #calc .dr .l2 .no{color:var(--muted)}
+/* attack order: under each unit its HP before → after */
+#calc .os{display:grid;grid-template-columns:22px auto 16px 1fr;align-items:start;gap:0 8px;padding:5px 0;font-size:15px}
+#calc .os em{margin-top:1px}
+#calc .os .to{color:var(--muted);line-height:22px}
+#calc .os .un{display:flex;flex-direction:column;min-width:0}
+#calc .os .un b{font-weight:600;line-height:22px}
+#calc .os .tgt2 b{font-weight:500;color:var(--ink2)}
+#calc .os .un small{font-size:13px;color:var(--muted);line-height:1.2}
+#calc .os .un small i{font-style:normal;font-weight:700;color:var(--ink)}
+#calc .os .un.k small i{color:var(--def)}
+#calc .os .tgt2.k b,#calc .os .who.k b{color:var(--ink);text-decoration:line-through;text-decoration-thickness:1.5px}
+#calc .os .tgt2.k,#calc .os .who.k{text-decoration:none}
+#calc .os .spx{grid-column:2 / -1;font-size:13px;color:#d58a45;padding:2px 0 0;flex-basis:auto}

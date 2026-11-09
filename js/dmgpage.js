@@ -268,8 +268,11 @@
       // your attacks in order: a killed enemy is struck through; so is your unit if the strike back kills it
       h += '<div class="ord"><div class="oh">Your attack order</div>' + sim.steps.map(s => {
         const kill = s.r.defHp <= 0 || s.r.convert, dies = s.r.attHp <= 0;
-        return `<div class="os"><em>${s.n}</em><span class="who${dies ? ' k' : ''}">${esc(U[s.a.type].name)}</span><span class="to">→</span><span class="tgt2${kill ? ' k' : ''}">${esc(U[s.d.type].name)}</span>` +
-          `<span class="res2">${s.r.freeze ? 'frozen' : s.r.convert ? 'converted' : `<small>${fmt(s.before)} →</small> ${fmt(Math.max(0, s.r.defHp))}`}${s.r.ret ? `<small class="rt"> ↩ ${s.r.ret}</small>` : ''}</span>` +
+        // under each unit: its HP before → after (the attacker's from the strike back)
+        const hpTxt = (b, a) => (a === b ? `<small>${fmt(b)}</small>` : `<small>${fmt(b)} → <i>${fmt(Math.max(0, a))}</i></small>`);
+        const tHp = s.r.freeze ? '<small>frozen</small>' : s.r.convert ? '<small>converted</small>' : hpTxt(s.before, s.r.defHp);
+        return `<div class="os"><em>${s.n}</em><span class="un who${dies ? ' k' : ''}"><b>${esc(U[s.a.type].name)}</b>${hpTxt(s.a.hp, s.r.attHp)}</span>` +
+          `<span class="to">→</span><span class="un tgt2${kill ? ' k' : ''}"><b>${esc(U[s.d.type].name)}</b>${tHp}</span>` +
           (s.fx.length ? `<span class="spx">✸ ${s.fx.map(f => `<span class="${f.kill ? 'k' : ''}">${esc(U[f.o.type].name)}</span>${f.dmg ? ` ${fmt(f.before)} → ${fmt(Math.max(0, f.before - f.dmg))}` : ' poison'}`).join(', ')}</span>` : '') + '</div>';
       }).join('') + '</div>';
     }
