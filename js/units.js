@@ -531,8 +531,8 @@ window.PP = window.PP || {};
 
   // side colours: ring, translucent tint inside the dark disc
   var PAL = {
-    me: { ring: '#5aa9ff', tint: '64,140,255', dark: '#0d1f45' },
-    enemy: { ring: '#ff5c74', tint: '255,72,100', dark: '#45101b' }
+    me: { ring: '#5aa9ff', tint: '64,140,255', dark: '#0d1f45', fill: '#2f81f7' },
+    enemy: { ring: '#ff5c74', tint: '255,72,100', dark: '#45101b', fill: '#f85149' }
   };
   var LIGHT = '#ffffff';
   var DISC = 'rgba(10,14,28,';
@@ -546,9 +546,11 @@ window.PP = window.PP || {};
     return ts.w || 60;
   }
   // v12: small badge – radius ≈ 0.165 × tile width, clamped 6…18 px (drawn at full R, DR = 1)
-  function coinR() { return clamp(tileW() * 0.165, 6, 18); }
-  // tap radius around the coin (comfortable even when the coin is tiny); taps elsewhere on the unit's tile also hit
-  function hitR() { return Math.max(coinR() + 7, 16); }
+  // v48: 75 % of the earlier size (0.165 × tile width, 6…18 px) – the coin covers less of the tile
+  function coinR() { return clamp(tileW() * 0.124, 4.5, 13.5); }
+  // tap radius around the coin (comfortable even when the coin is tiny; as big as before the coins got smaller);
+  // taps elsewhere on the unit's tile also hit
+  function hitR() { return Math.max(clamp(tileW() * 0.165, 6, 18) + 7, 16); }
   var DR = 1, GK = 0.7; // drawn disc radius / R, glyph size / disc radius (legacy line glyphs)
   var ICON_K = 1.5;     // PP.icons box edge / disc radius
   // v12: coin centre on the FIGURE: Polytopia figures stand on the tile centre and rise upwards; measured on real
@@ -564,7 +566,7 @@ window.PP = window.PP || {};
   // white line icon; Rd = disc radius (px). Dark halo first, then the strokes, so it reads on any background.
   function drawGlyph(ctx, type, x, y, Rd) {
     if (useIcons(type)) {
-      PP.icons.draw(ctx, type, x, y, Rd * ICON_K, { stroke: 'rgba(0,0,0,.42)', strokeWidth: clamp(Rd * 0.06, 0.6, 1.6) });
+      PP.icons.draw(ctx, type, x, y, Rd * ICON_K, { stroke: 'rgba(0,0,0,.25)', strokeWidth: clamp(Rd * 0.06, 0.6, 1.6) });
       return;
     }
     var parts = glyph(type), k = Rd * GK / 46, halo = clamp(Rd * 0.07, 0.9, 2.2);
@@ -668,48 +670,35 @@ window.PP = window.PP || {};
       ctx.lineWidth = 1; ctx.strokeStyle = pal.ring; ctx.globalAlpha *= 0.55; ctx.stroke();
       ctx.globalAlpha = o.alpha != null ? o.alpha : 1;
     }
-    // disc with soft shadow
+    // v48 "Solid": a disc filled in the side colour with a white rim and a soft shadow – reads on any map
     ctx.save();
-    ctx.shadowColor = 'rgba(0,0,0,.5)'; ctx.shadowBlur = Math.max(1.5, R * 0.3); ctx.shadowOffsetY = Math.max(0.5, R * 0.08);
-    var g = ctx.createRadialGradient(x, y - Rd * 0.3, Rd * 0.05, x, y, Rd);
-    g.addColorStop(0, 'rgba(' + pal.tint + ',.42)'); g.addColorStop(1, 'rgba(' + pal.tint + ',.14)');
+    ctx.shadowColor = 'rgba(0,0,0,.45)'; ctx.shadowBlur = Math.max(1.5, R * 0.35); ctx.shadowOffsetY = Math.max(0.5, R * 0.08);
     ctx.beginPath(); ctx.arc(x, y, Rd, 0, Math.PI * 2);
-    ctx.fillStyle = DISC + '.7)'; ctx.fill();
+    ctx.fillStyle = pal.fill; ctx.fill();
     ctx.restore();
-    ctx.beginPath(); ctx.arc(x, y, Rd, 0, Math.PI * 2); ctx.fillStyle = g; ctx.fill();
-    // ring: dark hairline outside for contrast on snow / light tiles, then the side colour, then a fine highlight
-    ctx.lineWidth = rw + 1.4; ctx.strokeStyle = 'rgba(0,0,0,.42)'; ctx.stroke();
-    ctx.lineWidth = rw; ctx.strokeStyle = pal.ring; ctx.stroke();
-    if (R >= 12) {
-      // fine bezel: hairline inside the ring + a short highlight arc
-      var ri = Rd - rw * 0.5 - Math.max(1.2, R * 0.07);
-      ctx.beginPath(); ctx.arc(x, y, ri, 0, Math.PI * 2);
-      ctx.lineWidth = Math.max(0.6, R * 0.022); ctx.strokeStyle = pal.ring; ctx.globalAlpha *= 0.55; ctx.stroke();
-      ctx.globalAlpha = o.alpha != null ? o.alpha : 1;
-      ctx.beginPath(); ctx.arc(x, y, Rd + rw * 0.5 + Math.max(0.5, R * 0.02), Math.PI * 1.15, Math.PI * 1.6);
-      ctx.lineWidth = Math.max(0.6, R * 0.025); ctx.strokeStyle = 'rgba(255,255,255,.6)'; ctx.lineCap = 'round'; ctx.stroke();
-    }
+    ctx.beginPath(); ctx.arc(x, y, Rd, 0, Math.PI * 2);
+    ctx.lineWidth = Math.max(1.4, R * 0.12); ctx.strokeStyle = '#fff'; ctx.stroke();
     // tribe colour (detected units) as a fine inner ring
-    if (Array.isArray(u.color) && u.color.length >= 3 && R >= 11) {
+    if (Array.isArray(u.color) && u.color.length >= 3 && R >= 8.25) {
       ctx.beginPath(); ctx.arc(x, y, Rd - rw - Math.max(1, R * 0.06), 0, Math.PI * 2);
       ctx.lineWidth = Math.max(0.9, R * 0.045); ctx.strokeStyle = 'rgb(' + u.color.slice(0, 3).map(function (v) { return v | 0; }).join(',') + ')'; ctx.stroke();
     }
-    drawGlyph(ctx, u.type, x, y, Rd);
-    // HP (small pill, lower right)
-    var mx = maxHp(u), fs = clamp(R * 0.55, 6, 9.5), hurt = u.hp < mx;
+    drawGlyph(ctx, u.type, x, y, Rd * 0.93);
+    // HP (small dark pill with a white rim, lower right)
+    var mx = maxHp(u), fs = clamp(R * 0.62, 6, 9.5), hurt = u.hp < mx;
     // v12: tiny coins (zoomed out) only show the HP when the unit is hurt, and skip the bonus shield
-    if (hurt || R >= 10 || o.hp != null) chip(ctx, x + Rd * 0.95 + fs * 0.25, y + Rd * 0.72, o.hp != null ? String(o.hp) : String(u.hp), fs,
-      DISC + '.9)', hurt ? (u.hp <= mx / 3 ? '#ff7088' : '#ffc061') : '#fff', hurt ? (u.hp <= mx / 3 ? '#ff4d6d' : '#f5a524') : 'rgba(255,255,255,.35)');
+    if (hurt || R >= 7.5 || o.hp != null) chip(ctx, x + Rd * 0.95, y + Rd * 0.8, o.hp != null ? String(o.hp) : String(u.hp), fs,
+      '#0d1117', hurt ? (u.hp <= mx / 3 ? '#ff7b72' : '#e3b341') : '#fff', '#fff');
     // tiny marks: veteran star (upper right), shield when the defense bonus is > 1 (lower left)
     if (u.vet) star(ctx, x + Rd * 0.85, y - Rd * 0.8, clamp(R * 0.36, 3, 6.5));
     // v27: status dots upper left – green = poisoned, ice blue = frozen
-    if (R >= 8) [u.poison ? '#7bd94a' : null, u.frozen ? '#9fe3ff' : null].filter(Boolean).forEach(function (col, i) {
+    if (R >= 6) [u.poison ? '#7bd94a' : null, u.frozen ? '#9fe3ff' : null].filter(Boolean).forEach(function (col, i) {
       var dr = clamp(R * 0.2, 2.2, 4), dx = x - Rd * 0.85 + i * dr * 2.2, dy = y - Rd * 0.8;
       ctx.beginPath(); ctx.arc(dx, dy, dr, 0, Math.PI * 2); ctx.fillStyle = col; ctx.fill();
       ctx.lineWidth = Math.max(0.8, dr * 0.35); ctx.strokeStyle = 'rgba(0,0,0,.7)'; ctx.stroke();
     });
     var b = effBonus(u);
-    if (b > 1 && R >= 9) shieldMark(ctx, x - Rd * 0.95, y + Rd * 0.7, clamp(R * 0.4, 3.2, 6.5), b >= 4);
+    if (b > 1 && R >= 6.75) shieldMark(ctx, x - Rd * 0.95, y + Rd * 0.7, clamp(R * 0.4, 3.2, 6.5), b >= 4);
     if (isDetected(u) && typeof u.conf === 'number' && u.conf < 0.6) chip(ctx, x - Rd * 0.9, y - Rd * 0.85, '?', clamp(R * 0.55, 6, 10), '#ffaa00', '#1d1a10', 'rgba(40,25,0,.8)');
     ctx.restore();
   }
@@ -719,10 +708,9 @@ window.PP = window.PP || {};
     side = side === 'enemy' ? 'enemy' : 'me';
     var pal = PAL[side], Rd = 42, k = Rd * GK / 46, upx = px / 104 * k; // css px per glyph unit
     if (useIcons(type)) {
-      var rw0 = Math.max(3.6, 1.15 * 104 / px), isz = Rd * ICON_K, ic = PP.icons.svg(type, isz, { stroke: 'rgba(0,0,0,.35)', strokeWidth: 0.6 * 104 / px });
+      var rw0 = Math.max(4.5, 1.3 * 104 / px), isz = Rd * ICON_K * 0.93, ic = PP.icons.svg(type, isz, { stroke: 'rgba(0,0,0,.22)', strokeWidth: 0.6 * 104 / px });
       return '<svg width="' + px + '" height="' + px + '" viewBox="-52 -52 104 104" aria-hidden="true">' +
-        '<circle r="' + Rd + '" fill="' + DISC + '.8)"/>' +
-        '<circle r="' + Rd + '" fill="rgba(' + pal.tint + ',.26)" stroke="' + pal.ring + '" stroke-width="' + rw0.toFixed(2) + '"/>' +
+        '<circle r="' + Rd + '" fill="' + pal.fill + '" stroke="#fff" stroke-width="' + rw0.toFixed(2) + '"/>' +
         '<g transform="translate(' + (-isz / 2) + ' ' + (-isz / 2) + ')">' + ic.replace('<svg ', '<svg x="0" y="0" ') + '</g></svg>';
     }
     var parts = glyph(type), halo = '', body = '';
@@ -736,8 +724,7 @@ window.PP = window.PP || {};
     });
     var rw = Math.max(3.6, 1.15 * 104 / px);
     return '<svg width="' + px + '" height="' + px + '" viewBox="-52 -52 104 104" aria-hidden="true">' +
-      '<circle r="' + Rd + '" fill="' + DISC + '.8)"/>' +
-      '<circle r="' + Rd + '" fill="rgba(' + pal.tint + ',.26)" stroke="' + pal.ring + '" stroke-width="' + rw.toFixed(2) + '"/>' +
+      '<circle r="' + Rd + '" fill="' + pal.fill + '" stroke="#fff" stroke-width="' + rw.toFixed(2) + '"/>' +
       '<g transform="scale(' + k.toFixed(4) + ')" stroke-linejoin="round" stroke-linecap="round">' + halo + body + '</g></svg>';
   }
 

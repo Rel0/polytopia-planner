@@ -502,15 +502,17 @@ window.PP = window.PP || {};
   }
   const curMode = () => registry[PP.modes.current] || {};
   // v6 tools on the left rail (order = rail order)
+  // tool icons: simple line drawings in one stroke style (colour = currentColor), drawn for this app
+  const ICO = d => `<svg class="ti" viewBox="0 0 24 24" aria-hidden="true">${d}</svg>`;
   const TOOLS = [
-    { id: 'units', icon: '🪖', label: 'Units' },
-    { id: 'cost', icon: '💰', label: 'Costs' },
-    { id: 'draw', icon: '✏️', label: 'Draw' },
-    { id: 'market', icon: '🏪', label: 'Market' },
-    { id: 'notes', icon: '📝', label: 'Notes' },
+    { id: 'units', icon: ICO('<path d="M14.5 17.5 3 6V3h3l11.5 11.5"/><path d="M13 19l6-6M16 16l4 4M19 21l2-2"/><path d="M14.5 6.5 18 3h3v3l-3.5 3.5"/><path d="M5 14l4 4M7 17l-3 3M3 19l2 2"/>'), label: 'Units' },
+    { id: 'cost', icon: ICO('<path d="M12 3.5l2.5 5.2 5.7.7-4.2 3.9 1.1 5.6L12 16.1l-5.1 2.8 1.1-5.6-4.2-3.9 5.7-.7Z"/>'), label: 'Costs' },
+    { id: 'draw', icon: ICO('<path d="M4 20l1-4L16.5 4.5a2.1 2.1 0 0 1 3 3L8 19Z"/><path d="M14.5 6.5l3 3"/>'), label: 'Draw' },
+    { id: 'market', icon: ICO('<path d="M3.5 9.5 5 4h14l1.5 5.5"/><path d="M3.5 9.5c0 1.4 1.1 2.5 2.6 2.5s2.6-1.1 2.6-2.5c0 1.4 1.1 2.5 2.6 2.5h1.4c1.5 0 2.6-1.1 2.6-2.5 0 1.4 1.1 2.5 2.6 2.5s2.6-1.1 2.6-2.5"/><path d="M5 12v8h14v-8"/><path d="M10 20v-4.5h4V20"/>'), label: 'Market' },
+    { id: 'notes', icon: ICO('<rect x="5" y="3" width="14" height="18" rx="2"/><path d="M9 8h6M9 12h6M9 16h3.5"/>'), label: 'Notes' },
   ];
   // v29: the label tool (training data for the tile detection) only with ?label in the URL
-  try { if (new URLSearchParams(location.search).has('label')) TOOLS.push({ id: 'label', icon: '🏷️', label: 'Label' }); } catch (e) { /* no URL */ }
+  try { if (new URLSearchParams(location.search).has('label')) TOOLS.push({ id: 'label', icon: ICO('<path d="M3 12V4h8l10 10-8 8Z"/><circle cx="7.5" cy="8.5" r="1.4"/>'), label: 'Label' }); } catch (e) { /* no URL */ }
   const TOOL_IDS = TOOLS.map(t => t.id);
   const MODE_LABELS = { units: 'Units', cost: 'Costs', draw: 'Draw', market: 'Market', notes: 'Notes', label: 'Label', calibrate: 'Grid', align: 'Update screenshot' };
   const toolInfo = id => TOOLS.find(t => t.id === id) || { id, icon: (registry[id] || {}).icon || '🧰', label: (registry[id] || {}).label || MODE_LABELS[id] || id };
