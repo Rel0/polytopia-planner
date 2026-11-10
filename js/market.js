@@ -1530,12 +1530,11 @@
     const g = techNow(), owned = ownedTechs();
     if (!g) {
       if (!ui.techMenu) return '<button class="mk-btn" data-a="techMenu">🔬 Which tech helps my Markets most? ▾</button>';
-      const cand = MK_TECHS.filter(t => !owned.has(t)), solves = 1 + cand.length * 2;
-      const est = Math.max(5, Math.round(solves * (res.large ? 6 : 1.5)));
+      const cand = MK_TECHS.filter(t => !owned.has(t));
       let h = '<div class="gw-menu"><div class="gw-mh"><b>🔬 Which techs do you have?</b><button class="lnk" data-a="techMenu">close ▴</button></div><div class="gw-pick">';
       h += TECH_PICK.map(id => { const on = owned.has(id); return `<button class="${on ? 'on' : ''}" data-tech="${id}" style="--cc:${on ? '#06d6a0' : '#5a6488'}" aria-pressed="${on}"><span class="bx">${on ? '✓' : ''}</span>${esc(techName(id))}</button>`; }).join('');
       h += '</div>';
-      h += cand.length ? `<button class="mk-btn pri" data-a="tech">▶ Start <small style="opacity:.8">(about ${plural(solves, 'plan', 'plans')} · about ${est < 90 ? est + ' s' : Math.round(est / 60) + ' min'})</small></button>`
+      h += cand.length ? `<button class="mk-btn pri" data-a="tech">▶ Start</button>`
         : '<div class="mk-note">You have every tech the Markets need.</div>';
       return h + '</div>';
     }
@@ -1597,15 +1596,13 @@
     if (growthAuto && !growthNow()) { growthAuto = false; setTimeout(() => { startGrowth(planResult()); PP.app.refresh(); }, 0); }
     if (!small.length) return box(allBtn.replace('margin:8px 0 0', 'margin:0'));
     const g = growthNow(), rs = ringStats(), skip = growSkip();
-    const pick = small.filter(ci => !skip.has(key(ci.c, ci.r))), n = pick.length, solves = growSolves(n);
+    const pick = small.filter(ci => !skip.has(key(ci.c, ci.r))), n = pick.length;
     const openRing = pick.reduce((a, ci) => a + ((rs[ci.k] || {}).open || 0), 0);
     const ringWarn = openRing ? `<div class="gw-warn">⚠ ${plural(openRing, 'tile', 'tiles')} with <b>?</b> in the Border Growth rings (dashed light-green, outside 3×3) – <button class="lnk" data-step="2">check them in ②</button></div>` : '';
     if (!g) {
       // v33: a plain button; tapping it opens a small menu: which cities may grow, then Start
       if (!ui.growMenu) return `<button class="mk-btn" data-a="growthMenu">🌱 Check Border Growth ▾</button>`;
-      // measured (4 cities, 16 plans): exact ≈ 6.5 s per plan (HiGHS in parallel), quick ≈ 3.5 s
-      // (the plans with 5×5 are bigger than the plan shown, so its size says little)
-      const qk = M().growQuick === true, est = Math.max(5, Math.round(solves * (qk ? 3.5 : 6.5)));
+      const qk = M().growQuick === true;
       const PRn = growPrio();
       let h = '<div class="gw-menu"><div class="gw-mh"><b>🌱 Border Growth or Population Growth?</b><button class="lnk" data-a="growthMenu">close ▴</button></div>';
       h += '<div class="gw-prio">' +
@@ -1617,7 +1614,8 @@
       if (grown.length) h += `<div class="mk-note" style="margin:4px 0">Already 5×5: ${grown.map(ci => esc(cityName(ci, ci.k))).join(', ')} <button class="lnk" data-a="growthAll">set all to 3×3 and check</button></div>`;
       h += ringWarn + t3Btn();
       h += `<button class="mk-opt wide${qk ? ' on' : ''}" data-a="growQuick" aria-pressed="${qk}" style="margin:0 0 6px;width:100%"><span class="bx">${qk ? '✓' : ''}</span><span>⚡ Quick check<small>less exact: ★ can be 1–3 too low</small></span></button>`;
-      h += n ? `<button class="mk-btn pri" data-a="growth">▶ Start <small style="opacity:.8">(${n <= GROW_ALL_MAX ? '' : 'about '}${plural(solves, 'plan', 'plans')} · about ${est < 90 ? est + ' s' : Math.round(est / 60) + ' min'})</small></button>`
+      // v41: no time estimate before the start (it scared people off) – the progress bar shows it while checking
+      h += n ? `<button class="mk-btn pri" data-a="growth">▶ Start</button>`
         : '<button class="mk-btn" disabled>Pick at least one city</button>';
       return h + '</div>';
     }
