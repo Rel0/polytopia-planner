@@ -1311,6 +1311,8 @@
     // best order of the chosen cities: each step the city that adds the most on top of the ones before
     g.orderOf = async set => {
       const keys = [...set], ord = [], steps = []; let prev = g.base;
+      // v49: no free tile that two of them could take → every order gives the same territories → no order to show
+      if (keys.length > 1 && orderFree(keys)) return keys.map(k => { const c = cand.find(x => x.key === k); return { key: k, k: c.k, name: c.name, free: true }; });
       if (keys.length > 1) g.total = Math.max(g.total, g.done + keys.length * (keys.length - 1) / 2);
       while (ord.length < keys.length) {
         let best = null;
@@ -1580,10 +1582,18 @@
   const t3Btn = () => { const l = ringNoWs();
     return '<div class="gw-t3"><span>Only inside 3×3:</span>' + WS.map(T => { const on = l.indexOf(T) >= 0, it = ITEM(T);
       return `<button class="${on ? 'on' : ''}" data-not3="${T}" aria-pressed="${on}"><span class="bx">${on ? '✓' : ''}</span>${esc(it && it.name ? it.name : T)}</button>`; }).join('') + '</div>'; };
+  // v49: does the order of Border Growth matter? Only if a free tile lies in the 5×5 of two growing cities – checked
+  // pairwise (A before B vs. B before A gives other owners); then the one that grows first gets it
+  function orderFree(keys) {
+    const same = (A, B) => A.owner.size === B.owner.size && [...A.owner].every(([k, v]) => B.owner.get(k) === v);
+    for (let i = 0; i < keys.length; i++) for (let j = i + 1; j < keys.length; j++) if (!same(area([keys[i], keys[j]]), area([keys[j], keys[i]]))) return false;
+    return true;
+  }
   // v47 the order to take Border Growth in (the one that grows first gets the free tiles between growing cities)
   function orderHtml(g) {
     if (g.ordering) return '<div class="mk-note" style="margin:0 0 8px"><span class="mk-spin"></span>working out the order…</div>';
     const o = g.order; if (!o || o.length < 2) return '';
+    if (o[0].free) return '<div class="mk-note" style="margin:0 0 8px">🌱 <b>Order doesn\'t matter</b> – no tile between these cities that two of them could take, so grow them in any order.</div>';
     const nm = s => `<b style="color:${cityCol(s.k)}">${esc(s.name)}</b>`;
     let h = '<div class="gw-ord"><div class="gw-oh">🌱 Order</div>' + o.map((s, i) => `<div class="gw-os"><span class="n">${i + 1}</span>${nm(s)}<span class="v">${s.gain > 0 ? '+' + s.gain + ' ★/turn' : s.gain < 0 ? s.gain + ' ★/turn' : '±0'}</span></div>`).join('');
     const last = o[o.length - 1];
@@ -1637,7 +1647,7 @@
       ? `<div class="gw-sum">👉 🌱 Border Growth in <b>${take.length} of ${g.cities.length}</b> ${g.cities.length === 1 ? 'city' : 'cities'}: ${take.map(c => nm(c.k, c.name)).join(', ')}${noTake.length ? `<br>👥 Population Growth in ${noTake.map(c => nm(c.k, c.name)).join(', ')}` : ''}<br>` +
         `<b class="gw-plus">+${sum} ★/turn</b> <small>(${g.base.income} → ${g.best.income}${dc > 0 ? ' · builds ' + dc + ' ★ more · pays back in ' + plural(Math.ceil(dc / Math.max(1, sum)), 'turn', 'turns') : ''})</small></div>` +
         orderHtml(g) +
-        `<button class="mk-btn pri" data-a="growthApply" style="width:100%;margin:0 0 8px">Plan with 5×5 for ${(g.order && g.order.length > 1 ? g.order : take).map(c => esc(c.name)).join(' → ')}</button>`
+        `<button class="mk-btn pri" data-a="growthApply" style="width:100%;margin:0 0 8px">Plan with 5×5 for ${(g.order && g.order.length > 1 ? g.order : take).map(c => esc(c.name)).join(g.order && g.order.length > 1 && !g.order[0].free ? ' → ' : ', ')}</button>`
       : '<div class="gw-sum">👉 <b>Population Growth in every city</b> – Border Growth doesn\'t pay back fast enough here (Giant sooner).</div>';
     const card = c => {
       const rr = rs[c.k] || { open: 0, unsure: 0 };
@@ -2523,7 +2533,8 @@
     for (const x of areaCells()) { if (x.terrain === 'city' || x.stored) continue; if (x.auto) auto++; if (x.unsure) unsure++; }
     return { auto, unsure };
   }
-  const planNo = () => M().cities.filter(sc => sc.rad === 2 && sc.grow > 0).length; // cities with planned Border Growth
+  // planned Border Growth in more than one step (different order numbers) → show the numbers
+  const planNo = () => new Set(M().cities.filter(sc => sc.rad === 2 && sc.grow > 0).map(sc => sc.grow)).size;
   function chipsHtml(A) {
     if (!A.cities.length) return '';
     return '<div class="mk-chips">' + A.cities.map((ci, k) => {
@@ -2760,7 +2771,9 @@
       const g = growthNow(); if (!g) return;
       // v47: in the best order – the city that grows first gets the tiles between growing cities
       const ord = g.order && g.order.length ? g.order.map(o => o.key) : (g.cities || []).filter(c => c.take).map(c => c.key);
-      M().cities.forEach(sc => { const i = ord.indexOf(key(sc.c, sc.r)); if (i >= 0) { sc.rad = 2; sc.grow = i + 1; } });
+      // v49: order doesn't matter → all grow "at the same time" (1) – no numbers shown in ①
+      const free = g.order && g.order.length && g.order[0].free;
+      M().cities.forEach(sc => { const i = ord.indexOf(key(sc.c, sc.r)); if (i >= 0) { sc.rad = 2; sc.grow = free ? 1 : i + 1; } });
       M().touched = true; ui.alt = 0; PP.app.commit(); toast(plural(ord.length, 'city', 'cities') + ' now planned with 5×5'); return;
     }
     if (a === 'proveMore') { const r = planResult(); if (r && r.best) { startProof(r, cacheSig, COST_MORE_SECS); PP.app.refresh(); } return; }
@@ -3192,6 +3205,7 @@
   PP.market.cellAt = cellAt;
   PP.market.territoryOfArea = () => terr();
   PP.market.area = () => area();
+  PP.market.orderFree = keys => orderFree(keys);
   PP.market.tapCity = (c, r) => { tapCity(c, r); PP.app.commit(); };
   PP.market.selectCity = (c, r, rad) => { const x = selectCity(c, r, rad); PP.app.commit(); return x; };
   PP.market.unselectCity = (c, r) => { unselectCity(c, r); PP.app.commit(); };
