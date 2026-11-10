@@ -2631,8 +2631,22 @@
     return nx ? { steps: [nx], c: nx.c, r: nx.r, tile: false } : null;
   }
   const actOnSel = () => { const p = curPlan(planResult()); return !!(p && ui.sel && p.tiles.some(t => t.c === ui.sel.c && t.r === ui.sel.r)); };
+  // v49: a check running in the background (Border Growth, techs) – also visible on the map with the panel collapsed
+  function bgProg() {
+    const g = growthNow(), t = techNow(), pc = x => Math.min(100, Math.round(100 * x.done / Math.max(1, x.total)));
+    if (g && g.state === 'running') return { pct: pc(g), tx: `🌱 Border Growth · plan ${Math.min(g.done + 1, g.total)} of ${g.exhaustive ? '' : '≈'}${g.total}` };
+    if (g && g.ordering) return { pct: null, tx: '🌱 Border Growth · working out the order…' };
+    if (t && t.state === 'running') return { pct: pc(t), tx: `🔬 Techs · plan ${Math.min(t.done + 1, t.total)} of ≈${t.total}` };
+    return null;
+  }
   function mapActHtml() {
     if (ui.step !== 3) return '';
+    const pr = bgProg(), ph = pr ? `<button class="ma-prog" data-ma="open" title="Open the panel"><span><span class="mk-spin"></span>${pr.tx}</span>` +
+      (pr.pct != null ? `<span class="bar"><i style="width:${pr.pct}%"></i></span>` : '') + '</button>' : '';
+    const h = mapActInner();
+    return h || ph ? ph + h : '';
+  }
+  function mapActInner() {
     const res = planResult(), p = curPlan(res);
     if (!p || !p.steps.length) return '';
     // v32: left a 🪓 toggle "only forests to cut down" (undo is the ↶ in the header now)
@@ -2652,6 +2666,7 @@
   function mapActClick(ev) {
     const b = ev.target.closest('button[data-ma]'); if (!b || b.disabled) return;
     const m = M(), p = curPlan(planResult());
+    if (b.dataset.ma === 'open') { if (PP.drawer && PP.drawer.open) PP.drawer.open(); return; }
     if (b.dataset.ma === 'forest') { ui.onlyForest = !ui.onlyForest; ui.sel = null; PP.app.refresh(); requestAnimationFrame(fitPlan); return; }
     const t = actTarget(p); if (!t || t.none) return;
     const all = t.steps.every(isDone);
