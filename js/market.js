@@ -1614,7 +1614,9 @@
       h += small.map(ci => { const k = key(ci.c, ci.r), on = !skip.has(k);
         return `<button class="${on ? 'on' : ''}" data-gskip="${k}" style="--cc:${cityCol(ci.k)}" aria-pressed="${on}"><span class="bx">${on ? '✓' : ''}</span>${esc(cityName(ci, ci.k))}</button>`; }).join('');
       h += '</div>';
-      if (grown.length) h += `<div class="mk-note" style="margin:4px 0">Already 5×5: ${grown.map(ci => esc(cityName(ci, ci.k))).join(', ')} <button class="lnk" data-a="growthAll">set all to 3×3 and check</button></div>`;
+      // v49: planned Border Growth (from an earlier check) is not "already 5×5" – say which is which
+      const g5 = grown.filter(ci => !ci.seq), gp = grown.filter(ci => ci.seq);
+      if (grown.length) h += `<div class="mk-note" style="margin:4px 0">${g5.length ? 'Already 5×5: ' + g5.map(ci => esc(cityName(ci, ci.k))).join(', ') : ''}${g5.length && gp.length ? ' · ' : ''}${gp.length ? '🌱 Border Growth planned: ' + gp.map(ci => esc(cityName(ci, ci.k))).join(', ') : ''} <button class="lnk" data-a="growthAll">set all to 3×3 and check</button></div>`;
       h += ringWarn + t3Btn();
       h += `<button class="mk-opt wide${qk ? ' on' : ''}" data-a="growQuick" aria-pressed="${qk}" style="margin:0 0 6px;width:100%"><span class="bx">${qk ? '✓' : ''}</span><span>⚡ Quick check<small>less exact: ★ can be 1–3 too low</small></span></button>`;
       // v41: no time estimate before the start (it scared people off) – the progress bar shows it while checking
@@ -2521,16 +2523,19 @@
     for (const x of areaCells()) { if (x.terrain === 'city' || x.stored) continue; if (x.auto) auto++; if (x.unsure) unsure++; }
     return { auto, unsure };
   }
+  const planNo = () => M().cities.filter(sc => sc.rad === 2 && sc.grow > 0).length; // cities with planned Border Growth
   function chipsHtml(A) {
     if (!A.cities.length) return '';
     return '<div class="mk-chips">' + A.cities.map((ci, k) => {
-      const n = [...A.owner.values()].filter(o => o === k).length - 1, at = ci.c + ',' + ci.r;
+      // v49: a city with planned Border Growth is still 3×3 today – count only today's tiles, mark the plan separately
+      const nRing = ci.seq ? [...A.ring].filter(q => A.owner.get(q) === k).length : 0;
+      const n = [...A.owner.values()].filter(o => o === k).length - 1 - nRing, at = ci.c + ',' + ci.r;
       const gi = ci.rad === 1 ? growVerdict(at) : null;
       const gtxt = gi ? (gi.take ? ` · <b style="color:#7bd389">🌱 Grow: +${gi.gain} ★</b>` : ' · 👥 Pop. Growth') : '';
       // v47 planned Border Growth (from the check): its place in the order
-      const sc = selAt(ci.c, ci.r), gord = sc && sc.rad === 2 && sc.grow > 0 ? ` · <b style="color:#7bd389">🌱 Border Growth ${sc.grow}.</b>` : '';
+      const sc = selAt(ci.c, ci.r), gord = ci.seq && sc ? ` · <b style="color:#7bd389">🌱 grows${planNo() > 1 ? ' ' + sc.grow + '.' : ''} (planned)</b>` : '';
       return `<div class="mk-chip" style="--cc:${cityCol(k)}"><span class="dot"></span><span class="nmx">${esc(cityName(ci, k))}<small>${ci.c}/${ci.r} · ${n} tiles${gtxt}${gord}</small></span>` +
-        `<span class="seg"><button data-rad="${at},1" class="${ci.rad === 1 ? 'on' : ''}">3×3</button><button data-rad="${at},2" class="${ci.rad === 2 ? 'on' : ''}">5×5</button></span>` +
+        `<span class="seg"><button data-rad="${at},1" class="${ci.rad === 1 || ci.seq ? 'on' : ''}">3×3</button><button data-rad="${at},2" class="${ci.rad === 2 && !ci.seq ? 'on' : ''}">5×5</button></span>` +
         `<button class="x" data-unsel="${at}" title="Remove" aria-label="Remove ${esc(cityName(ci, k))}">✕</button></div>`;
     }).join('') + '</div>';
   }
@@ -2874,6 +2879,14 @@
         diamondPath(ctx, c, r, 0.86); ctx.lineWidth = 1.5; ctx.strokeStyle = 'rgba(255,120,120,.85)'; ctx.setLineDash([4, 4]); ctx.stroke(); ctx.setLineDash([]);
       }
     }
+    if (ui.step === 1) {
+      // v49: tiles a city only gets with its PLANNED Border Growth: dashed light-green like the ring in ② (not owned yet)
+      for (const k of A.ring) {
+        const [c, r] = k.split(',').map(Number);
+        diamondPath(ctx, c, r, 1); ctx.fillStyle = 'rgba(6,9,22,.3)'; ctx.fill();
+        diamondPath(ctx, c, r, 0.9); ctx.lineWidth = 1.6; ctx.strokeStyle = RING_COL; ctx.setLineDash([5, 4]); ctx.stroke(); ctx.setLineDash([]);
+      }
+    }
     if (ui.step === 2) {
       // Space (outside the map) inside a radius: black, thin grey edge – never part of a territory
       for (const k of spaceKeys()) {
@@ -2900,7 +2913,11 @@
         ctx.lineWidth = 1.4; ctx.strokeStyle = 'rgba(255,255,255,.55)'; ctx.stroke();
       }
     }
-    drawTerritory(ctx, A, ui.step === 3);
+    // v49: in ① the borders of today – tiles of a planned Border Growth only get the dashed ring above
+    if (ui.step === 1 && A.ring.size) {
+      const own = new Map([...A.owner].filter(([k]) => !A.ring.has(k)));
+      drawTerritory(ctx, Object.assign({}, A, { owner: own, ownerOf: (c, r) => { const v = own.get(key(c, r)); return v === undefined ? -1 : v; } }), false);
+    } else drawTerritory(ctx, A, ui.step === 3);
     if (ui.step === 3) {
       const p = curPlan(planResult());
       if (p && !ui.onlyForest) {
@@ -2931,7 +2948,7 @@
       const q = PP.board.tileToScreen(ci.c, ci.r), R = big * (small ? 0.42 : 0.66);
       disc(ctx, q.x, q.y, R, 'rgba(10,14,30,.75)', cityCol(k), small ? 2 : 2.4);
       drawIcon(ctx, 'city', q.x, q.y, R * 1.45);
-      const name = cityName(ci, k) + (ui.step === 1 ? ' · ' + (ci.rad === 2 ? '5×5' : '3×3') : ''), y = q.y + R + fs * 0.8;
+      const name = cityName(ci, k) + (ui.step === 1 ? ' · ' + (ci.seq ? '3×3 → 🌱 5×5' : ci.rad === 2 ? '5×5' : '3×3') : ''), y = q.y + R + fs * 0.8;
       if (D && D.pill) {
         D.pill(ctx, q.x, y, name, hexA(cityCol(k), 0.9), fs);
         ctx.save(); ctx.font = `bold ${fs}px system-ui,sans-serif`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
