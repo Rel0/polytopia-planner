@@ -2639,7 +2639,19 @@
     if (t && t.state === 'running') return { pct: pc(t), tx: `🔬 Techs · plan ${Math.min(t.done + 1, t.total)} of ≈${t.total}` };
     return null;
   }
+  // v49: steps ① / ② with the panel collapsed – the "Next" button is on the map too (no need to open the panel)
+  function stepActHtml() {
+    if (!PP.drawer || (PP.drawer.isOpen() && !PP.drawer.isPeek())) return '';
+    if (ui.step === 1) {
+      const n = area().cities.length;
+      if (!n) return '';
+      return `<span class="ma-tx"><small>① Cities</small><br>${plural(n, 'city', 'cities')} selected</span><button class="ma-ok ma-next" data-ma="step" data-to="2">② What’s here ▶</button>`;
+    }
+    if (ui.step === 2 && !ui.borders) return `<span class="ma-tx"><small>② What’s here</small><br>Mark the tiles, then plan</span><button class="ma-ok ma-next" data-ma="step" data-to="3">▶ Plan</button>`;
+    return '';
+  }
   function mapActHtml() {
+    if (ui.step === 1 || ui.step === 2) return stepActHtml();
     if (ui.step !== 3) return '';
     const pr = bgProg(), ph = pr ? `<button class="ma-prog" data-ma="open" title="Open the panel"><span><span class="mk-spin"></span>${pr.tx}</span>` +
       (pr.pct != null ? `<span class="bar"><i style="width:${pr.pct}%"></i></span>` : '') + '</button>' : '';
@@ -2666,6 +2678,10 @@
   function mapActClick(ev) {
     const b = ev.target.closest('button[data-ma]'); if (!b || b.disabled) return;
     const m = M(), p = curPlan(planResult());
+    if (b.dataset.ma === 'step') {
+      ui.step = +b.dataset.to; ui.sel = null; ui.onlyForest = false; ui.borders = false;
+      PP.app.refresh(); requestAnimationFrame(ui.step === 3 ? fitPlan : fitRegion); return;
+    }
     if (b.dataset.ma === 'open') { if (PP.drawer && PP.drawer.open) PP.drawer.open(); return; }
     if (b.dataset.ma === 'forest') { ui.onlyForest = !ui.onlyForest; ui.sel = null; PP.app.refresh(); requestAnimationFrame(fitPlan); return; }
     const t = actTarget(p); if (!t || t.none) return;

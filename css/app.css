@@ -318,3 +318,4 @@ html,body,header,main,#rail,#drawer,#sheet,#float,#empty,button,input,select,lab
 #mapAct .ma-prog .mk-spin{display:inline-block;width:11px;height:11px;border:2px solid rgba(255,255,255,.25);border-top-color:var(--accent,#4cc9f0);border-radius:50%;animation:mkspin .8s linear infinite;vertical-align:-2px;margin-right:6px}
 #mapAct .ma-prog .bar{display:block;height:4px;border-radius:2px;background:rgba(255,255,255,.12);overflow:hidden}
 #mapAct .ma-prog .bar i{display:block;height:100%;background:#7bd389;transition:width .3s}
+#mapAct .ma-next{background:var(--accent,#2f81f7);color:#fff;white-space:nowrap}
