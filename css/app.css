@@ -291,6 +291,7 @@ details.adv .hprow button{width:auto;padding:0 10px;font-size:14px}
   #sheetExpand i{font-style:normal;font-size:15px;line-height:1;color:var(--accent);font-weight:800;margin-top:5px}
   #sheetExpand i.dn{transform:rotate(180deg);margin:0 0 5px}
   #drawer.haspeek.full{height:auto}
+  #drawer.haspeek.full.free,#drawer.free{height:var(--dh);min-height:0}
   /* switch (left) + More (right) take the edge corners → grab handle sits in the gap between them */
   #drawer.haspeek:not(.collapsed) #drawerTab{left:calc(50% + 44px);width:80px}
   #drawer.haspeek:not(.collapsed) #sheetSwitch:not([hidden]){display:flex;position:absolute;left:8px;top:-36px;height:36px;padding:3px;gap:3px;border:1px solid var(--line);border-bottom:0;border-radius:12px 12px 0 0;background:var(--panel);box-shadow:0 -4px 10px rgba(0,0,0,.3)}

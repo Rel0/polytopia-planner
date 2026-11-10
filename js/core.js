@@ -804,6 +804,8 @@ window.PP = window.PP || {};
     dr.classList.toggle('peek', peek);
     // "More": the sheet grows to its whole content (capped by max-height, rest scrolls)
     dr.classList.toggle('full', !!pk && !peek);
+    // v49: a height the user dragged the sheet to stays (until More / Less or dragging it down into the peek)
+    dr.classList.toggle('free', isSheet() && !peek && !!st.ui.sheetFree && !!st.ui.drawerH);
     renderSheetSwitch(pk);
     if (peek) {
       // new peek content (other selection / sub-mode) or just switched to peek → show it from the top
@@ -836,7 +838,7 @@ window.PP = window.PP || {};
   }
   function setSheetFull(full) {
     full = !!full;
-    if (S().ui.sheetFull !== full) { S().ui.sheetFull = full; save(); }
+    if (S().ui.sheetFull !== full || S().ui.sheetFree) { S().ui.sheetFull = full; S().ui.sheetFree = false; save(); }
     if (!full) $('#drawerBody').scrollTop = 0;
     fitSheet(); placeHint(); PP.board.redraw();
   }
@@ -1836,6 +1838,7 @@ window.PP = window.PP || {};
   }
 
   // phone/tablet layout: tools at the bottom, panel as bottom sheet (see app.css)
+  const SHEET_MIN = 72; // v49: lowest height the bottom sheet can be dragged to (the grip + a line stay visible)
   function isSheet() { return window.matchMedia('(max-width: 899px)').matches; }
   // drawer tab: tap = open/collapse, drag = resize (sideways on the side panel, up/down on the bottom sheet)
   function bindDrawerTab(tab) {
@@ -1855,12 +1858,10 @@ window.PP = window.PP || {};
         d.moved = true;
         const main = $('main').getBoundingClientRect(), want = d.h - dy;
         // v8: with a peek part, dragging down to the bottom → peek, dragging up out of peek → full sheet
-        if (drawerEl.classList.contains('haspeek')) {
-          if (want < 110) { if (S().ui.sheetFull) { S().ui.sheetFull = false; fitSheet(); } return; }
-          if (!S().ui.sheetFull) { S().ui.sheetFull = true; fitSheet(); }
-        }
-        const h = Math.round(clamp(want, 120, main.height - 60 - 70));
+        // v49: the sheet keeps exactly the height it is dragged to ("free") – no snapping; More / Less still snap
+        const h = Math.round(clamp(want, SHEET_MIN, main.height - 60 - 70));
         S().ui.drawerH = h; drawerEl.style.setProperty('--dh', h + 'px'); drawerEl.classList.add('resizing');
+        if (!S().ui.sheetFull || !S().ui.sheetFree) { S().ui.sheetFull = true; S().ui.sheetFree = true; fitSheet(); }
         return;
       }
       const dx = e.clientX - d.x;
