@@ -981,7 +981,9 @@
         const t = /^(field|forest|mountain|water)$/.test(p.terrain) ? p.terrain : p.terrain === 'outside' && p.conf >= TM.SURE ? 'space' : 'water';
         // v2 models: a resource is only filled in when the model is sure about it (crop / fruit on fields, metal on mountains)
         const rs = p.res && p.resConf >= (p.res === 'crop' ? TM.CROP_SURE || 0.6 : p.res === 'fruit' ? TM.FRUIT_SURE || 0.6 : TM.RES_SURE || 0.7) ? (p.res === 'metal' ? 'ore' : p.res) : null; // v3: crop from 0.6
-        out = { terrain: t, model: p.terrain, conf: p.conf, sure: p.conf >= (t === 'forest' ? TM.FOREST_SURE || TM.SURE : TM.SURE), res: rs && RES_TER[rs] === t ? [rs] : [], cloud: p.terrain === 'cloud' };
+        // v4 models: an existing Farm / Lumber Hut when the model is sure enough (only on the matching terrain)
+        const bld = p.bld && p.bldProb >= (TM.BLD_SURE || 0.5) && ((p.bld === 'farm' && t === 'field') || (p.bld === 'lumber' && t === 'forest')) ? p.bld : null;
+        out = { terrain: t, model: p.terrain, conf: p.conf, bld, sure: p.conf >= (t === 'forest' ? TM.FOREST_SURE || TM.SURE : TM.SURE), res: rs && RES_TER[rs] === t ? [rs] : [], cloud: p.terrain === 'cloud' };
       }
     } catch (e) { out = null; }
     autoMemo.m.set(k, out);
@@ -1003,7 +1005,7 @@
       return { c, r, terrain: ter, res, bld, other: bld === 'other' ? t.bld : null, stored: true, cloud };
     }
     const a = autoTerrain(c, r);
-    if (a) return { c, r, terrain: a.terrain, res: a.res || [], bld: null, stored: false, auto: true, unsure: !a.sure, conf: a.conf, cloud: !!(a.cloud && a.sure) };
+    if (a) return { c, r, terrain: a.terrain, res: a.bld === 'farm' ? ['crop'] : a.res || [], bld: a.bld || null, stored: false, auto: true, unsure: !a.sure, conf: a.conf, cloud: !!(a.cloud && a.sure) };
     return { c, r, terrain: 'field', res: [], bld: null, stored: false };
   }
   // ------------------------------------------------------------------ planning area = territories of the selected cities
@@ -3042,9 +3044,13 @@
             disc(ctx, q.x, q.y, big * 0.42, 'rgba(40,28,0,.82)', '#ffb703', 1.5);
             ctx.save(); ctx.font = `bold ${Math.round(big * 0.58)}px system-ui,sans-serif`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
             ctx.fillStyle = '#ffd166'; ctx.fillText('?', q.x, q.y + 1); ctx.restore();
+          } else if (x.auto && x.bld) {
+            // v49: a building the detection found (Farm / Lumber Hut) – dashed ring like the detected resources
+            disc(ctx, q.x, q.y, big * 0.5, 'rgba(10,14,30,.6)', 'rgba(255,255,255,.6)', 1.2, [3, 2]);
+            drawIcon(ctx, x.bld, q.x, q.y, big * 0.78, 0.9);
           } else if (x.auto && x.terrain !== 'field') drawIcon(ctx, x.cloud ? 'cloud' : x.terrain, q.x, q.y, big * 0.7, 0.75);
           // resources the detection is sure about
-          (x.res || []).forEach((rs, i) => {
+          (x.res || []).filter(rs => !(rs === 'crop' && x.bld === 'farm')).forEach((rs, i) => {
             const rx = q.x + big * (0.5 + i * 0.5), ry = q.y + big * 0.3;
             disc(ctx, rx, ry, big * 0.28, 'rgba(10,14,30,.7)', 'rgba(255,255,255,.55)', 1, [3, 2]);
             drawIcon(ctx, rs, rx, ry, big * 0.44, 0.9);

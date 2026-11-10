@@ -262,13 +262,17 @@ window.PP = window.PP || {};
     const out = { terrain: t.cls, conf: t.conf, probs: t.probs, res: null, resConf: 0 };
     const R = t.cls === 'field' ? M.field : t.cls === 'mountain' ? M.mountain : null;
     // v3 models: the field model also gets the crop features
-    if (R) { const r = forest(R, t.cls === 'field' && M.fieldFeat ? f.concat(cropFeatures(P, x, y, w)) : f); out.res = r.cls === 'none' ? null : r.cls; out.resConf = r.conf; out.resProbs = r.probs; }
+    let fc = null; // field features + crop features (field resource model and farm model)
+    if (R) { const r = forest(R, t.cls === 'field' && M.fieldFeat ? (fc = f.concat(cropFeatures(P, x, y, w))) : f); out.res = r.cls === 'none' ? null : r.cls; out.resConf = r.conf; out.resProbs = r.probs; }
+    // v4 models: an existing Farm on a field, a Lumber Hut in a forest → out.bld when likely (the app checks BLD_SURE)
+    const B = t.cls === 'field' ? M.farm : t.cls === 'forest' ? M.lumber : null;
+    if (B) { const r = forest(B, t.cls === 'field' ? fc || f.concat(cropFeatures(P, x, y, w)) : f), k = t.cls === 'field' ? 'farm' : 'lumber'; out.bldProb = r.probs[k] || 0; out.bld = out.bldProb >= 0.5 ? k : null; }
     return out;
   }
 
   // terrain below SURE is shown as "please check"; resources are only filled in at RES_SURE or above
   // v49 FOREST_SURE: a forest that isn't there ("ghost forest") spoils a plan (Lumber Huts, Sawmills). Leave-one-
   // screenshot-out on 38 screenshots: forest called at ≥ 0.6 → 20 of 405 wrong, at ≥ 0.75 → 2 of 266 wrong
-  PP.tilemodel = { classify, features, plateFeatures, cropFeatures, cityProb, forest, SURE: 0.6, FOREST_SURE: 0.75, RES_SURE: 0.7, CROP_SURE: 0.6, FRUIT_SURE: 0.6, CITY_SURE: 0.4,
+  PP.tilemodel = { classify, features, plateFeatures, cropFeatures, cityProb, forest, SURE: 0.6, FOREST_SURE: 0.75, BLD_SURE: 0.5, RES_SURE: 0.7, CROP_SURE: 0.6, FRUIT_SURE: 0.6, CITY_SURE: 0.4,
     get ready() { return !!(PP.TILE_MODEL && PP.TILE_MODEL.terrain); }, get cityReady() { return !!(PP.CITY_MODEL && PP.CITY_MODEL.trees); } };
 })(window.PP);

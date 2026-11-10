@@ -98,6 +98,31 @@ crop at 0.6: 83 of 145 found, 6 of 490 other fields wrongly called crop. Fruit a
 found (was 42), 6 of 492 wrong. Before they were added to the training, the shipped models got these on the two new
 screenshots: land terrain 85 % (sure ones 99 of 100), crop 7 of 21, cities 7 of 11.
 
+## Tile models v4 + buildings (10 Nov 2026)
+
+Training data: 52 screenshots, 3,675 labelled tiles (`dataset_v5` = v4 + 14 contributed screenshots from 9–10 Nov; duplicates
+removed, 14 villages that were marked as cities fixed). Same terrain recipe (random forest, 100 trees, depth 14).
+
+On the 14 new screenshots, which the shipped v3 model had never seen (land tiles):
+
+| | v3 model | v4 model (each screenshot left out) |
+|---|---|---|
+| all land tiles | 82.0 % | 84.3 % |
+| sure (≥ 0.6) | 95.9 % on 56 % | 96.5 % on 62 % |
+| ghost forests (forest called on a non-forest tile) | 42 | 28 |
+| cities | 56 / 73 | 63 / 73 |
+| mountains | 29 / 57 | 31 / 57 |
+
+Mountains stay the weak spot (about 70 % recall over all 52 screenshots, missed ones become fields): many tribes draw
+them as low pyramids in the same colour as their fields. Extra edge / facet features and other model types (extra trees,
+deeper forests) did not help; tiles with a unit improved a little with edge features (75 → 79 %), not shipped.
+
+**Buildings (new).** `farm` (field tiles, tile + crop features) and `lumber` (forest tiles) models; the app fills a building in at
+probability ≥ 0.5 (`BLD_SURE`). Leave-one-screenshot-out: farms 29 of 52 found, 4 of 1,201 fields wrongly; lumber huts 31 of
+52, 0 of 802 forests wrongly. Mines (13 examples) and workshops / markets (2–4 each) are too few to learn yet.
+
+The forest threshold `FOREST_SURE` 0.75 still fits: 9 ghosts among 419 sure forests (2.1 %).
+
 ## City detector (v3, Nov 2026)
 
 Every city, own or enemy, has a **name plate** centred on its tile: white italic text with a dark shadow on a
