@@ -904,6 +904,8 @@
   const CITY_COL = ['#4cc9f0', '#ff70a6', '#b69cff', '#7bd389', '#ff9f43', '#f9f871', '#2ec4b6', '#e76f51', '#a0c4ff', '#d4a373', '#ff4d6d', '#c0ca33'];
   // "built" marks: deep emerald + diagonal hatching – no city, workshop, Market or level colour is anywhere near it
   const BUILT_COL = '#16a34a', BUILT_FILL = 'rgba(22,163,74,.5)', BUILT_DARK = 'rgba(8,60,28,.95)';
+  // v49: already there before the plan (painted in ②): same green, but paler and hatched the other way (\\\)
+  const PRE_COL = 'rgba(22,163,74,.75)', PRE_FILL = 'rgba(22,163,74,.22)', PRE_DARK = 'rgba(8,40,22,.85)';
   const ACT_COL = '#3ddc84'; // what the ✓ Built button acts on
   const cityCol = k => CITY_COL[(k >= 0 ? k : 0) % CITY_COL.length];
   const TER_B = ['field', 'forest', 'mountain', 'water', 'space', 'cloud', 'city'];
@@ -3056,6 +3058,15 @@
     }
     return { F, m };
   }
+  // tile marked as built: fill + diagonal hatching (dir 1 = ///, built in the plan; −1 = \\\, there before) + outline
+  function hatchTile(ctx, c, r, q, u, pre) {
+    ctx.save(); diamondPath(ctx, c, r, 0.94); ctx.fillStyle = pre ? PRE_FILL : BUILT_FILL; ctx.fill(); ctx.clip();
+    const hw = u * 1.2, step = Math.max(5, u * 0.14), d0 = pre ? -1 : 1;
+    ctx.beginPath(); for (let d = -hw; d <= hw; d += step) { ctx.moveTo(q.x + d - hw * d0, q.y + hw); ctx.lineTo(q.x + d + hw * d0, q.y - hw); }
+    ctx.lineWidth = Math.max(1.2, u * 0.03); ctx.strokeStyle = pre ? 'rgba(255,255,255,.14)' : 'rgba(255,255,255,.28)'; ctx.stroke(); ctx.restore();
+    diamondPath(ctx, c, r, 0.94); ctx.lineWidth = pre ? clamp(u * 0.05, 2, 3.5) : clamp(u * 0.08, 3, 5.5); ctx.strokeStyle = pre ? PRE_COL : BUILT_COL; ctx.stroke();
+    if (!pre) { diamondPath(ctx, c, r, 0.86); ctx.lineWidth = 1.5; ctx.strokeStyle = 'rgba(255,255,255,.8)'; ctx.stroke(); }
+  }
   function drawPlan(ctx, D, p, u, big) {
     if (ui.onlyForest) { drawForest(ctx, D, p, u, big); return; }
     const foc = focusOf(p), dim = (c, r) => (foc && !foc.F.has(key(c, r)) ? 0.16 : 1);
@@ -3093,7 +3104,9 @@
       if (p.tiles.some(t => t.c === pr.c && t.r === pr.r)) continue;
       const q = PP.board.tileToScreen(pr.c, pr.r);
       ctx.globalAlpha = dim(pr.c, pr.r);
-      disc(ctx, q.x, q.y, big * 0.42, 'rgba(10,14,30,.6)', colAt(pr.c, pr.r, w.city), 1.8);
+      // v49: a producer without steps is already there → marked as built (paler, hatched the other way)
+      hatchTile(ctx, pr.c, pr.r, q, u, true);
+      disc(ctx, q.x, q.y, big * 0.42, PRE_DARK, PRE_COL, 1.8);
       drawIcon(ctx, pr.item, q.x, q.y, big * 0.62, ctx.globalAlpha);
       ctx.globalAlpha = 1;
     }
@@ -3105,15 +3118,8 @@
       const q = PP.board.tileToScreen(t.c, t.r), col = pCol(p, t.city), b = bAt.get(key(t.c, t.r)), a = dim(t.c, t.r);
       const R = big * (b ? 0.7 : 0.5), allDone = t.steps.every(isDone);
       ctx.globalAlpha = a;
-      if (allDone) { // built: the whole tile green with a strong outline
-        // emerald fill + white diagonal hatching + white inner edge: nothing else on the map is hatched
-        ctx.save(); diamondPath(ctx, t.c, t.r, 0.94); ctx.fillStyle = BUILT_FILL; ctx.fill(); ctx.clip();
-        const hw = u * 1.2, step = Math.max(5, u * 0.14);
-        ctx.beginPath(); for (let d = -hw; d <= hw; d += step) { ctx.moveTo(q.x + d - hw, q.y + hw); ctx.lineTo(q.x + d + hw, q.y - hw); }
-        ctx.lineWidth = Math.max(1.2, u * 0.03); ctx.strokeStyle = 'rgba(255,255,255,.28)'; ctx.stroke(); ctx.restore();
-        diamondPath(ctx, t.c, t.r, 0.94); ctx.lineWidth = clamp(u * 0.08, 3, 5.5); ctx.strokeStyle = BUILT_COL; ctx.stroke();
-        diamondPath(ctx, t.c, t.r, 0.86); ctx.lineWidth = 1.5; ctx.strokeStyle = 'rgba(255,255,255,.8)'; ctx.stroke();
-      }
+      // built: the whole tile green with a strong outline, emerald fill + white /// hatching + white inner edge
+      if (allDone) hatchTile(ctx, t.c, t.r, q, u, false);
       disc(ctx, q.x, q.y, R, allDone ? BUILT_DARK : 'rgba(25,30,55,.88)', allDone ? BUILT_COL : col, allDone ? 3 : 2.2, allDone ? null : [4, 2]);
       if (t.item) drawIcon(ctx, t.item, q.x, q.y, big * (b ? 1.0 : 0.72), a); else emoji(ctx, '💥', q.x, q.y, big * 0.6, a);
       ctx.globalAlpha = 1;
@@ -3136,11 +3142,13 @@
     for (const b of p.buildings) {
       const q = PP.board.tileToScreen(b.c, b.r), R = big * 0.7, a = dim(b.c, b.r);
       if (!b.isNew) {
+        // v49: there before the plan → marked as built (paler green, hatched \\\), the city colour stays on the ring
         ctx.globalAlpha = a;
-        disc(ctx, q.x, q.y, R, 'rgba(10,14,30,.7)', colAt(b.c, b.r, b.city), 2.2);
+        hatchTile(ctx, b.c, b.r, q, u, true);
+        disc(ctx, q.x, q.y, R, PRE_DARK, colAt(b.c, b.r, b.city), 2.2);
         drawIcon(ctx, b.item, q.x, q.y, big * 1.0, a);
         ctx.globalAlpha = 1;
-        if (a === 1) later.push(() => numBadge(ctx, '✓', q.x - R * 0.8, q.y - R * 0.9, rad * 0.9, '#e8ecf8', '#0b6b4f'));
+        if (a === 1) later.push(() => numBadge(ctx, '✓', q.x - R * 0.8, q.y - R * 0.9, rad * 1.1, PRE_COL, '#fff'));
       }
       if (a < 1) continue;
       if (b.item === 'market') pills.push(() => pill(q.x, q.y + R + fs * 0.7, b.income + ' ★/turn', 'rgba(150,100,0,.97)', fs));
