@@ -2457,7 +2457,8 @@
     if (res && res.pending) return '<span class="mk-spin"></span><b>Searching all plans…</b> <small>exact search</small>';
     if (res && res.tooBig) return '<b>Too many possibilities</b> <small>– see below</small>';
     if (!p) return '<b>No income possible</b> <small>– check the tiles and the options below</small>';
-    const mk = plural(p.marketCount, 'market', 'markets');
+    // v49: what the Markets could earn at most (8 each) – shows how close the plan gets
+    const mk = plural(p.marketCount, 'market', 'markets') + (p.marketCount ? ` <small>(max ${p.marketCount * CAP})</small>` : '');
     if (!p.actions) return `${TAG[p.tag]}: <b class="g">${p.income} ★/turn</b> · ${mk} <small>– all built already</small>`;
     return `${TAG[p.tag]}: <b class="g">${p.income} ★/turn</b> · ${mk} · cost <b>${p.cost}&nbsp;★</b> · ${plural(p.actions, 'step', 'steps')}`;
   }
@@ -2607,7 +2608,7 @@
   function bldText(b, p) {
     if (b.item === 'market') {
       const f = b.feeders.map(w => `${nm(w.item)} Lv${w.level}${w.city !== b.city && p.groups.length > 1 ? ' of ' + esc(groupName(p, w.city)) : ''}`).join(' + ');
-      return `<b>Market</b> ${b.isNew ? '' : '(built) '}= <b>${b.income} ★/turn</b>${f ? ` <small>(${f}${b.capped ? ' = ' + b.raw + ', max. ' + CAP : ''})</small>` : ''}`;
+      return `<b>Market</b> ${b.isNew ? '' : '(built) '}= <b>${b.income}/${CAP} ★/turn</b>${f ? ` <small>(${f}${b.capped ? ' = ' + b.raw + ', max. ' + CAP : ''})</small>` : ''}`;
     }
     const pn = { farm: ['Farm', 'Farms'], mine: ['Mine', 'Mines'], lumber: ['Lumber Hut', 'Lumber Huts'] }[PROD[b.item]];
     const nNew = b.producers.filter(q => q.isNew).length;
@@ -2680,7 +2681,7 @@
         : `<div class="mk-prog"><div class="bar"><i style="width:${Math.round(100 * nDone / p.steps.length)}%"></i></div><span>${nDone ? `<b>${nDone}</b> of ${p.steps.length} built · ${left} ★ to go` : `0 of ${p.steps.length} built`}</span></div>`;
       if (nDone) h += '<button class="mk-btn" data-a="clearDone" style="margin:0 0 6px">Clear all ✓ marks</button>';
     }
-    h += `<ol class="mk-list"><li class="tot"><span class="tx">Total: ${p.income} ★/turn · ${plural(p.actions, 'step', 'steps')}${p.payback ? ' · pays off in ' + plural(p.payback, 'turn', 'turns') : ''}</span><span class="co">${p.cost} ★</span></li></ol>`;
+    h += `<ol class="mk-list"><li class="tot"><span class="tx">Total: ${p.income} ★/turn${p.marketCount ? ' <small>(max ' + p.marketCount * CAP + ')</small>' : ''} · ${plural(p.actions, 'step', 'steps')}${p.payback ? ' · pays off in ' + plural(p.payback, 'turn', 'turns') : ''}</span><span class="co">${p.cost} ★</span></li></ol>`;
     const owned = (S().build && Array.isArray(S().build.owned)) ? S().build.owned : [];
     const techs = [];
     p.steps.forEach(s => { const t = (ITEM(s.item) || {}).tech; if (t && owned.indexOf(t) < 0 && techs.indexOf(t) < 0) techs.push(t); });
@@ -3181,7 +3182,7 @@
         if (a === 1) later.push(() => numBadge(ctx, '✓', q.x - R * 0.8, q.y - R * 0.9, rad * 1.1, PRE_COL, '#fff'));
       }
       if (a < 1) continue;
-      if (b.item === 'market') pills.push(() => pill(q.x, q.y + R + fs * 0.7, b.income + ' ★/turn', 'rgba(150,100,0,.97)', fs));
+      if (b.item === 'market') pills.push(() => pill(q.x, q.y + R + fs * 0.7, b.income + '/' + CAP + ' ★/turn', 'rgba(150,100,0,.97)', fs));
       else pills.push(() => pill(q.x, q.y + R + fs * 0.55, 'Lv' + b.level, 'rgba(6,120,90,.95)', fs * 0.92));
     }
     // the focused Market and everything that feeds it: glowing outlines on top
