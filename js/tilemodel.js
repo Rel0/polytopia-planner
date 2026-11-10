@@ -267,6 +267,8 @@ window.PP = window.PP || {};
   }
 
   // terrain below SURE is shown as "please check"; resources are only filled in at RES_SURE or above
-  PP.tilemodel = { classify, features, plateFeatures, cropFeatures, cityProb, forest, SURE: 0.6, RES_SURE: 0.7, CROP_SURE: 0.6, FRUIT_SURE: 0.6, CITY_SURE: 0.4,
+  // v49 FOREST_SURE: a forest that isn't there ("ghost forest") spoils a plan (Lumber Huts, Sawmills). Leave-one-
+  // screenshot-out on 38 screenshots: forest called at ≥ 0.6 → 20 of 405 wrong, at ≥ 0.75 → 2 of 266 wrong
+  PP.tilemodel = { classify, features, plateFeatures, cropFeatures, cityProb, forest, SURE: 0.6, FOREST_SURE: 0.75, RES_SURE: 0.7, CROP_SURE: 0.6, FRUIT_SURE: 0.6, CITY_SURE: 0.4,
     get ready() { return !!(PP.TILE_MODEL && PP.TILE_MODEL.terrain); }, get cityReady() { return !!(PP.CITY_MODEL && PP.CITY_MODEL.trees); } };
 })(window.PP);

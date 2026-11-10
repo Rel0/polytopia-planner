@@ -981,7 +981,7 @@
         const t = /^(field|forest|mountain|water)$/.test(p.terrain) ? p.terrain : p.terrain === 'outside' && p.conf >= TM.SURE ? 'space' : 'water';
         // v2 models: a resource is only filled in when the model is sure about it (crop / fruit on fields, metal on mountains)
         const rs = p.res && p.resConf >= (p.res === 'crop' ? TM.CROP_SURE || 0.6 : p.res === 'fruit' ? TM.FRUIT_SURE || 0.6 : TM.RES_SURE || 0.7) ? (p.res === 'metal' ? 'ore' : p.res) : null; // v3: crop from 0.6
-        out = { terrain: t, model: p.terrain, conf: p.conf, sure: p.conf >= TM.SURE, res: rs && RES_TER[rs] === t ? [rs] : [], cloud: p.terrain === 'cloud' };
+        out = { terrain: t, model: p.terrain, conf: p.conf, sure: p.conf >= (t === 'forest' ? TM.FOREST_SURE || TM.SURE : TM.SURE), res: rs && RES_TER[rs] === t ? [rs] : [], cloud: p.terrain === 'cloud' };
       }
     } catch (e) { out = null; }
     autoMemo.m.set(k, out);
@@ -2364,6 +2364,8 @@
 .mk .mk-ecity button.on{border-color:var(--cc);background:color-mix(in srgb,var(--cc) 25%,transparent)}
 .mk .gw-prio{display:flex;gap:5px}
 .mk .gw-t3{display:flex;align-items:center;gap:5px;flex-wrap:wrap;margin:6px 0}
+.mk .mk-warn-u{margin:6px 0;padding:7px 10px;border-radius:10px;background:rgba(255,183,3,.12);border:1px solid rgba(255,183,3,.45);color:#ffd27a;font-size:13px;line-height:1.35}
+.mk .mk-warn-u .lnk{color:#ffb703;font-weight:700}
 .mk .mk-only{display:flex;align-items:center;gap:5px;flex-wrap:wrap;margin:6px 0}
 .mk .mk-only>span{font-size:12.5px;color:var(--muted,#9aa5c8);margin-right:2px}
 .mk .mk-only button{border:1px solid var(--line,#33406e);background:var(--bg,#12172b);color:var(--text,#e8ecf8);border-radius:9px;padding:5px 9px;min-height:36px;font-size:12.5px;font-weight:600}
@@ -2488,6 +2490,9 @@
       const added = p && p.actions && planAdded(p);
       h += `<div data-peek="plan:${ui.alt}:${ui.only || ''}:${ui.sel ? ui.sel.c + '/' + ui.sel.r : ''}:${res && res.pending ? 'p' : 'd'}">${stepsHtml()}<div class="mk-key"><div class="t">${keyLine(p, res)}</div>` +
         (p && p.actions ? `<button class="mk-btn ${added ? 'ok' : 'pri'}" data-a="${added ? 'fromPlan' : 'toPlan'}">${added ? '✓ In plan' : '➕ Cost plan'}</button>` : '') + '</div>';
+      // v49: the plan builds on tiles the detection is unsure about → say so right at the top (they have a ? on the map)
+      const pu = p ? planUnsure(p).size : 0;
+      if (pu) h += `<div class="mk-warn-u">⚠ The plan builds on <b>${plural(pu, 'tile', 'tiles')}</b> the detection is unsure about (<b>?</b> on the map) – <button class="lnk" data-step="2">check them in ②</button></div>`;
       // v49: "show only …" (forests to cut down, buildings to destroy, forests to grow, Border Growth) – also on the map bar
       const av = onlyAvail(p), of = onlyOn(p);
       if (av.length) h += '<div class="mk-only"><span>Show only:</span>' + av.map(f => `<button class="${of === f ? 'on' : ''}" data-only="${f}" aria-pressed="${of === f}">${ONLY[f].ic} ${ONLY[f].on}</button>`).join('') + '</div>';
@@ -2505,7 +2510,7 @@
       if (p) h += growthHtml(res);
       if (p) h += techHtml(res);
       const au = autoStats();
-      if (au.unsure) h += `<p class="mk-note" style="color:#ffb703">⚠ ${plural(au.unsure, 'tile', 'tiles')} with ? – check in ②</p>`;
+      if (au.unsure && !(p && planUnsure(p).size)) h += `<p class="mk-note" style="color:#ffb703">⚠ ${plural(au.unsure, 'tile', 'tiles')} with ? – check in ②</p>`;
       if (p) h += planHtml(p, res);
       else if (res && res.tooBig) h += `<p class="mk-note" style="color:var(--warn,#ffaa00)">⚠ Too many possibilities – mark the tiles in ② or plan fewer cities</p>`;
       else if (res && !res.pending) h += '<p class="mk-note">No Market can earn anything here</p>';
@@ -3085,6 +3090,14 @@
     plant: { ic: '🌲', on: 'Forests to grow', unit: ['forest', 'forests'], items: ['plant'] },
     grow: { ic: '🌱', on: 'Border Growth', unit: ['city', 'cities'], items: [] },
   };
+  // v49 tiles the plan uses (steps, buildings, counted producers) that are unmarked and unsure in the detection
+  function planUnsure(p) {
+    const out = new Set(), chk = (c, r) => { const x = cellAt(c, r); if (!x.stored && x.unsure) out.add(key(c, r)); };
+    p.tiles.forEach(t => chk(t.c, t.r));
+    p.buildings.forEach(b => chk(b.c, b.r));
+    p.workshops.forEach(w => w.producers.forEach(q => chk(q.c, q.r)));
+    return out;
+  }
   const onlySteps = (p, f) => (p && ONLY[f] ? p.steps.filter(s => ONLY[f].items.indexOf(s.item) >= 0) : []);
   // cities with planned Border Growth (sc.grow = order) → [{ ci, k, no }]
   const growCities = () => { const A = area(); return A.cities.filter(ci => ci.seq).map(ci => ({ ci, k: ci.k, no: selAt(ci.c, ci.r).grow })).sort((a, b) => a.no - b.no); };
@@ -3255,6 +3268,11 @@
         ctx.lineWidth = isM ? 3.5 : 2.2; ctx.strokeStyle = isM ? '#ffd166' : 'rgba(255,255,255,.95)'; ctx.stroke();
       }
       ctx.restore();
+    }
+    // v49: a ? on tiles the plan uses although the detection is unsure about them
+    for (const k of planUnsure(p)) {
+      const [c, r] = k.split(',').map(Number), q = PP.board.tileToScreen(c, r);
+      later.push(() => numBadge(ctx, '?', q.x + big * 0.62, q.y - big * 0.55, rad * 0.95, '#ffb703', '#0b0f1f'));
     }
     later.forEach(f => f());
     pills.forEach(f => f());
