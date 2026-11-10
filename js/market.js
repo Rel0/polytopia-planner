@@ -98,7 +98,8 @@
   // Market / Windmill / Forge / Sawmill go on a field – also on one with Crop (built right on it); Fruit is harvested first
   function fieldPath(x, o) {
     if (x.t === 'field') return x.fruit ? ['fruit'] : [];
-    if (x.t === 'forest') return o.clear ? ['clear'] : null;
+    // v49: without Clear Forest the forest can be burnt – the building then stands on the Crop (Clear is cheaper: +1 ★)
+    if (x.t === 'forest') return o.clear ? ['clear'] : o.burn ? ['burn'] : null;
     return null;
   }
   function prodPath(x, X, o) {
