@@ -193,7 +193,7 @@ window.PP = window.PP || {};
         `<button class="gic" data-g="del" data-id="${x.id}" aria-label="Delete ${esc(x.name)}">🗑️</button></div>`;
     };
     PP.ui.openSheet(`
-      <div class="sheethead"><b>Games</b><button class="x" data-g="close" aria-label="Close">✕</button></div>
+      <div class="sheethead"><button class="back" data-g="back" aria-label="Back">‹</button><b>Games</b><button class="x" data-g="close" aria-label="Close">✕</button></div>
       <p class="note" style="margin-top:0">Keep several games apart (e.g. a few 24 h games) – each with its own screenshot, units, plans and notes.</p>
       <div class="games">${g.list.slice().sort((a, b) => (b.id === g.cur) - (a.id === g.cur) || b.t - a.t).map(row).join('')}</div>
       <button class="btn block" data-g="new">＋ New game</button>
@@ -202,6 +202,7 @@ window.PP = window.PP || {};
       if (!b || switching) return;
       const a = b.dataset.g, id = b.dataset.id, e = g.list.find(x => x.id === id);
       if (a === 'close') { PP.ui.closeSheet(); return; }
+      if (a === 'back') { openMenu(); return; }
       if (a === 'ren' && e) {
         const nm = window.prompt('Name of this game', e.name);
         if (nm && nm.trim()) { e.name = nm.trim().slice(0, 40); saveGames(g); updateHeader(); openGames(); }
@@ -628,6 +629,23 @@ window.PP = window.PP || {};
   const MODE_LABELS = { units: 'Units', cost: 'Costs', draw: 'Draw', market: 'Market', notes: 'Notes', label: 'Label', calibrate: 'Grid', align: 'Update screenshot' };
   const toolInfo = id => TOOLS.find(t => t.id === id) || { id, icon: (registry[id] || {}).icon || '🧰', label: (registry[id] || {}).label || MODE_LABELS[id] || id };
   const firstTool = () => TOOL_IDS.find(id => registry[id]) || 'idle';
+  // v49: which tool opens first (app start and after a new screenshot) – '' = the one used last. A device setting,
+  // not part of a game (it stays when you switch games).
+  const START_KEY = 'polyplan.start';
+  const startPref = () => { try { const v = localStorage.getItem(START_KEY) || ''; return v && registry[v] && TOOL_IDS.includes(v) ? v : ''; } catch (e) { return ''; } };
+  function openStartPref() {
+    const cur = startPref();
+    const opt = (id, label) => `<button data-sp="${id}" class="${cur === id ? 'on' : ''}">${label}${cur === id ? '<span>✓</span>' : ''}</button>`;
+    PP.ui.openSheet(`<div class="sheethead"><button class="back" data-sp="close" aria-label="Back">‹</button><b>Open first</b></div>
+      <p class="note" style="margin-top:0">Which tool opens when you start the app or load a new screenshot.</p>
+      <div class="menu">${opt('', 'The one I used last')}${TOOLS.filter(t => registry[t.id] && t.id !== 'label').map(t => opt(t.id, t.label)).join('')}</div>`,
+    (ev, b) => {
+      if (!b) return;
+      const v = b.dataset.sp; if (v === 'close') { openMenu('settings'); return; }
+      try { if (v) localStorage.setItem(START_KEY, v); else localStorage.removeItem(START_KEY); } catch (e) { /* private mode */ }
+      openMenu('settings');
+    });
+  }
   // deep link from the landing pages: /?tool=units|cost|market|draw|notes opens that tool (once)
   let linkTool = (() => { try { return new URLSearchParams(location.search).get('tool'); } catch (e) { return null; } })();
   const takeLinkTool = () => { const t = linkTool && registry[linkTool] && TOOL_IDS.includes(linkTool) ? linkTool : null; linkTool = null; return t; };
@@ -1483,7 +1501,7 @@ window.PP = window.PP || {};
         setTimeout(() => {
           if (img !== im) { resolve({ det: null }); return; }
           const det = runDetect();
-          afterCal = firstTool() === 'idle' ? null : (registry.units ? 'units' : firstTool());
+          afterCal = firstTool() === 'idle' ? null : startPref() || (registry.units ? 'units' : firstTool());
           if (det) enterCal('auto');
           else { enterCal(1); toast('Grid not detected automatically – please tap two tiles', 3500); }
           commit();
@@ -1713,39 +1731,62 @@ window.PP = window.PP || {};
   }
 
   // ---------------------------------------------------------------- menu
-  function openMenu() {
-    const st = S();
-    PP.ui.openSheet(`
-      <div class="sheethead"><b>Menu</b><button class="x" data-m="close" aria-label="Close">✕</button></div>
+  // v49: the menu shows what you need often (Games, New screenshot); the rest sits in two sub-pages with a back button
+  function openMenu(page) {
+    const st = S(), dis = st.board ? '' : 'disabled';
+    const head = (title, back) => `<div class="sheethead">${back ? '<button class="back" data-m="back" aria-label="Back">‹</button>' : ''}<b>${title}</b><button class="x" data-m="close" aria-label="Close">✕</button></div>`;
+    let html;
+    if (page === 'settings') {
+      html = head('Settings', true) + `
+      <h4 class="menuh">Map</h4>
+      <div class="menu">
+        <button data-m="calib" ${dis}>📐 Adjust grid</button>
+        <button data-m="grid" ${dis}>#️⃣ Show grid <span>${st.ui.showGrid ? 'On' : 'Off'}</span></button>
+        <button data-m="fit" ${dis}>⤢ Show whole image</button>
+      </div>
+      <h4 class="menuh">App</h4>
+      <div class="menu">
+        <button data-m="start">▶️ Open first <span>${esc((TOOLS.find(t => t.id === startPref()) || { label: 'Last used' }).label)}</span></button>
+        ${PP.ai && PP.ai.openSettings && PP.ai.enabled() ? `<button data-m="ai">🤖 AI detection <span>${PP.ai.hasKey && PP.ai.hasKey() ? 'Key ✓' : 'off'}</span></button>` : ''}
+        ${PP.contrib ? `<button data-m="contrib">🧠 Help improve detection <span>${PP.contrib.status() === 'yes' ? 'On' : 'Off'}</span></button>` : ''}
+      </div>
+      <h4 class="menuh">This game</h4>
+      <div class="menu"><button data-m="clear" class="danger">🗑️ Clear everything</button></div>`;
+    } else if (page === 'help') {
+      html = head('Help &amp; info', true) + `
+      <div class="menu">
+        ${PP.tutorial ? '<button data-m="tut">📖 Tutorial</button>' : ''}
+        <button data-m="privacy">🔒 Privacy</button>
+      </div>
+      <p class="note">Saved on this device · game values from the community wiki</p>
+      <p class="note">Unofficial fan tool – not affiliated with or endorsed by Midjiwan AB. “The Battle of Polytopia” is a trademark of Midjiwan AB. All icons are original drawings.</p>`;
+    } else {
+      html = head('Menu', false) + `
       <div class="menu">
         <button data-m="games">🗂️ Games <span>${esc(curGameName() || 'Game 1')}</span></button>
         <button data-m="shot">🖼️ New screenshot</button>
-        <button data-m="calib" ${st.board ? '' : 'disabled'}>📐 Adjust grid</button>
-        <button data-m="grid" ${st.board ? '' : 'disabled'}>#️⃣ Show grid <span>${st.ui.showGrid ? 'On' : 'Off'}</span></button>
-        <button data-m="fit" ${st.board ? '' : 'disabled'}>⤢ Show whole image</button>
-        ${PP.ai && PP.ai.openSettings && PP.ai.enabled() ? `<button data-m="ai">🤖 AI detection <span>${PP.ai.hasKey && PP.ai.hasKey() ? 'Key ✓' : 'off'}</span></button>` : ''}
-        ${PP.tutorial ? '<button data-m="tut">📖 Tutorial</button>' : ''}
-        ${PP.contrib ? `<button data-m="contrib">🧠 Help improve detection <span>${PP.contrib.status() === 'yes' ? 'On' : 'Off'}</span></button>` : ''}
-        <button data-m="privacy">🔒 Privacy</button>
-        <button data-m="clear" class="danger">🗑️ Clear everything</button>
-      </div>
-      <p class="note">Saved on this device · game values from the community wiki</p>
-      <p class="note">Unofficial fan tool – not affiliated with or endorsed by Midjiwan AB. “The Battle of Polytopia” is a trademark of Midjiwan AB. All icons are original drawings.</p>`,
-    (ev, b) => {
+        <button data-m="settings">⚙️ Settings <span>›</span></button>
+        <button data-m="help">❓ Help &amp; info <span>›</span></button>
+      </div>`;
+    }
+    PP.ui.openSheet(html, (ev, b) => {
       if (!b) return;
       const m = b.dataset.m;
       if (m === 'close') PP.ui.closeSheet();
+      else if (m === 'back') openMenu();
+      else if (m === 'settings' || m === 'help') openMenu(m);
       else if (m === 'shot') { PP.ui.closeSheet(); $('#file').click(); }
       else if (m === 'games') openGames();
+      else if (m === 'start') openStartPref();
       else if (m === 'calib') { PP.ui.closeSheet(); enterCal('tune'); }
-      else if (m === 'grid') { st.ui.showGrid = !st.ui.showGrid; commit(); openMenu(); }
+      else if (m === 'grid') { st.ui.showGrid = !st.ui.showGrid; commit(); openMenu('settings'); }
       else if (m === 'fit') { PP.ui.closeSheet(); fit(); }
       else if (m === 'ai') PP.ai.openSettings();
       else if (m === 'tut') PP.tutorial.open();
       else if (m === 'privacy') location.href = 'privacy.html';
       else if (m === 'contrib') { PP.ui.closeSheet(); PP.contrib.settings(); }
       else if (m === 'clear') {
-        if (!PP.ui.confirm('Delete all units, drawings, tiles, plans and techs?')) return;
+        if (!PP.ui.confirm('Delete all units, drawings, tiles, plans and techs of this game?')) return;
         clearBoardItems(true); PP.ui.closeSheet(); commit(); toast('Everything cleared');
       }
     });
@@ -1888,7 +1929,7 @@ window.PP = window.PP || {};
       if (inited) return; inited = true;
       bindDom(); domReady = true;
       const st = S();
-      let m = st.ui.mode;
+      let m = startPref() || st.ui.mode; // v49: a chosen start tool wins over the last one
       if (!registry[m] || !TOOL_IDS.includes(m)) m = firstTool();
       PP.modes.current = m;
       hook(registry[m], 'onEnter');
