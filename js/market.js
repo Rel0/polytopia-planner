@@ -920,7 +920,7 @@
     destroy: ['💥', 'Destroy buildings', 'move / replace'], produce: ['🏗️', 'New Farms, Mines, Lumber Huts', ''] };
   const TECH_OF_WS = { windmill: 'Construction', forge: 'Smithery', sawmill: 'Mathematics' }; // fallback when PP.TECH is missing
 
-  const ui = { step: 1, brush: 'forest', paint: null, alt: 0, sel: null, entered: false, borders: false, edit: null, onlyForest: false, growMenu: false, techMenu: false };
+  const ui = { step: 1, brush: 'forest', paint: null, alt: 0, sel: null, entered: false, borders: false, edit: null, only: null, growMenu: false, techMenu: false };
   const S = () => PP.state;
   // state.market: { cities: [{ c, r, rad: 1|2, made? }], edits: { 'c,r': 1 (added) | 0 (removed) }, touched, opts }
   // (v16 had a rectangle `region`; now always false – core resets it to null when a new screenshot is loaded)
@@ -2197,7 +2197,9 @@
   function fitPlan() {
     const p = curPlan(planResult()); if (!p) { fitRegion(); return; }
     const l = [];
-    if (ui.onlyForest && forestSteps(p).length) { forestSteps(p).forEach(s => l.push([s.c, s.r])); fitTiles(l, 150); return; }
+    const of = onlyOn(p);
+    if (of === 'grow') { const A = area(); growCities().forEach(g => l.push([g.ci.c, g.ci.r])); A.ring.forEach(k => l.push(k.split(',').map(Number))); fitTiles(l, 150); return; }
+    if (of) { onlySteps(p, of).forEach(s => l.push([s.c, s.r])); fitTiles(l, 150); return; }
     p.tiles.forEach(t => l.push([t.c, t.r]));
     p.buildings.forEach(b => { l.push([b.c, b.r]); (b.producers || []).forEach(q => l.push([q.c, q.r])); });
     if (!l.length) { fitRegion(); return; }
@@ -2213,12 +2215,15 @@
         return selCities().length ? 'Tap a city: 3×3 → 5×5 → off · wrong tile? tap the right one' : 'Tap your own cities (the city tile) to plan their Markets';
       }
       if (ui.step === 2) return ui.brush ? 'Tap or drag: ' + nm(ui.brush) + ' (tap again = remove)' : 'Pick a brush, then tap tiles';
-      if (ui.onlyForest) return '🪓 Only the forests to cut down (🔥 = burn) · tap 🪓 again for the whole plan';
+      if (ui.only === 'forest') return '🪓 Only the forests to cut down (🔥 = burn), in the order of the plan';
+      if (ui.only === 'destroy') return '💥 Only the buildings to destroy, in the order of the plan';
+      if (ui.only === 'plant') return '🌲 Only the forests to grow, in the order of the plan';
+      if (ui.only === 'grow') return '🌱 Cities that take Border Growth (dashed: the tiles they get)';
       return 'Tap a Market or a city to see what belongs to it · tap any tile for details';
     },
     onEnter() {
       const m = M();
-      ui.onlyForest = false;
+      ui.only = null;
       if (!m.touched && !m.cities.length) knownOwn().forEach(q => { if (cityEntry(q.c, q.r)) m.cities.push({ c: q.c, r: q.r, rad: 1 }); });
       if (!selCities().length) ui.step = 1; else if (ui.step === 1 && !ui.entered) ui.step = 2;
       ui.entered = true;
@@ -2359,6 +2364,10 @@
 .mk .mk-ecity button.on{border-color:var(--cc);background:color-mix(in srgb,var(--cc) 25%,transparent)}
 .mk .gw-prio{display:flex;gap:5px}
 .mk .gw-t3{display:flex;align-items:center;gap:5px;flex-wrap:wrap;margin:6px 0}
+.mk .mk-only{display:flex;align-items:center;gap:5px;flex-wrap:wrap;margin:6px 0}
+.mk .mk-only>span{font-size:12.5px;color:var(--muted,#9aa5c8);margin-right:2px}
+.mk .mk-only button{border:1px solid var(--line,#33406e);background:var(--bg,#12172b);color:var(--text,#e8ecf8);border-radius:9px;padding:5px 9px;min-height:36px;font-size:12.5px;font-weight:600}
+.mk .mk-only button.on{background:var(--accent,#2f81f7);border-color:var(--accent,#2f81f7);color:#fff}
 .mk .gw-t3>span{font-size:12.5px;color:var(--muted,#9aa5c8);margin-right:2px}
 .mk .gw-t3 button{display:flex;align-items:center;gap:5px;border:1px solid var(--line,#33406e);background:var(--bg,#12172b);color:var(--muted,#9aa5c8);border-radius:9px;padding:5px 8px;min-height:36px;font-size:12.5px}
 .mk .gw-t3 button .bx{width:16px;height:16px;border-radius:4px;border:2px solid var(--line,#33406e);display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:900}
@@ -2477,11 +2486,11 @@
     } else {
       const res = planResult(), p = curPlan(res);
       const added = p && p.actions && planAdded(p);
-      h += `<div data-peek="plan:${ui.alt}:${ui.onlyForest ? 'f' : ''}:${ui.sel ? ui.sel.c + '/' + ui.sel.r : ''}:${res && res.pending ? 'p' : 'd'}">${stepsHtml()}<div class="mk-key"><div class="t">${keyLine(p, res)}</div>` +
+      h += `<div data-peek="plan:${ui.alt}:${ui.only || ''}:${ui.sel ? ui.sel.c + '/' + ui.sel.r : ''}:${res && res.pending ? 'p' : 'd'}">${stepsHtml()}<div class="mk-key"><div class="t">${keyLine(p, res)}</div>` +
         (p && p.actions ? `<button class="mk-btn ${added ? 'ok' : 'pri'}" data-a="${added ? 'fromPlan' : 'toPlan'}">${added ? '✓ In plan' : '➕ Cost plan'}</button>` : '') + '</div>';
-      // v32: "only forests to cut down" right at the top (off by default; also the 🪓 in the bar on the map)
-      const fo = forestSteps(p);
-      if (fo.length) h += `<button class="mk-btn ${ui.onlyForest ? 'on' : ''}" data-a="onlyForest" style="margin:6px 0">${ui.onlyForest ? '🗺️ Show the whole plan again' : '🪓 Show which forests to cut down'}</button>`;
+      // v49: "show only …" (forests to cut down, buildings to destroy, forests to grow, Border Growth) – also on the map bar
+      const av = onlyAvail(p), of = onlyOn(p);
+      if (av.length) h += '<div class="mk-only"><span>Show only:</span>' + av.map(f => `<button class="${of === f ? 'on' : ''}" data-only="${f}" aria-pressed="${of === f}">${ONLY[f].ic} ${ONLY[f].on}</button>`).join('') + '</div>';
       if (p) h += altsHtml(res);
       h += (ui.sel && p ? selLine(p, ui.sel.c, ui.sel.r) : '') + '</div>';
       h += '<h3>Allowed actions</h3><div class="mk-opts">' + OPT_KEYS.map(k => {
@@ -2607,7 +2616,9 @@
       const tp = p.tiles.find(t => t.c === ui.sel.c && t.r === ui.sel.r);
       return tp ? { steps: tp.steps, c: tp.c, r: tp.r, tile: true } : { steps: [], c: ui.sel.c, r: ui.sel.r, tile: true, none: true };
     }
-    const nx = (ui.onlyForest ? forestSteps(p) : p.steps).find(s => !isDone(s));
+    const of = onlyOn(p);
+    if (of === 'grow') return null;
+    const nx = (of ? onlySteps(p, of) : p.steps).find(s => !isDone(s));
     return nx ? { steps: [nx], c: nx.c, r: nx.r, tile: false } : null;
   }
   const actOnSel = () => { const p = curPlan(planResult()); return !!(p && ui.sel && p.tiles.some(t => t.c === ui.sel.c && t.r === ui.sel.r)); };
@@ -2641,12 +2652,18 @@
   function mapActInner() {
     const res = planResult(), p = curPlan(res);
     if (!p || !p.steps.length) return '';
-    // v32: left a 🪓 toggle "only forests to cut down" (undo is the ↶ in the header now)
-    const fo = forestSteps(p), only = ui.onlyForest && fo.length > 0, list = only ? fo : p.steps;
-    const n = list.length, nDone = list.filter(isDone).length;
-    const undo = fo.length ? `<button class="ma-undo ${only ? 'on' : ''}" data-ma="forest" title="${only ? 'Show the whole plan again' : 'Show which forests to cut down'}" aria-label="${only ? 'Show the whole plan again' : 'Show which forests to cut down'}" aria-pressed="${only}">🪓</button>` : '';
-    const t = actTarget(p), cnt = only ? `${nDone}/${n} forests` : `${nDone}/${n} built`;
-    if (!t) return undo + (only ? `<span class="ma-tx">🎉 <b>All ${n} forests cut down</b><br><small>Tap 🪓 to see the whole plan again</small></span>`
+    // v49: left a button that steps through the "show only …" views (🪓 → 💥 → 🌲 → 🌱 → whole plan)
+    const av = onlyAvail(p), of = onlyOn(p), only = !!of, list = of && of !== 'grow' ? onlySteps(p, of) : p.steps;
+    const n = list.length, nDone = list.filter(isDone).length, O = of ? ONLY[of] : null;
+    const nxt = av[of ? av.indexOf(of) + 1 : 0];
+    const tip = nxt ? 'Show only: ' + ONLY[nxt].on : 'Show the whole plan again';
+    const undo = av.length ? `<button class="ma-undo ${only ? 'on' : ''}" data-ma="only" title="${tip}" aria-label="${tip}" aria-pressed="${only}">${O ? O.ic : ONLY[av[0]].ic}</button>` : '';
+    if (of === 'grow') {
+      const gc = growCities(), free = new Set(gc.map(g => g.no)).size < 2;
+      return undo + `<span class="ma-tx">🌱 <b>Border Growth</b>: ${gc.map(g => `<b style="color:${cityCol(g.k)}">${esc(cityName(g.ci, g.k))}</b>`).join(free ? ', ' : ' → ')}<br><small>${free ? 'any order' : 'in this order – the first one gets the tiles between them'}</small></span>`;
+    }
+    const t = actTarget(p), cnt = only ? `${nDone}/${plural(n, O.unit[0], O.unit[1])}` : `${nDone}/${n} built`;
+    if (!t) return undo + (only ? `<span class="ma-tx">🎉 <b>All ${plural(n, O.unit[0], O.unit[1])} done</b><br><small>Tap ${O.ic} for the next view / the whole plan</small></span>`
       : `<span class="ma-tx">🎉 <b>All ${n} steps built</b><br><small>The Markets earn ${p.income} ★/turn</small></span>`);
     if (t.none) return undo + `<span class="ma-tx">📍 <b>${t.c}/${t.r}</b>: nothing to build here<br><small>Tap a numbered tile · tap this tile again for the next step</small></span><button class="ma-ok" disabled>✓ Built</button>`;
     const all = t.steps.every(isDone), s0 = t.steps[0];
@@ -2659,11 +2676,11 @@
     const b = ev.target.closest('button[data-ma]'); if (!b || b.disabled) return;
     const m = M(), p = curPlan(planResult());
     if (b.dataset.ma === 'step') {
-      ui.step = +b.dataset.to; ui.sel = null; ui.onlyForest = false; ui.borders = false;
+      ui.step = +b.dataset.to; ui.sel = null; ui.only = null; ui.borders = false;
       PP.app.refresh(); requestAnimationFrame(ui.step === 3 ? fitPlan : fitRegion); return;
     }
     if (b.dataset.ma === 'open') { if (PP.drawer && PP.drawer.open) PP.drawer.open(); return; }
-    if (b.dataset.ma === 'forest') { ui.onlyForest = !ui.onlyForest; ui.sel = null; PP.app.refresh(); requestAnimationFrame(fitPlan); return; }
+    if (b.dataset.ma === 'only') { const av = onlyAvail(p), of = onlyOn(p); ui.only = av[of ? av.indexOf(of) + 1 : 0] || null; ui.sel = null; PP.app.refresh(); requestAnimationFrame(fitPlan); return; }
     const t = actTarget(p); if (!t || t.none) return;
     const all = t.steps.every(isDone);
     t.steps.forEach(s => { if (all) delete m.done[doneKey(s)]; else m.done[doneKey(s)] = ++doneSeq; });
@@ -2722,11 +2739,12 @@
     const b = ev.target.closest('button,[data-go]'); if (!b || b.disabled) return;
     const d = b.dataset, m = M();
     if (d.step) {
-      ui.step = +d.step; ui.sel = null; ui.onlyForest = false; if (ui.step !== 1) ui.borders = false;
+      ui.step = +d.step; ui.sel = null; ui.only = null; if (ui.step !== 1) ui.borders = false;
       PP.app.refresh();
       requestAnimationFrame(ui.step === 3 ? fitPlan : fitRegion);
       return;
     }
+    if (d.only) { ui.only = ui.only === d.only ? null : d.only; ui.sel = null; PP.app.refresh(); requestAnimationFrame(fitPlan); return; }
     if (d.brush) { ui.brush = ui.brush === d.brush ? null : d.brush; PP.app.refresh(); return; }
     if (d.alt) { ui.alt = d.alt === 'best' ? 0 : d.alt; ui.sel = null; PP.app.refresh(); requestAnimationFrame(fitPlan); return; }
     if (d.opt) { m.opts[d.opt] = !m.opts[d.opt]; ui.alt = 0; PP.app.commit(); return; }
@@ -2793,7 +2811,7 @@
       for (const x of areaCells()) if (x.terrain !== 'city') delete S().tiles[key(x.c, x.r)];
       toast('Marks cleared (cities stay)'); PP.app.commit(); return;
     }
-    if (a === 'onlyForest') { ui.onlyForest = !ui.onlyForest; ui.sel = null; PP.app.refresh(); requestAnimationFrame(fitPlan); return; }
+
     if (a === 'clearDone') { m.done = {}; PP.app.commit(); return; }
     if (a === 'toPlan') {
       const p = curPlan(planResult()); if (!p) return;
@@ -2944,7 +2962,7 @@
     } else drawTerritory(ctx, A, ui.step === 3);
     if (ui.step === 3) {
       const p = curPlan(planResult());
-      if (p && !ui.onlyForest) {
+      if (p && !onlyOn(p)) {
         for (const m of p.markets) { diamondPath(ctx, m.c, m.r, 0.98); ctx.fillStyle = hexA(pCol(p, m.city), 0.45); ctx.fill(); }
         for (const w of p.workshops) { const o = A.ownerOf(w.c, w.r); diamondPath(ctx, w.c, w.r, 0.92); ctx.globalAlpha = 0.3; ctx.fillStyle = o >= 0 ? cityCol(o) : pCol(p, w.city || 0); ctx.fill(); ctx.globalAlpha = 1; }
       }
@@ -3060,9 +3078,21 @@
   }
   // v32: steps that remove a forest (cut down / burn) – the "only forests" view at the start of a turn
   const forestSteps = p => (p ? p.steps.filter(s => s.item === 'clear' || s.item === 'burn') : []);
-  function drawForest(ctx, D, p, u, big) {
+  // v49 "show only …" views of the plan: forests to cut down, buildings to destroy, forests to grow, Border Growth
+  const ONLY = {
+    forest: { ic: '🪓', on: 'Cut down forests', unit: ['forest', 'forests'], items: ['clear', 'burn'] },
+    destroy: { ic: '💥', on: 'Buildings to destroy', unit: ['building', 'buildings'], items: ['destroy'] },
+    plant: { ic: '🌲', on: 'Forests to grow', unit: ['forest', 'forests'], items: ['plant'] },
+    grow: { ic: '🌱', on: 'Border Growth', unit: ['city', 'cities'], items: [] },
+  };
+  const onlySteps = (p, f) => (p && ONLY[f] ? p.steps.filter(s => ONLY[f].items.indexOf(s.item) >= 0) : []);
+  // cities with planned Border Growth (sc.grow = order) → [{ ci, k, no }]
+  const growCities = () => { const A = area(); return A.cities.filter(ci => ci.seq).map(ci => ({ ci, k: ci.k, no: selAt(ci.c, ci.r).grow })).sort((a, b) => a.no - b.no); };
+  const onlyAvail = p => Object.keys(ONLY).filter(f => (f === 'grow' ? growCities().length > 0 : onlySteps(p, f).length > 0));
+  const onlyOn = p => (ui.only && onlyAvail(p).indexOf(ui.only) >= 0 ? ui.only : null);
+  function drawForest(ctx, D, p, u, big, f) {
     const rad = clamp(u * 0.15, 6.5, 11), byTile = new Map();
-    forestSteps(p).forEach(s => { const k = key(s.c, s.r); if (!byTile.has(k)) byTile.set(k, []); byTile.get(k).push(s); });
+    onlySteps(p, f || 'forest').forEach(s => { const k = key(s.c, s.r); if (!byTile.has(k)) byTile.set(k, []); byTile.get(k).push(s); });
     const later = [];
     for (const [, st] of byTile) {
       const s0 = st[0], q = PP.board.tileToScreen(s0.c, s0.r), col = pCol(p, s0.city), done = st.every(isDone), R = big * 0.62;
@@ -3070,10 +3100,28 @@
       if (done) { ctx.fillStyle = BUILT_FILL; ctx.fill(); ctx.lineWidth = clamp(u * 0.07, 2.5, 5); ctx.strokeStyle = BUILT_COL; ctx.stroke(); }
       else { ctx.fillStyle = hexA(col, 0.3); ctx.fill(); ctx.lineWidth = clamp(u * 0.08, 3, 5.5); ctx.strokeStyle = col; ctx.stroke(); }
       disc(ctx, q.x, q.y, R, done ? BUILT_DARK : 'rgba(10,14,30,.85)', done ? BUILT_COL : col, 2.5);
-      emoji(ctx, st.some(x => x.item === 'burn') && !st.some(x => x.item === 'clear') ? '🔥' : '🪓', q.x, q.y, big * 0.75, done ? 0.55 : 1);
+      const gl = f === 'destroy' ? '💥' : f === 'plant' ? '🌲' : st.some(x => x.item === 'burn') && !st.some(x => x.item === 'clear') ? '🔥' : '🪓';
+      emoji(ctx, gl, q.x, q.y, big * 0.75, done ? 0.55 : 1);
       later.push(() => numBadge(ctx, done ? '✓' : st.map(x => x.no).join('·'), q.x - R * 0.8, q.y - R * 0.9, rad * (done ? 1.2 : 1), done ? BUILT_COL : col, done ? '#fff' : '#0b0f1f'));
     }
     later.forEach(f => f());
+  }
+  // v49 "only Border Growth": the growing cities with their order number, the tiles they get dashed
+  function drawGrowOnly(ctx, D, u, big) {
+    const A = area(), gc = growCities(), num = new Set(gc.map(g => g.no)).size > 1, rad = clamp(u * 0.17, 7, 12);
+    for (const k of A.ring) {
+      const [c, r] = k.split(',').map(Number), o = A.owner.get(k);
+      diamondPath(ctx, c, r, 0.94); ctx.fillStyle = hexA(cityCol(o), 0.22); ctx.fill();
+      diamondPath(ctx, c, r, 0.86); ctx.lineWidth = 2; ctx.strokeStyle = RING_COL; ctx.setLineDash([5, 4]); ctx.stroke(); ctx.setLineDash([]);
+    }
+    for (const g of gc) {
+      // the city tile with a strong green edge, a 🌱 badge (and its place in the order) – the city name stays readable
+      const q = PP.board.tileToScreen(g.ci.c, g.ci.r), R = big * 0.42;
+      diamondPath(ctx, g.ci.c, g.ci.r, 0.96); ctx.lineWidth = clamp(u * 0.07, 2.5, 5); ctx.strokeStyle = RING_COL; ctx.stroke();
+      disc(ctx, q.x + R * 1.1, q.y - R * 1.0, rad * 1.15, 'rgba(10,14,30,.9)', RING_COL, 2);
+      emoji(ctx, '🌱', q.x + R * 1.1, q.y - R * 1.0, rad * 1.4, 1);
+      if (num) numBadge(ctx, String(g.no), q.x - R * 1.1, q.y - R * 1.0, rad, cityCol(g.k), '#0b0f1f');
+    }
   }
   const ACT_GLYPH = { destroy: '💥', fruit: '🍒', plant: '🌱', clear: '🪓', burn: '🔥' };
   // v29: a tapped Market of the plan → { set of 'c,r' (Market, its workshops, their producers), market }
@@ -3109,7 +3157,9 @@
     if (!pre) { diamondPath(ctx, c, r, 0.86); ctx.lineWidth = 1.5; ctx.strokeStyle = 'rgba(255,255,255,.8)'; ctx.stroke(); }
   }
   function drawPlan(ctx, D, p, u, big) {
-    if (ui.onlyForest) { drawForest(ctx, D, p, u, big); return; }
+    const of = onlyOn(p);
+    if (of === 'grow') { drawGrowOnly(ctx, D, u, big); return; }
+    if (of) { drawForest(ctx, D, p, u, big, of); return; }
     const foc = focusOf(p), dim = (c, r) => (foc && !foc.F.has(key(c, r)) ? 0.16 : 1);
     // v32: every building marker in the colour of the city whose territory it is in
     const TA = area(), colAt = (c, r, fb) => { const o = TA.ownerOf(c, r); return o >= 0 ? cityCol(o) : pCol(p, fb >= 0 ? fb : 0); };
@@ -3222,7 +3272,7 @@
   PP.market.unselectCity = (c, r) => { unselectCity(c, r); PP.app.commit(); };
   PP.market.editBorder = (c, r, want) => { const x = editBorder(c, r, want == null ? null : want); PP.app.commit(); return x; };
   PP.market.setBorders = on => { ui.borders = !!on; PP.app.refresh(); };
-  PP.market.setStep = s => { ui.step = s; ui.onlyForest = false; PP.app.refresh(); };
+  PP.market.setStep = s => { ui.step = s; ui.only = null; PP.app.refresh(); };
   PP.market.setBrush = b => { ui.brush = b; PP.app.refresh(); };
   PP.market.paint = (c, r, id, on) => { applyBrush(c, r, id, on !== false); PP.app.commit(); };
   PP.market.setOpts = o => { Object.assign(M().opts, o); PP.app.commit(); };
