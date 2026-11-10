@@ -61,8 +61,10 @@ window.PP = window.PP || {};
   const S = () => PP.state;
 
   let saveTimer = 0;
+  let switching = false; // v49: a saved game is being opened – no saving of the old state while the page reloads
   function saveNow() {
     clearTimeout(saveTimer); saveTimer = 0;
+    if (switching) return;
     try { localStorage.setItem(LS_KEY, JSON.stringify(PP.state)); } catch (e) { console.warn('save failed', e); }
   }
   // v32 undo: every save compares the state (without the view settings in .ui) with the last one; a change puts the
@@ -119,7 +121,116 @@ window.PP = window.PP || {};
         return await new Promise(res => { const r = db.transaction('kv').objectStore('kv').get(k); r.onsuccess = () => res(r.result); r.onerror = () => res(null); });
       } catch (e) { return null; }
     },
+    async del(k) {
+      try {
+        const db = await this.open();
+        await new Promise(res => { const tx = db.transaction('kv', 'readwrite'); tx.objectStore('kv').delete(k); tx.oncomplete = res; tx.onerror = res; });
+      } catch (e) { /* ignore */ }
+    },
   };
+
+  // ---------------------------------------------------------------- saved games (v49)
+  // The open game lives where it always did (localStorage LS_KEY + IndexedDB 'img'), so nothing changes for old data.
+  // The other games are parked in IndexedDB ('game.<id>' = state JSON, 'img.<id>' = screenshot). Switching parks the
+  // open game, puts the chosen one in place and reloads the page – the app starts from storage as usual.
+  // List (small, localStorage): { cur: id, list: [{ id, name, t, thumb }] }
+  const GAMES_KEY = 'polyplan.games';
+  const gid = () => 'g' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+  function gamesList() {
+    let g = null;
+    try { g = JSON.parse(localStorage.getItem(GAMES_KEY)); } catch (e) { g = null; }
+    if (!isObj(g) || !Array.isArray(g.list) || !g.list.length || !g.list.some(x => x.id === g.cur)) {
+      const id = gid(); g = { cur: id, list: [{ id, name: 'Game 1', t: Date.now(), thumb: null }] };
+      try { localStorage.setItem(GAMES_KEY, JSON.stringify(g)); } catch (e) { /* full */ }
+    }
+    return g;
+  }
+  const saveGames = g => { try { localStorage.setItem(GAMES_KEY, JSON.stringify(g)); return true; } catch (e) { return false; } };
+  // small picture of the screenshot for the list (JPEG, 120 px wide)
+  function thumbOf() {
+    try {
+      if (!img || S().board !== 'image') return null;
+      const W = 120, H = Math.max(1, Math.round(W * img.naturalHeight / img.naturalWidth)), c = document.createElement('canvas');
+      c.width = W; c.height = Math.min(H, 220);
+      c.getContext('2d').drawImage(img, 0, 0, W, H);
+      return c.toDataURL('image/jpeg', 0.6);
+    } catch (e) { return null; }
+  }
+  // park the open game in its slot (state + screenshot); also refreshes its entry in the list
+  async function parkCurrent(g) {
+    saveNow();
+    const e = g.list.find(x => x.id === g.cur);
+    await idb.set('game.' + g.cur, JSON.stringify(PP.state));
+    const blob = S().board === 'image' ? await idb.get('img') : null;
+    if (blob) await idb.set('img.' + g.cur, blob); else await idb.del('img.' + g.cur);
+    if (e) { e.t = Date.now(); const th = thumbOf(); if (th || S().board !== 'image') e.thumb = th; }
+  }
+  // make game id the open one (its parked state → LS_KEY, its screenshot → 'img'), then reload
+  async function openGame(g, id) {
+    const st = id ? await idb.get('game.' + id) : null;
+    let s = null; try { s = st ? JSON.parse(st) : null; } catch (e) { s = null; }
+    // a new / empty game keeps the view settings (panel, last unit …) but nothing of the board
+    if (!isObj(s)) s = { ui: Object.assign({}, S().ui, { mode: S().ui.mode }) };
+    const blob = id ? await idb.get('img.' + id) : null;
+    if (blob) await idb.set('img', blob); else { await idb.del('img'); if (s.board === 'image') s.board = null; }
+    g.cur = id; saveGames(g);
+    clearTimeout(saveTimer); saveTimer = 0; switching = true;
+    localStorage.setItem(LS_KEY, JSON.stringify(s));
+    location.reload();
+  }
+  const ago = t => { const m = Math.round((Date.now() - t) / 60000); return m < 1 ? 'just now' : m < 60 ? m + ' min ago' : m < 1440 ? Math.round(m / 60) + ' h ago' : Math.round(m / 1440) + ' d ago'; };
+  function openGames() {
+    const g = gamesList();
+    const cur = g.list.find(x => x.id === g.cur);
+    if (cur) { const th = thumbOf(); if (th) { cur.thumb = th; saveGames(g); } }
+    const row = x => {
+      const on = x.id === g.cur;
+      return `<div class="game${on ? ' on' : ''}">` +
+        (x.thumb ? `<img src="${x.thumb}" alt="">` : '<span class="nothumb">🗺️</span>') +
+        `<span class="gn"><b>${esc(x.name)}</b><small>${on ? 'open now' : 'saved ' + ago(x.t)}</small></span>` +
+        (on ? '' : `<button class="gopen" data-g="open" data-id="${x.id}">Open</button>`) +
+        `<button class="gic" data-g="ren" data-id="${x.id}" aria-label="Rename ${esc(x.name)}">✏️</button>` +
+        `<button class="gic" data-g="del" data-id="${x.id}" aria-label="Delete ${esc(x.name)}">🗑️</button></div>`;
+    };
+    PP.ui.openSheet(`
+      <div class="sheethead"><b>Games</b><button class="x" data-g="close" aria-label="Close">✕</button></div>
+      <p class="note" style="margin-top:0">Keep several games apart (e.g. a few 24 h games) – each with its own screenshot, units, plans and notes.</p>
+      <div class="games">${g.list.slice().sort((a, b) => (b.id === g.cur) - (a.id === g.cur) || b.t - a.t).map(row).join('')}</div>
+      <button class="btn block" data-g="new">＋ New game</button>
+      <p class="note">Saved on this device only (this browser).</p>`,
+    async (ev, b) => {
+      if (!b || switching) return;
+      const a = b.dataset.g, id = b.dataset.id, e = g.list.find(x => x.id === id);
+      if (a === 'close') { PP.ui.closeSheet(); return; }
+      if (a === 'ren' && e) {
+        const nm = window.prompt('Name of this game', e.name);
+        if (nm && nm.trim()) { e.name = nm.trim().slice(0, 40); saveGames(g); updateHeader(); openGames(); }
+        return;
+      }
+      if (a === 'del' && e) {
+        if (!PP.ui.confirm(`Delete “${e.name}”? Its screenshot, units, plans and notes are gone for good.`)) return;
+        g.list = g.list.filter(x => x.id !== id);
+        await idb.del('game.' + id); await idb.del('img.' + id);
+        if (id === g.cur) { // the open game: go to the newest other one, or start a fresh one
+          const nx = g.list.slice().sort((p, q) => q.t - p.t)[0];
+          if (nx) { await openGame(g, nx.id); return; }
+          const nid = gid(); g.list.push({ id: nid, name: 'Game 1', t: Date.now(), thumb: null }); await openGame(g, nid); return;
+        }
+        saveGames(g); openGames(); return;
+      }
+      if (a === 'open' && e) { toast('Opening “' + e.name + '”…'); await parkCurrent(g); await openGame(g, id); return; }
+      if (a === 'new') {
+        const used = new Set(g.list.map(x => x.name));
+        let n = g.list.length + 1; while (used.has('Game ' + n)) n++;
+        const name = (window.prompt('Name of the new game', 'Game ' + n) || '').trim();
+        if (!name) return;
+        await parkCurrent(g);
+        const nid = gid(); g.list.push({ id: nid, name: name.slice(0, 40), t: Date.now(), thumb: null });
+        await openGame(g, nid);
+      }
+    });
+  }
+  const curGameName = () => { try { const g = JSON.parse(localStorage.getItem(GAMES_KEY)); const e = g && g.list && g.list.find(x => x.id === g.cur); return e ? e.name : null; } catch (e) { return null; } };
 
   // ---------------------------------------------------------------- find
   PP.find = {
@@ -1605,6 +1716,7 @@ window.PP = window.PP || {};
     PP.ui.openSheet(`
       <div class="sheethead"><b>Menu</b><button class="x" data-m="close" aria-label="Close">✕</button></div>
       <div class="menu">
+        <button data-m="games">🗂️ Games <span>${esc(curGameName() || 'Game 1')}</span></button>
         <button data-m="shot">🖼️ New screenshot</button>
         <button data-m="calib" ${st.board ? '' : 'disabled'}>📐 Adjust grid</button>
         <button data-m="grid" ${st.board ? '' : 'disabled'}>#️⃣ Show grid <span>${st.ui.showGrid ? 'On' : 'Off'}</span></button>
@@ -1622,6 +1734,7 @@ window.PP = window.PP || {};
       const m = b.dataset.m;
       if (m === 'close') PP.ui.closeSheet();
       else if (m === 'shot') { PP.ui.closeSheet(); $('#file').click(); }
+      else if (m === 'games') openGames();
       else if (m === 'calib') { PP.ui.closeSheet(); enterCal('tune'); }
       else if (m === 'grid') { st.ui.showGrid = !st.ui.showGrid; commit(); openMenu(); }
       else if (m === 'fit') { PP.ui.closeSheet(); fit(); }
