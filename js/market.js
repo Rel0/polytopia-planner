@@ -957,16 +957,6 @@
   const cityEntry = (c, r) => (Array.isArray(S().cities) ? S().cities.find(x => x && x.c === c && x.r === r) : null) || null;
 
   // terrain suggestion from the screenshot (only on request)
-  function suggest(c, r) {
-    const a = autoTerrain(c, r);
-    if (a) return a.terrain;
-    try {
-      const smp = PP.board && PP.board.sampleTile ? PP.board.sampleTile(c, r) : null;
-      const px = smp && (Array.isArray(smp) ? smp : smp.pixels);
-      if (px && px.length && PP.vision && PP.vision.classifyTile) return PP.vision.classifyTile(px, smp.lower ? { lower: smp.lower } : undefined).terrain || null;
-    } catch (e) { /* none */ }
-    return null;
-  }
   const TERRAINS = ['field', 'forest', 'mountain', 'water', 'ocean', 'cloud', 'space'];
   // effective tile: { c, r, terrain, res, bld, stored, name?, cityId? } – unmarked tiles count as Empty
   // v29: terrain of an unmarked tile from the screenshot (PP.tilemodel, in the browser) → { terrain, conf, sure }
@@ -2172,19 +2162,6 @@
     applyBrush(c, r, ui.brush, ui.paint.on);
     ui.paint.first = false;
   }
-  function suggestAll() {
-    let n = 0;
-    for (const x of areaCells()) {
-      if (x.stored) continue;
-      let t = suggest(x.c, x.r);
-      if (t === 'ocean' || t === 'cloud') t = 'water';
-      if (TER_B.indexOf(t) < 0 || t === 'city') continue;
-      S().tiles[key(x.c, x.r)] = Object.assign({}, S().tiles[key(x.c, x.r)] || {}, { terrain: t, res: [], bld: null, src: 'user' });
-      n++;
-    }
-    return n;
-  }
-
   function fitTiles(list, maxTile) {
     if (!list.length || !PP.board || !PP.grid || !PP.board.visibleRect) return;
     const pts = [];
@@ -2493,7 +2470,10 @@
         (autoStats().unsure ? `<div class="mk-note" style="margin:3px 0 0;color:#ffb703">⚠ ${plural(autoStats().unsure, 'tile', 'tiles')} with ? – please check</div>` : '');
       h += citiesHtml();
       h += countsHtml();
-      h += '<button class="mk-btn sm" data-a="suggest">🪄 Suggest terrain from screenshot</button><button class="mk-btn sm" data-a="clearTiles">Clear marks in territories</button>';
+      // v49: the detection always runs (unmarked tiles take it) – no button that froze its guesses as your own marks
+      // (that dropped the detected resources, hid the ? warnings and sent guesses as checked labels to the training)
+      h += `<div class="mk-note" style="margin:6px 0">🪄 Tiles you haven't marked are filled in from your screenshot automatically (lighter, dashed edge). Tap a brush and fix the wrong ones – <b style="color:#ffb703">?</b> means the detection is unsure.</div>`;
+      h += '<button class="mk-btn sm" data-a="clearTiles">Clear marks in territories</button>';
     } else {
       const res = planResult(), p = curPlan(res);
       const added = p && p.actions && planAdded(p);
@@ -2809,7 +2789,6 @@
       M().touched = true; ui.alt = 0; PP.app.commit(); toast(plural(ord.length, 'city', 'cities') + ' now planned with 5×5'); return;
     }
     if (a === 'proveMore') { const r = planResult(); if (r && r.best) { startProof(r, cacheSig, COST_MORE_SECS); PP.app.refresh(); } return; }
-    if (a === 'suggest') { const n = suggestAll(); toast(n ? n + ' tiles suggested – please check them' : 'Nothing to suggest (all tiles marked)'); PP.app.commit(); return; }
     if (a === 'clearTiles') {
       for (const x of areaCells()) if (x.terrain !== 'city') delete S().tiles[key(x.c, x.r)];
       toast('Marks cleared (cities stay)'); PP.app.commit(); return;
