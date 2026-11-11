@@ -648,6 +648,9 @@ window.PP = window.PP || {};
   }
   // deep link from the landing pages: /?tool=units|cost|market|draw|notes opens that tool (once)
   let linkTool = (() => { try { return new URLSearchParams(location.search).get('tool'); } catch (e) { return null; } })();
+  // v49: take ?tool= out of the address right away – a browser that restores the tab (or a bookmark of it) would
+  // otherwise open that tool every time, and "Open first" seemed not to work
+  if (linkTool) { try { const u = new URL(location.href); u.searchParams.delete('tool'); history.replaceState(history.state, '', u.pathname + (u.search || '') + u.hash); } catch (e) { /* old browser */ } }
   const takeLinkTool = () => { const t = linkTool && registry[linkTool] && TOOL_IDS.includes(linkTool) ? linkTool : null; linkTool = null; return t; };
 
   PP.modes = {
