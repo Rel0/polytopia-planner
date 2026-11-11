@@ -255,11 +255,17 @@ window.PP = window.PP || {};
     return forest(M, f).probs['1'] || 0;
   }
 
+  // v49: the leaf every tree of a forest ends in – two tiles that share most leaves look alike to the model
+  function leaves(F, f) {
+    const out = new Int32Array(F.trees.length);
+    F.trees.forEach((t0, n) => { const t = prepTree(t0, F.classes.length); let i = 0; while (t.f[i] >= 0) i = f[t.f[i]] <= t.t[i] ? i + 1 : t.r[i]; out[n] = i; });
+    return out;
+  }
   function classify(P, x, y, w) {
     const M = PP.TILE_MODEL;
     if (!P || !P.data || !(w > 6) || !M || !M.terrain) return null;
     const f = features(P, x, y, w), t = forest(M.terrain, f);
-    const out = { terrain: t.cls, conf: t.conf, probs: t.probs, res: null, resConf: 0 };
+    const out = { terrain: t.cls, conf: t.conf, probs: t.probs, res: null, resConf: 0, leaves: leaves(M.terrain, f) };
     const R = t.cls === 'field' ? M.field : t.cls === 'mountain' ? M.mountain : null;
     // v3 models: the field model also gets the crop features
     let fc = null; // field features + crop features (field resource model and farm model)

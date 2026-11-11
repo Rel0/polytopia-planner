@@ -920,7 +920,7 @@
     destroy: ['💥', 'Destroy buildings', 'move / replace'], produce: ['🏗️', 'New Farms, Mines, Lumber Huts', ''] };
   const TECH_OF_WS = { windmill: 'Construction', forge: 'Smithery', sawmill: 'Mathematics' }; // fallback when PP.TECH is missing
 
-  const ui = { step: 1, brush: 'forest', paint: null, alt: 0, sel: null, entered: false, borders: false, edit: null, only: null, chk: null, chkSkip: null, hl: null, growMenu: false, techMenu: false };
+  const ui = { step: 1, brush: 'forest', paint: null, alt: 0, sel: null, entered: false, borders: false, edit: null, only: null, sim: null, chk: null, chkSkip: null, hl: null, growMenu: false, techMenu: false };
   const S = () => PP.state;
   // state.market: { cities: [{ c, r, rad: 1|2, made? }], edits: { 'c,r': 1 (added) | 0 (removed) }, touched, opts }
   // (v16 had a rectangle `region`; now always false – core resets it to null when a new screenshot is loaded)
@@ -983,7 +983,7 @@
         const rs = p.res && p.resConf >= (p.res === 'crop' ? TM.CROP_SURE || 0.6 : p.res === 'fruit' ? TM.FRUIT_SURE || 0.6 : TM.RES_SURE || 0.7) ? (p.res === 'metal' ? 'ore' : p.res) : null; // v3: crop from 0.6
         // v4 models: an existing Farm / Lumber Hut when the model is sure enough (only on the matching terrain)
         const bld = p.bld && p.bldProb >= (TM.BLD_SURE || 0.5) && ((p.bld === 'farm' && t === 'field') || (p.bld === 'lumber' && t === 'forest')) ? p.bld : null;
-        out = { terrain: t, model: p.terrain, conf: p.conf, bld, sure: p.conf >= (t === 'forest' ? TM.FOREST_SURE || TM.SURE : TM.SURE), res: rs && RES_TER[rs] === t ? [rs] : [], cloud: p.terrain === 'cloud' };
+        out = { terrain: t, model: p.terrain, conf: p.conf, bld, leaves: p.leaves || null, sure: p.conf >= (t === 'forest' ? TM.FOREST_SURE || TM.SURE : TM.SURE), res: rs && RES_TER[rs] === t ? [rs] : [], cloud: p.terrain === 'cloud' };
       }
     } catch (e) { out = null; }
     autoMemo.m.set(k, out);
@@ -2294,7 +2294,7 @@
         return;
       }
       if (ui.step === 2) {
-        if (phase === 'start') { ui.paint = { on: !brushOn(ui.brush, cellAt(t.c, t.r)), done: new Set(), first: true }; paintAt(t.c, t.r); }
+        if (phase === 'start') { ui.sim = null; ui.paint = { on: !brushOn(ui.brush, cellAt(t.c, t.r)), done: new Set(), first: true }; paintAt(t.c, t.r); }
         else if (phase === 'move' && ui.paint) paintAt(t.c, t.r);
         else if (ui.paint) { if (phase === 'end') paintAt(t.c, t.r); ui.paint = null; PP.app.commit(); return; }
         PP.board.redraw();
@@ -2315,10 +2315,17 @@
         } else tapCity(t.c, t.r);
         PP.app.commit(); return;
       }
+      if (ui.step === 2 && ui.sim) {
+        const k = key(t.c, t.r);
+        if (ui.sim.keys.has(k)) { ui.sim.keys.delete(k); ui.sim.out.add(k); PP.app.refresh(); return; }
+        if (ui.sim.out.has(k)) { ui.sim.out.delete(k); ui.sim.keys.add(k); PP.app.refresh(); return; }
+      }
       if (ui.step === 2 && ui.brush) {
         if (!inPaint(t.c, t.r)) { toast('Outside the cities’ territories – change them in ① Cities'); return; }
         ui.paint = null;
-        applyBrush(t.c, t.r, ui.brush, !brushOn(ui.brush, cellAt(t.c, t.r)));
+        const x0 = cellAt(t.c, t.r), on = !brushOn(ui.brush, x0);
+        applyBrush(t.c, t.r, ui.brush, on);
+        if (on && !x0.stored) simPropose(t.c, t.r, ui.brush); else ui.sim = null;
         // v44: say whose tile it is
         { const A = area(), o = A.ownerOf(t.c, t.r), ci = A.cities[o];
           toast((ci ? cityName(ci, o) : inRing(t.c, t.r) ? 'Border Growth ring' : 'Outside the territories') + ' · ' + t.c + '/' + t.r, 1200); }
@@ -2729,6 +2736,29 @@
     const alt = ui.chk.edit ? '' : CHK_T.filter(t => t !== x.terrain).map(t => `<button class="ma-alt" data-ma="chkset" data-t="${t}" title="It is ${esc(nm(t))}">${iconHtml(t, 20)}</button>`).join('');
     return `<span class="ma-tx"><b>${cellText(x)}?</b><br>${sub}</span><button class="ma-ok" data-ma="chkok" title="Yes, that's right">✓</button>${alt}` + (ui.chk.edit ? '' : more) + end;
   }
+  // v49 "similar tiles follow": after you correct a detected tile, the unmarked tiles the model sees the same way (same
+  // prediction, ≥ SIM_TH of the terrain trees end in the same leaf) are offered for the same change. Measured on 52
+  // labelled screenshots (each left out of the training): 84 % of the offered tiles were right, 2–3 more errors fixed per
+  // correction – so it is an offer you check (tap a tile to leave it out), not automatic.
+  const SIM_TH = 0.6, SIM_T = ['field', 'forest', 'mountain', 'water'];
+  function simPropose(c, r, ter) {
+    ui.sim = null;
+    const a = autoTerrain(c, r); if (!a || !a.leaves || a.terrain === ter || SIM_T.indexOf(ter) < 0) return;
+    const keys = new Set(), seen = new Set([key(c, r)]);
+    for (const x of areaCells().concat(ringCells())) {
+      const k = key(x.c, x.r); if (seen.has(k)) continue; seen.add(k);
+      if (x.stored || !x.auto || x.terrain !== a.terrain) continue;
+      const b = autoTerrain(x.c, x.r); if (!b || !b.leaves || b.leaves.length !== a.leaves.length) continue;
+      let same = 0; for (let i = 0; i < a.leaves.length; i++) if (a.leaves[i] === b.leaves[i]) same++;
+      if (same / a.leaves.length >= SIM_TH) keys.add(k);
+    }
+    if (keys.size) ui.sim = { ter, from: a.terrain, keys, out: new Set() };
+  }
+  function simActHtml() {
+    const n = ui.sim.keys.size;
+    return `<span class="ma-tx"><b>🪄 ${plural(ui.sim.keys.size + ui.sim.out.size, 'similar tile', 'similar tiles')} – ${esc(nm(ui.sim.ter))} too?</b><br><small>they look like the one you fixed · tap a tile to leave it out</small></span>` +
+      `<button class="ma-ok" data-ma="simok" ${n ? '' : 'disabled'}>✓ ${n}</button><button class="ma-alt" data-ma="simno" title="No">✕</button>`;
+  }
   // v49: the ? tiles in the panel – check one by one, or per kind: show them, confirm them all
   function chkPanelHtml() {
     const l = unsureList(); if (!l.length) return '';
@@ -2739,6 +2769,7 @@
     return h + '</div>';
   }
   function stepActHtml() {
+    if (ui.step === 2 && ui.sim) return simActHtml();
     if (ui.step === 2 && ui.chk) return chkActHtml();
     if (!PP.drawer || (PP.drawer.isOpen() && !PP.drawer.isPeek())) return '';
     if (ui.step === 1) {
@@ -2784,6 +2815,11 @@
   function mapActClick(ev) {
     const b = ev.target.closest('button[data-ma]'); if (!b || b.disabled) return;
     const m = M(), p = curPlan(planResult());
+    if (b.dataset.ma === 'simok' && ui.sim) {
+      const S0 = ui.sim; S0.keys.forEach(k => { const [c, r] = k.split(',').map(Number); storeTile(c, r, { terrain: S0.ter, res: [], bld: null, bulk: true }); });
+      ui.sim = null; PP.app.commit(); toast(plural(S0.keys.size, 'tile', 'tiles') + ' changed to ' + nm(S0.ter)); return;
+    }
+    if (b.dataset.ma === 'simno') { ui.sim = null; PP.app.refresh(); return; }
     if (b.dataset.ma === 'chknext') { ui.chkSkip = new Set(); chkGo(); return; }
     if (b.dataset.ma === 'chkend') { ui.chk = null; ui.sel = null; PP.app.refresh(); return; }
     if (b.dataset.ma === 'chkdone' && ui.chk) { chkGo(); return; }
@@ -2791,10 +2827,11 @@
     if (b.dataset.ma === 'chkedit' && ui.chk) { ui.chk.edit = true; if (PP.drawer) { PP.drawer.open(); if (PP.drawer.setFull) PP.drawer.setFull(false); } PP.app.refresh(); requestAnimationFrame(() => fitTiles([[ui.chk.c - 1, ui.chk.r - 1], [ui.chk.c + 1, ui.chk.r + 1]], 110)); return; }
     if (b.dataset.ma === 'chkskip' && ui.chk) { (ui.chkSkip || (ui.chkSkip = new Set())).add(key(ui.chk.c, ui.chk.r)); chkGo(); return; }
     if ((b.dataset.ma === 'chkok' || b.dataset.ma === 'chkset') && ui.chk) {
-      const x = cellAt(ui.chk.c, ui.chk.r); chkStore(x, b.dataset.ma === 'chkok' ? x.terrain : b.dataset.t, false); PP.app.commit(); chkGo(); return;
+      const x = cellAt(ui.chk.c, ui.chk.r), nt = b.dataset.ma === 'chkok' ? x.terrain : b.dataset.t;
+      chkStore(x, nt, false); if (nt !== x.terrain) simPropose(x.c, x.r, nt); PP.app.commit(); chkGo(); return;
     }
     if (b.dataset.ma === 'step') {
-      ui.step = +b.dataset.to; ui.sel = null; ui.only = null; ui.chk = null; ui.hl = null; ui.borders = false;
+      ui.step = +b.dataset.to; ui.sel = null; ui.only = null; ui.chk = null; ui.hl = null; ui.sim = null; ui.borders = false;
       PP.app.refresh(); requestAnimationFrame(ui.step === 3 ? fitPlan : fitRegion); return;
     }
     if (b.dataset.ma === 'open') { if (PP.drawer && PP.drawer.open) PP.drawer.open(); return; }
@@ -2857,7 +2894,7 @@
     const b = ev.target.closest('button,[data-go]'); if (!b || b.disabled) return;
     const d = b.dataset, m = M();
     if (d.step) {
-      ui.step = +d.step; ui.sel = null; ui.only = null; ui.chk = null; ui.hl = null; if (ui.step !== 1) ui.borders = false;
+      ui.step = +d.step; ui.sel = null; ui.only = null; ui.chk = null; ui.hl = null; ui.sim = null; if (ui.step !== 1) ui.borders = false;
       PP.app.refresh();
       requestAnimationFrame(ui.step === 3 ? fitPlan : fitRegion);
       return;
@@ -2872,7 +2909,8 @@
     if (d.only) { ui.only = ui.only === d.only ? null : d.only; ui.sel = null; PP.app.refresh(); requestAnimationFrame(fitPlan); return; }
     if (d.brush && ui.step === 2 && ui.chk) {
       // v49: while checking, a brush changes the tile being checked (tap again = take it off, like painting)
-      const x = cellAt(ui.chk.c, ui.chk.r); applyBrush(ui.chk.c, ui.chk.r, d.brush, !brushOn(d.brush, x));
+      const x = cellAt(ui.chk.c, ui.chk.r), on = !brushOn(d.brush, x); applyBrush(ui.chk.c, ui.chk.r, d.brush, on);
+      if (on && !x.stored) simPropose(ui.chk.c, ui.chk.r, d.brush);
       const t = S().tiles[key(ui.chk.c, ui.chk.r)]; if (t) t.bulk = false;
       PP.app.commit(); return;
     }
@@ -3231,6 +3269,10 @@
       ctx.shadowBlur = 0; ctx.lineWidth = 2; ctx.strokeStyle = '#fff'; ctx.stroke();
       const ay = q.y - tsz.h * 0.62; ctx.beginPath(); ctx.moveTo(q.x, ay); ctx.lineTo(q.x - ah * 0.55, ay - ah); ctx.lineTo(q.x + ah * 0.55, ay - ah); ctx.closePath();
       ctx.fillStyle = '#4cc9f0'; ctx.fill(); ctx.lineWidth = 2; ctx.strokeStyle = '#0b0f1f'; ctx.stroke(); ctx.restore();
+    }
+    if (ui.step === 2 && ui.sim) {
+      for (const k of ui.sim.keys) { const [c, r] = k.split(',').map(Number); ctx.save(); diamondPath(ctx, c, r, 0.98); ctx.shadowColor = '#c084fc'; ctx.shadowBlur = 10; ctx.lineWidth = 4; ctx.strokeStyle = '#c084fc'; ctx.stroke(); ctx.restore(); }
+      for (const k of ui.sim.out) { const [c, r] = k.split(',').map(Number); diamondPath(ctx, c, r, 0.9); ctx.lineWidth = 2; ctx.strokeStyle = 'rgba(200,200,220,.7)'; ctx.setLineDash([4, 4]); ctx.stroke(); ctx.setLineDash([]); }
     }
     if (ui.step === 2 && ui.hl) for (const k of ui.hl) { const [c, r] = k.split(',').map(Number); diamondPath(ctx, c, r, 1); ctx.lineWidth = 3.5; ctx.strokeStyle = '#ffb703'; ctx.stroke(); }
     if (ui.sel && !(ui.step === 3 && actOnSel())) { diamondPath(ctx, ui.sel.c, ui.sel.r, 1); ctx.lineWidth = 2.5; ctx.strokeStyle = '#fff'; ctx.setLineDash([4, 3]); ctx.stroke(); ctx.setLineDash([]); }
