@@ -1324,6 +1324,11 @@
     const valOf = (r, set) => (r.income - g.base.income) * PR.H - (r.cost - g.base.cost) - set.size * PR.pg;
     const better = (a, sa, b, sb) => { if (!b) return true; const va = valOf(a, sa), vb = valOf(b, sb); return va > vb + 1e-9 || (Math.abs(va - vb) <= 1e-9 && sa.size < sb.size); };
     const near = (a, b) => Math.max(Math.abs(a.c - b.c), Math.abs(a.r - b.r)) <= 5;
+    // a chosen city whose Border Growth adds no ★/turn on top of the others (known plans only) → its key, else null
+    // v49 "try it yourself": the plan for any choice of cities (known at once when the check had it, else solved now)
+    g.tryGot = set => (set.size ? got(set) : g.base) || null;
+    g.trySolve = set => solve(set);
+    const zeroGain = (set, r) => { for (const k of set) { const w = got(new Set([...set].filter(x => x !== k))) || (set.size === 1 ? g.base : null); if (w && w.income >= r.income) return k; } return null; };
     (async () => {
       pauseProof(g);
       g.t0 = Date.now();
@@ -1370,6 +1375,13 @@
       }
       // what each chosen city adds on top of the others (exact: the choice without it)
       if (bestSet.size && !(await parMap([...bestSet], k => solve(new Set([...bestSet].filter(x => x !== k)))))) return;
+      // v49: Border Growth only where it adds ★/turn – a plan that is just cheaper is not worth the +3 population the
+      // city gives up ("+0 ★/turn" looked odd). Take such cities out (one at a time, the others' gain can change).
+      for (;;) {
+        const z = zeroGain(bestSet, bestR); if (!z) break;
+        bestSet = new Set([...bestSet].filter(x => x !== z)); bestR = bestSet.size ? await solve(bestSet) : base; if (!bestR) return;
+        if (bestSet.size && !(await parMap([...bestSet], k => solve(new Set([...bestSet].filter(x => x !== k)))))) return;
+      }
       g.verdicts = (bestSet, bestR) => {
       // verdict per city
       g.best = { set: bestSet, income: bestR.income, cost: bestR.cost };
@@ -1402,6 +1414,7 @@
         Object.assign(PR, P2); g.prio = P2.id;
         let bs = new Set(), br = g.base;
         for (const [k, r] of memo) { if (k.startsWith('o:')) continue; const set = new Set(k ? k.split('|') : []); if (better(r, set, br, bs)) { br = r; bs = set; } }
+        for (let z = zeroGain(bs, br); z; z = zeroGain(bs, br)) { bs = new Set([...bs].filter(x => x !== z)); br = bs.size ? got(bs) || br : g.base; }
         g.verdicts(bs, br);
         // v47 the order of the new choice may need a few more plans (the worker was closed – a new one is made)
         g.order = null; g.ordering = true;
@@ -1592,6 +1605,27 @@
     if (last.income !== g.best.income) h += `<div class="mk-note" style="margin:4px 0 0">In this order: ${g.base.income} → <b>${last.income} ★/turn</b></div>`;
     return h + '</div>';
   }
+  // v49: switch Border Growth on / off per city and see what that choice earns (vs. the recommendation)
+  function tryHtml(g, nm) {
+    if (!g.cities || !g.cities.length || !g.tryGot) return '';
+    const rec = new Set(g.cities.filter(c => c.take).map(c => c.key));
+    const set = g.custom || rec, same = set.size === rec.size && [...set].every(k => rec.has(k));
+    let h = '<div class="gw-try"><div class="gw-oh">🔀 Try it yourself</div><div class="gw-tryc">' + g.cities.map(c => {
+      const on = set.has(c.key);
+      return `<button class="${on ? 'on' : ''}" data-gtry="${c.key}" aria-pressed="${on}" style="--cc:${cityCol(c.k)}">${nm(c.k, c.name)}<small>${on ? '🌱 grows' : '👥 no'}</small></button>`;
+    }).join('') + '</div>';
+    if (same) return h + '<div class="mk-note" style="margin:6px 0 0">This is the recommended choice – tap a city to switch.</div></div>';
+    const r = g.tryGot(set);
+    if (!r) {
+      if (!g.tryBusy || g.tryBusy !== cfgKeyOf(set)) { const k = g.tryBusy = cfgKeyOf(set); g.trySolve(set).then(() => { if (g.tryBusy === k) g.tryBusy = null; if (growth === g) PP.app.refresh(); }); }
+      return h + '<div class="mk-note" style="margin:6px 0 0"><span class="mk-spin"></span>calculating this choice…</div></div>';
+    }
+    const di = r.income - g.best.income, dco = r.cost - g.best.cost;
+    h += `<div class="gw-tryr"><b>${r.income} ★/turn</b> · cost ${r.cost} ★ <small>(${di === 0 ? 'same ★' : (di > 0 ? '+' : '') + di + ' ★/turn'}, ${dco === 0 ? 'same cost' : (dco > 0 ? '+' : '') + dco + ' ★ cost'} vs. recommended · ${plural(set.size, 'city grows', 'cities grow')})</small></div>`;
+    h += `<button class="mk-btn" data-a="growthApplyTry" style="width:100%;margin:6px 0 0">Plan with this choice</button>`;
+    return h + '</div>';
+  }
+  const cfgKeyOf = set => [...set].sort().join('|');
   function growthHtml(res) {
     if (!res || res.pending || res.tooBig || res.altPending || !res.best) return '';
     const A = area(), small = A.cities.filter(ci => ci.rad === 1), grown = A.cities.filter(ci => ci.rad === 2);
@@ -1660,6 +1694,7 @@
         `<span class="gw-v">${c.take ? '🌱 Border Growth' : '👥 Population Growth'}</span></div>${x}</div>`;
     };
     h += take.concat(noTake).map(card).join('');
+    h += tryHtml(g, nm);
     h += ringWarn + t3Btn();
     if (g.quick) h += `<div class="gw-warn">⚡ Quick check – ★ can be 1–3 too low <button class="lnk" data-a="growExact">check exactly</button></div>`;
     else if (g.open) h += `<p class="mk-note" style="margin:8px 0 0;color:#ffb703">⚠ ${plural(g.open, 'plan', 'plans')} not proven</p>`;
@@ -2368,6 +2403,14 @@
 .mk .gw-t3{display:flex;align-items:center;gap:5px;flex-wrap:wrap;margin:6px 0}
 .mk .mk-warn-u{margin:6px 0;padding:7px 10px;border-radius:10px;background:rgba(255,183,3,.12);border:1px solid rgba(255,183,3,.45);color:#ffd27a;font-size:13px;line-height:1.35}
 .mk .mk-warn-u .lnk{color:#ffb703;font-weight:700}
+.mk .gw-try{margin:10px 0 4px;padding:9px 10px;border:1px dashed var(--line,#33406e);border-radius:10px}
+.mk .gw-tryc{display:flex;flex-wrap:wrap;gap:5px;margin-top:6px}
+.mk .gw-tryc button{display:flex;flex-direction:column;align-items:flex-start;gap:1px;border:1px solid var(--line,#33406e);border-left:4px solid var(--cc);background:var(--bg,#12172b);border-radius:9px;padding:5px 9px;min-height:40px;font-size:12.5px;color:var(--text,#e8ecf8)}
+.mk .gw-tryc button small{color:var(--muted,#9aa5c8);font-size:11px}
+.mk .gw-tryc button.on{background:rgba(123,211,137,.16);border-color:#7bd389;border-left-color:var(--cc)}
+.mk .gw-tryc button.on small{color:#7bd389}
+.mk .gw-tryr{margin-top:8px;font-size:13.5px}
+.mk .gw-tryr small{color:var(--muted,#9aa5c8)}
 .mk .mk-only{display:flex;align-items:center;gap:5px;flex-wrap:wrap;margin:6px 0}
 .mk .mk-only>span{font-size:12.5px;color:var(--muted,#9aa5c8);margin-right:2px}
 .mk .mk-only button{border:1px solid var(--line,#33406e);background:var(--bg,#12172b);color:var(--text,#e8ecf8);border-radius:9px;padding:5px 9px;min-height:36px;font-size:12.5px;font-weight:600}
@@ -2757,8 +2800,14 @@
     if (d.opt) { m.opts[d.opt] = !m.opts[d.opt]; ui.alt = 0; PP.app.commit(); return; }
     if (d.tech) { const b = S().build || (S().build = {}); if (!Array.isArray(b.owned)) b.owned = []; const i = b.owned.indexOf(d.tech); if (i >= 0) b.owned.splice(i, 1); else b.owned.push(d.tech); PP.app.commit(); return; }
     if (d.ecity) { ui.editCity = d.ecity; PP.app.refresh(); return; }
+    if (d.gtry) {
+      const g = growthNow(); if (!g || !g.cities) return;
+      const cur = new Set(g.custom || g.cities.filter(c => c.take).map(c => c.key));
+      if (cur.has(d.gtry)) cur.delete(d.gtry); else cur.add(d.gtry);
+      g.custom = cur; PP.app.refresh(); return;
+    }
     if (d.gprio) {
-      M().growPrio = d.gprio;
+      M().growPrio = d.gprio; if (growth) growth.custom = null;
       if (growth && growth.state === 'done' && growth.rechoose && growth.sig === cacheSig) growth.rechoose(growPrio()); // instant
       PP.app.commit(); return;
     }
@@ -2804,6 +2853,14 @@
     if (a === 'growth') { ui.growMenu = false; }
     if (a === 'growth') { const r = planResult(); if (r && r.best) { startGrowth(r); PP.app.refresh(); } return; }
     if (a === 'growthAll') { M().cities.forEach(sc => { sc.rad = 1; delete sc.grow; }); stopGrowth(); growthAuto = true; ui.growMenu = false; M().touched = true; ui.alt = 0; PP.app.commit(); return; }
+    if (a === 'growthApplyTry') {
+      const g = growthNow(); if (!g || !g.custom) return;
+      // v49: your own choice – in the order of the check where it had one (the first one gets the tiles between), else together
+      const keys = [...g.custom], free = keys.length < 2 || orderFree(keys);
+      const ordKeys = (g.order || []).map(o => o.key).filter(k => g.custom.has(k)).concat(keys.filter(k => !(g.order || []).some(o => o.key === k)));
+      M().cities.forEach(sc => { const k = key(sc.c, sc.r), i = ordKeys.indexOf(k); if (g.cities.some(c => c.key === k)) { if (i >= 0) { sc.rad = 2; sc.grow = free ? 1 : i + 1; } else if (sc.grow) { sc.rad = 1; delete sc.grow; } } });
+      M().touched = true; ui.alt = 0; PP.app.commit(); toast(plural(keys.length, 'city', 'cities') + ' now planned with 5×5 (your choice)'); return;
+    }
     if (a === 'growthApply') {
       const g = growthNow(); if (!g) return;
       // v47: in the best order – the city that grows first gets the tiles between growing cities
