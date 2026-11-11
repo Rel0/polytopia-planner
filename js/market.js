@@ -1065,6 +1065,9 @@
       for (const k of Object.keys(m.edits)) {
         const v = m.edits[k];
         if (!(v === 1 || typeof v === 'string') || owner.has(k) || (cand.has(k) && cand.get(k).by.length)) continue;
+        // v49: a tile added to a city that is not selected any more is left out – it used to go to the nearest other city
+        // (a cut-off strip far from that city's territory)
+        if (typeof v === 'string' && !cityK.has(v)) continue;
         const [c, r] = k.split(',').map(Number);
         if (!isFinite(c) || !isFinite(r) || isCityAt(c, r) || cellAt(c, r).terrain === 'space') continue;
         owner.set(k, typeof v === 'string' && cityK.has(v) ? cityK.get(v) : nearestOf(c, r, cities).k);
@@ -2040,7 +2043,9 @@
     return s;
   }
   function unselectCity(c, r) {
-    const m = M(), s = selAt(c, r);
+    const m = M(), s = selAt(c, r), ck = key(c, r);
+    // v49: its border changes go with it (tiles added to it, and tiles taken away inside its radius)
+    for (const k in m.edits) if (m.edits[k] === ck) delete m.edits[k];
     m.cities = m.cities.filter(x => x !== s);
     m.touched = true; ui.alt = 0;
     // a city this tool created (tap on an unknown tile) disappears again
