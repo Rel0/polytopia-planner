@@ -10,6 +10,14 @@ const vm = require('vm');
 const ROOT = path.join(__dirname, '..');
 const SITE = 'https://polytopiaplanner.com';
 const TODAY = new Date().toISOString().slice(0, 10);
+// v49: real dates instead of "today" on every deploy – the last commit that changed what a page shows
+// (search engines stop trusting a lastmod that changes every day)
+function changed(files) {
+  try {
+    const d = require('child_process').execFileSync('git', ['log', '-1', '--format=%cs', '--'].concat(files), { cwd: ROOT, encoding: 'utf8' }).trim();
+    return /^\d{4}-\d{2}-\d{2}$/.test(d) ? d : TODAY;
+  } catch (e) { return TODAY; }
+}
 
 // ---- load the app data (browser scripts) in a sandbox
 const sandbox = { window: {} };
@@ -31,6 +39,9 @@ const PAGES = [
   { slug: 'market-planner', nav: 'Market Calculator', tool: 'market' },
   { slug: 'units', nav: 'All Units', tool: 'units' },
 ];
+// when the unit / combat data was last changed (shown on the pages and in the footer)
+const CHECKED = changed(['js/data.js']);
+const CHECKED_HUMAN = new Date(CHECKED + 'T12:00:00Z').toLocaleDateString('en-GB', { month: 'long', year: 'numeric', timeZone: 'UTC' });
 
 function layout(p, o) {
   const url = SITE + '/' + p.slug + '/';
@@ -83,12 +94,12 @@ function layout(p, o) {
 <main>
 ${o.body}
 ${o.faq && o.faq.length ? `<section id="faq"><h2>FAQ</h2>${o.faq.map(f => `<details><summary>${esc(f[0])}</summary><p>${f[1]}</p></details>`).join('')}</section>` : ''}
-<section><h2>More Polytopia tools</h2><ul class="chips">${PAGES.filter(x => x.slug !== p.slug).map(x => `<li><a href="/${x.slug}/">${esc(x.nav)}</a></li>`).join('')}<li><a href="/">Polytopia Planner app</a></li></ul></section>
+<section><h2>More Polytopia tools</h2>${p.slug !== 'damage-calculator' ? '<p>Planning a fight? The <a href="/damage-calculator/">Polytopia damage calculator</a> shows damage, retaliation and the best attack order for any number of units.</p>' : ''}<ul class="chips">${PAGES.filter(x => x.slug !== p.slug).map(x => `<li><a href="/${x.slug}/">${esc(x.nav)}</a></li>`).join('')}<li><a href="/">Polytopia Planner app</a></li></ul></section>
 </main>
 <footer><div class="in">
   <nav aria-label="Footer">${PAGES.map(x => `<a href="/${x.slug}/">${esc(x.nav)}</a>`).join('')}<a href="/">App</a><a href="/privacy.html">Privacy</a><a href="https://github.com/Rel0/polytopia-planner">GitHub</a></nav>
   Free, unofficial fan tool – not affiliated with or endorsed by Midjiwan AB. “The Battle of Polytopia” is a trademark of Midjiwan AB.
-  Unit data from the community wiki, last checked ${TODAY}.
+  Unit data from the community wiki, last checked ${CHECKED}.
 </div></footer>
 ${o.scripts || ''}
 </body>
@@ -145,10 +156,18 @@ function battlePage(p) {
     ['How does the calculator find the best attack order?', 'Every attacker attacks once. The calculator tries how to split your units over the enemies and in which order they attack – splash first if it weakens the neighbours, the next unit on another enemy if a target is already dead. “Sort by” sets what counts most: most kills, most damage, no own losses or fewest attacks. “Custom” uses only the attacks you choose, in your order.'],
   ];
   const body = `<div class="sky"><h1><span>Polytopia</span>Damage Calculator</h1>
-<p>Any number of attackers and defenders – splash, terrain, tech and the best attack order.</p>${horizon()}</div>
+<p>Battle calculator for any number of attackers and defenders – splash, terrain, tech and the best attack order.</p>
+<p class="fresh">Rules checked ${CHECKED_HUMAN} · all ${Object.keys(PP.UNITS).length} units</p>${horizon()}</div>
 <svg width="0" height="0" style="position:absolute" aria-hidden="true"><defs><symbol id="i-check" viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7.5"/></symbol></defs></svg>
 <section id="calculator" aria-label="Damage calculator"><div id="calc" class="calc"><noscript>Please turn on JavaScript to use the calculator.</noscript></div></section>
 ` + `
+<section><h2>What this battle calculator does</h2><ul class="feat">
+<li><b>Many against many</b><span>Put several attackers and defenders on the field – not just one fight at a time.</span></li>
+<li><b>Best attack order</b><span>It tries every order and every split of your units over the enemies and shows the plan with the most kills, the most damage or no own losses.</span></li>
+<li><b>Splash, poison, freeze, explosions</b><span>Bomber and Fire Dragon splash, Cymanti poison and explosions, the Ice Archer’s freeze – all counted, also for the next attacks.</span></li>
+<li><b>Defense bonus with the right tech</b><span>Forest, mountain and water only protect with Archery, Climbing or Aquatism – you see both results.</span></li>
+<li><b>From your screenshot</b><span>Open a screenshot of your game: the units and tiles are detected, you only check them.</span></li>
+</ul></section>
 <section><h2>On your own screenshot</h2><ol class="steps">
 <li><b>Add a screenshot</b><span>Take a screenshot in Polytopia and open it – the tiles, units and cities are detected automatically.</span></li>
 <li><b>Place units</b><span>Pick your tribe and the enemy’s, then tap tiles to place units. Set HP, veteran, poisoned or frozen.</span></li>
@@ -162,6 +181,8 @@ total        = attackForce + defenseForce
 damage       = round(attackForce  / total × attack  × 4.5)
 retaliation  = round(defenseForce / total × defense × 4.5)   (only if the defender survives and is in range)</pre>
 <p>A veteran has +5 max HP. Ships (Raft, Scout, Rammer, Bomber) use the HP of the unit they carry.</p>
+<h3>Example: Swordsman attacks a Defender in a forest</h3>
+<p>Swordsman (attack 3, 15/15 HP) against a Defender (defense 3, 15/15 HP) in a forest. If the defender’s tribe has <b>Archery</b>, the forest gives ×1.5: attackForce = 3, defenseForce = 3 × 1.5 = 4.5, total = 7.5. Damage = round(3 / 7.5 × 3 × 4.5) = <b>5</b>, the Defender strikes back with round(4.5 / 7.5 × 3 × 4.5) = <b>8</b>. Without Archery (×1) it is <b>7</b> damage and <b>7</b> back – the tech decides who wins this fight.</p>
 <h3>Defense bonus</h3>
 <div class="tw"><table><thead><tr><th>Where the defender stands</th><th class="n">Bonus</th></tr></thead><tbody>
 ${KIND.map(k => `<tr><td>${esc(k[0])}</td><td class="n">${k[1]}</td></tr>`).join('')}
@@ -171,8 +192,8 @@ ${KIND.map(k => `<tr><td>${esc(k[0])}</td><td class="n">${k[1]}</td></tr>`).join
 ${skillRows.map(r => `<tr><td><b>${esc(r[0])}</b></td><td class="sk">${esc(r[1])}</td><td class="sk">${esc(r[2])}</td></tr>`).join('')}
 </tbody></table></div></section>`;
   return layout(p, {
-    title: 'Polytopia Damage Calculator – Terrain, Tech & Screenshot (all units)',
-    desc: 'Free Polytopia damage calculator: put any number of attackers and defenders on a small battlefield and get the best attack order – damage, retaliation, splash, terrain and the tech for the defense bonus, for all units.',
+    title: 'Polytopia Damage Calculator – Battle Calculator & Best Attack Order',
+    desc: 'Free Polytopia damage and battle calculator for all units: any number of attackers and defenders, the best attack order, retaliation, splash, poison, terrain and the tech for the defense bonus – also from your screenshot.',
     appName: 'Polytopia Damage Calculator', crumb: 'Damage Calculator', body, faq, bodyClass: 'narrow', css: '/css/dmg.css?v=1',
     scripts: '<script src="/js/data.js?v=1"></script>\n<script src="/js/engine.js?v=1"></script>\n<script src="/js/dmgpage.js?v=1"></script>'
   });
@@ -298,12 +319,14 @@ for (const p of PAGES) {
   fs.mkdirSync(dir, { recursive: true });
   fs.writeFileSync(path.join(dir, 'index.html'), BUILD[p.slug](p));
 }
-const urls = [['/', '1.0']].concat(PAGES.map(p => ['/' + p.slug + '/', '0.9']), [['/privacy.html', '0.2']]);
+const PAGE_SRC = ['scripts/build-pages.js', 'js/data.js', 'css/pages.css', 'css/sun.css'];
+const SRC = { 'damage-calculator': PAGE_SRC.concat('js/dmgpage.js', 'js/engine.js', 'css/dmg.css'), 'tech-tree': PAGE_SRC, 'market-planner': PAGE_SRC, units: PAGE_SRC };
+const urls = [['/', '1.0', changed(['index.html'])]].concat(PAGES.map(p => ['/' + p.slug + '/', '0.9', changed(SRC[p.slug])]), [['/privacy.html', '0.2', changed(['privacy.html'])]]);
 fs.writeFileSync(path.join(ROOT, 'sitemap.xml'), `<?xml version="1.0" encoding="UTF-8"?>
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
 ${urls.map(u => `  <url>
     <loc>${SITE}${u[0]}</loc>
-    <lastmod>${TODAY}</lastmod>
+    <lastmod>${u[2]}</lastmod>
     <priority>${u[1]}</priority>
   </url>`).join('\n')}
 </urlset>

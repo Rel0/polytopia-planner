@@ -74,3 +74,8 @@ footer nav{display:flex;flex-wrap:wrap;gap:6px 16px;margin-bottom:10px}
 .tt.t1{border-color:#4cc9f0}.tt.t2{border-color:#7a6cf0}.tt.t3{border-color:#ffd166}
 @media (max-width:860px){.ttree{grid-template-columns:repeat(auto-fit,minmax(240px,1fr))}.tk{grid-template-columns:1fr 1fr}}
 @media (max-width:520px){.tk{grid-template-columns:1fr}}
+/* v49 damage calculator: what it does (cards like .steps, with a check instead of a number) */
+.feat{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:10px;padding:0;margin:12px 0 0;list-style:none}
+.feat li{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:12px 14px}
+.feat b{display:block;margin-bottom:2px}
+.feat span{color:var(--muted);font-size:14.5px}
