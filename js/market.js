@@ -920,7 +920,7 @@
     destroy: ['💥', 'Destroy buildings', 'move / replace'], produce: ['🏗️', 'New Farms, Mines, Lumber Huts', ''] };
   const TECH_OF_WS = { windmill: 'Construction', forge: 'Smithery', sawmill: 'Mathematics' }; // fallback when PP.TECH is missing
 
-  const ui = { step: 1, brush: 'forest', paint: null, alt: 0, sel: null, entered: false, borders: false, edit: null, only: null, growMenu: false, techMenu: false };
+  const ui = { step: 1, brush: 'forest', paint: null, alt: 0, sel: null, entered: false, borders: false, edit: null, only: null, chk: null, chkSkip: null, hl: null, growMenu: false, techMenu: false };
   const S = () => PP.state;
   // state.market: { cities: [{ c, r, rad: 1|2, made? }], edits: { 'c,r': 1 (added) | 0 (removed) }, touched, opts }
   // (v16 had a rectangle `region`; now always false – core resets it to null when a new screenshot is loaded)
@@ -2251,6 +2251,7 @@
         if (ui.borders) { const A = area(), ek = editCityK(A), ci = A.cities.find(x => key(x.c, x.r) === ek); return ci ? 'Editing ' + cityName(ci, ci.k) + ': tap a tile to give it to ' + cityName(ci, ci.k) + ' · tap one of its tiles to remove it' : ''; }
         return selCities().length ? 'Tap a city: 3×3 → 5×5 → off · wrong tile? tap the right one' : 'Tap your own cities (the city tile) to plan their Markets';
       }
+      if (ui.step === 2 && ui.chk) return '✓ if the framed tile is right · ⋯ all brushes';
       if (ui.step === 2) return ui.brush ? 'Tap or drag: ' + nm(ui.brush) + ' (tap again = remove)' : 'Pick a brush, then tap tiles';
       if (ui.only === 'forest') return '🪓 Only the forests to cut down (🔥 = burn), in the order of the plan';
       if (ui.only === 'destroy') return '💥 Only the buildings to destroy, in the order of the plan';
@@ -2411,6 +2412,11 @@
 .mk .gw-tryc button.on small{color:#7bd389}
 .mk .gw-tryr{margin-top:8px;font-size:13.5px}
 .mk .gw-tryr small{color:var(--muted,#9aa5c8)}
+.mk .mk-chk{margin:6px 0;padding:8px 10px;border-radius:10px;background:rgba(255,183,3,.10);border:1px solid rgba(255,183,3,.4)}
+.mk .mk-chkh{display:flex;align-items:center;gap:8px;flex-wrap:wrap;color:#ffd27a;font-size:13px}
+.mk .mk-chkh .mk-btn{margin:0 0 0 auto}
+.mk .mk-chkg{display:flex;align-items:center;gap:12px;margin-top:6px;font-size:13px}
+.mk .mk-chkg span{flex:1;display:flex;align-items:center;gap:6px}
 .mk .mk-only{display:flex;align-items:center;gap:5px;flex-wrap:wrap;margin:6px 0}
 .mk .mk-only>span{font-size:12.5px;color:var(--muted,#9aa5c8);margin-right:2px}
 .mk .mk-only button{border:1px solid var(--line,#33406e);background:var(--bg,#12172b);color:var(--text,#e8ecf8);border-radius:9px;padding:5px 9px;min-height:36px;font-size:12.5px;font-weight:600}
@@ -2518,12 +2524,14 @@
       if (A.cities.length) h += `<button class="mk-btn pri" data-step="2">Next: ② What’s here ▶</button>`;
       h += '</div>';
     } else if (ui.step === 2) {
-      const bt = id => `<button data-brush="${id}" class="${ui.brush === id ? 'on' : ''} ${TER_B.indexOf(id) >= 0 ? 't' : RES_B.indexOf(id) >= 0 ? 'rs' : 'b'}" title="${esc(nm(id))}"><span>${iconHtml(id, 21)}</span>${BRUSH_LABEL[id]}</button>`;
+      // v49: while checking a tile the palette shows what that tile has (and its brushes change it)
+      const chkX = ui.chk ? cellAt(ui.chk.c, ui.chk.r) : null, bOn = id => (chkX ? (chkX.stored ? brushOn(id, chkX) : id === (chkX.cloud ? 'cloud' : chkX.terrain) || chkX.res.indexOf(id) >= 0 || chkX.bld === id) : ui.brush === id);
+      const bt = id => `<button data-brush="${id}" class="${bOn(id) ? 'on' : ''} ${TER_B.indexOf(id) >= 0 ? 't' : RES_B.indexOf(id) >= 0 ? 'rs' : 'b'}" title="${esc(nm(id))}"><span>${iconHtml(id, 21)}</span>${BRUSH_LABEL[id]}</button>`;
       // v33: brushes grouped by what belongs together (16 = two rows of 8), the Plan button as a wide row below
       h += `<div data-peek="tiles">${stepsHtml()}<div class="mk-pal">` + PAL_ORDER.map(bt).join('') + '</div>' +
         '<button class="mk-btn pri mk-plan" data-step="3">▶ Show the plan</button></div>' +
         // v37: the explanation is below the collapsed panel (Less shows only up to "Show the plan")
-        (autoStats().unsure ? `<div class="mk-note" style="margin:3px 0 0;color:#ffb703">⚠ ${plural(autoStats().unsure, 'tile', 'tiles')} with ? – please check</div>` : '');
+        chkPanelHtml();
       h += citiesHtml();
       h += countsHtml();
       // v49: the detection always runs (unmarked tiles take it) – no button that froze its guesses as your own marks
@@ -2681,14 +2689,60 @@
     return null;
   }
   // v49: steps ① / ② with the panel collapsed – the "Next" button is on the map too (no need to open the panel)
+  // v49: checking the tiles with ? one by one (the ones the last plan builds on first, then the least sure)
+  function unsureList() {
+    const pl = cache && cache.best ? planUnsure(cache.best) : new Set(), seen = new Set(), out = [];
+    for (const x of areaCells().concat(ringCells())) {
+      const k = key(x.c, x.r); if (seen.has(k)) continue; seen.add(k);
+      if (x.terrain === 'city' || x.stored || !x.unsure || (ui.chkSkip && ui.chkSkip.has(k))) continue;
+      out.push(Object.assign(x, { inPlan: pl.has(k) }));
+    }
+    return out.sort((a, b) => (b.inPlan - a.inPlan) || (a.conf || 0) - (b.conf || 0));
+  }
+  function chkGo() {
+    const l = unsureList();
+    if (!l.length) { ui.chk = null; ui.sel = null; toast(ui.chkSkip && ui.chkSkip.size ? 'No more tiles with ? (skipped ones stay)' : '✓ All tiles with ? checked'); PP.app.refresh(); return; }
+    const x = l[0], keepEdit = ui.chk && ui.chk.edit; ui.chk = { c: x.c, r: x.r, n: l.length, edit: keepEdit }; ui.sel = null; ui.hl = null;
+    if (!keepEdit && PP.drawer && PP.drawer.isOverlay() && PP.drawer.isOpen() && !PP.drawer.isPeek()) PP.drawer.close();
+    PP.app.refresh();
+    // v49: the tile and its neighbours in the free part of the map (above the bar / the panel)
+    requestAnimationFrame(() => fitTiles([[x.c - 1, x.r - 1], [x.c + 1, x.r + 1]], 110));
+  }
+  // confirm / correct tiles (bulk = confirmed in a group without looking at each: not sent as training data)
+  function chkStore(x, terrain, bulk) {
+    const same = terrain === x.terrain;
+    storeTile(x.c, x.r, { terrain, res: same ? x.res || [] : [], bld: same ? x.bld || null : null, bulk: !!bulk });
+  }
+  const CHK_T = ['field', 'forest', 'mountain', 'water'];
+  const cellText = x => [x.cloud ? nm('cloud') : x.monument ? nm('monument') : nm(x.terrain)].concat((x.res || []).filter(q => !(q === 'crop' && x.bld === 'farm')).map(nm), x.bld ? [nm(x.bld)] : []).map(esc).join(' + ');
+  function chkActHtml() {
+    const x = cellAt(ui.chk.c, ui.chk.r), sub = `<small>${ui.chk.n} to check · ${x.c}/${x.r}${x.inPlan ? ' · used by the plan' : ''}</small>`;
+    // ⋯ opens the panel with all brushes (they change only this tile), ✕ stops checking
+    const more = '<button class="ma-alt" data-ma="chkedit" title="All brushes (resources, buildings …)">⋯</button>', end = '<button class="ma-alt" data-ma="chkend" title="Stop checking">✕</button>';
+    // you changed it: what it is now, ✓ goes on to the next tile
+    if (x.stored) return `<span class="ma-tx"><b>${cellText(x)}</b><br>${sub}</span><button class="ma-ok" data-ma="chkdone" title="Done – next tile">✓ Next</button>` + (ui.chk.edit ? '' : more) + end;
+    const alt = ui.chk.edit ? '' : CHK_T.filter(t => t !== x.terrain).map(t => `<button class="ma-alt" data-ma="chkset" data-t="${t}" title="It is ${esc(nm(t))}">${iconHtml(t, 20)}</button>`).join('');
+    return `<span class="ma-tx"><b>${cellText(x)}?</b><br>${sub}</span><button class="ma-ok" data-ma="chkok" title="Yes, that's right">✓</button>${alt}` + (ui.chk.edit ? '' : more) + end;
+  }
+  // v49: the ? tiles in the panel – check one by one, or per kind: show them, confirm them all
+  function chkPanelHtml() {
+    const l = unsureList(); if (!l.length) return '';
+    const by = {}; l.forEach(x => { const t = x.terrain + (x.bld ? '+' + x.bld : ''); (by[t] || (by[t] = [])).push(x); });
+    let h = `<div class="mk-chk"><div class="mk-chkh">⚠ <b>${plural(l.length, 'tile', 'tiles')} with ?</b>${l.some(x => x.inPlan) ? ` · ${l.filter(x => x.inPlan).length} used by the plan` : ''}<button class="mk-btn sm pri" data-a="chkStart">▶ Check one by one</button></div>`;
+    h += Object.keys(by).sort((a, b) => by[b].length - by[a].length).map(t => { const [ter, bl] = t.split('+');
+      return `<div class="mk-chkg"><span>${iconHtml(bl || ter, 18)} ${by[t].length} × ${esc(nm(ter))}${bl ? ' + ' + esc(nm(bl)) : ''}?</span><button class="lnk" data-chkshow="${t}">Show</button><button class="lnk" data-chkall="${t}">✓ All correct</button></div>`; }).join('');
+    return h + '</div>';
+  }
   function stepActHtml() {
+    if (ui.step === 2 && ui.chk) return chkActHtml();
     if (!PP.drawer || (PP.drawer.isOpen() && !PP.drawer.isPeek())) return '';
     if (ui.step === 1) {
       const n = area().cities.length;
       if (!n) return '';
       return `<span class="ma-tx"><small>① Cities</small><br>${plural(n, 'city', 'cities')} selected</span><button class="ma-ok ma-next" data-ma="step" data-to="2">② What’s here ▶</button>`;
     }
-    if (ui.step === 2 && !ui.borders) return `<span class="ma-tx"><small>② What’s here</small><br>Mark the tiles, then plan</span><button class="ma-ok ma-next" data-ma="step" data-to="3">▶ Plan</button>`;
+    if (ui.step === 2 && !ui.borders) { const nu = unsureList().length;
+      return `<span class="ma-tx"><small>② What’s here</small><br>Mark the tiles, then plan</span>${nu ? `<button class="ma-un" data-ma="chknext" title="Check the tiles with ?">❓ ${nu}</button>` : ''}<button class="ma-ok ma-next" data-ma="step" data-to="3">▶ Plan</button>`; }
     return '';
   }
   function mapActHtml() {
@@ -2725,8 +2779,17 @@
   function mapActClick(ev) {
     const b = ev.target.closest('button[data-ma]'); if (!b || b.disabled) return;
     const m = M(), p = curPlan(planResult());
+    if (b.dataset.ma === 'chknext') { ui.chkSkip = new Set(); chkGo(); return; }
+    if (b.dataset.ma === 'chkend') { ui.chk = null; ui.sel = null; PP.app.refresh(); return; }
+    if (b.dataset.ma === 'chkdone' && ui.chk) { chkGo(); return; }
+    // all brushes: the panel opens (its brushes then change the tile being checked)
+    if (b.dataset.ma === 'chkedit' && ui.chk) { ui.chk.edit = true; if (PP.drawer) { PP.drawer.open(); if (PP.drawer.setFull) PP.drawer.setFull(false); } PP.app.refresh(); requestAnimationFrame(() => fitTiles([[ui.chk.c - 1, ui.chk.r - 1], [ui.chk.c + 1, ui.chk.r + 1]], 110)); return; }
+    if (b.dataset.ma === 'chkskip' && ui.chk) { (ui.chkSkip || (ui.chkSkip = new Set())).add(key(ui.chk.c, ui.chk.r)); chkGo(); return; }
+    if ((b.dataset.ma === 'chkok' || b.dataset.ma === 'chkset') && ui.chk) {
+      const x = cellAt(ui.chk.c, ui.chk.r); chkStore(x, b.dataset.ma === 'chkok' ? x.terrain : b.dataset.t, false); PP.app.commit(); chkGo(); return;
+    }
     if (b.dataset.ma === 'step') {
-      ui.step = +b.dataset.to; ui.sel = null; ui.only = null; ui.borders = false;
+      ui.step = +b.dataset.to; ui.sel = null; ui.only = null; ui.chk = null; ui.hl = null; ui.borders = false;
       PP.app.refresh(); requestAnimationFrame(ui.step === 3 ? fitPlan : fitRegion); return;
     }
     if (b.dataset.ma === 'open') { if (PP.drawer && PP.drawer.open) PP.drawer.open(); return; }
@@ -2789,12 +2852,25 @@
     const b = ev.target.closest('button,[data-go]'); if (!b || b.disabled) return;
     const d = b.dataset, m = M();
     if (d.step) {
-      ui.step = +d.step; ui.sel = null; ui.only = null; if (ui.step !== 1) ui.borders = false;
+      ui.step = +d.step; ui.sel = null; ui.only = null; ui.chk = null; ui.hl = null; if (ui.step !== 1) ui.borders = false;
       PP.app.refresh();
       requestAnimationFrame(ui.step === 3 ? fitPlan : fitRegion);
       return;
     }
+    if (d.chkshow || d.chkall) {
+      const t = d.chkshow || d.chkall, l = unsureList().filter(x => x.terrain + (x.bld ? '+' + x.bld : '') === t);
+      if (d.chkall) { l.forEach(x => chkStore(x, x.terrain, true)); ui.hl = null; PP.app.commit(); toast(plural(l.length, 'tile', 'tiles') + ' confirmed'); return; }
+      ui.hl = new Set(l.map(x => key(x.c, x.r))); ui.sel = null; PP.app.refresh();
+      if (PP.drawer && PP.drawer.isOverlay()) PP.drawer.yieldMap();
+      requestAnimationFrame(() => fitTiles(l.map(x => [x.c, x.r]), 150)); return;
+    }
     if (d.only) { ui.only = ui.only === d.only ? null : d.only; ui.sel = null; PP.app.refresh(); requestAnimationFrame(fitPlan); return; }
+    if (d.brush && ui.step === 2 && ui.chk) {
+      // v49: while checking, a brush changes the tile being checked (tap again = take it off, like painting)
+      const x = cellAt(ui.chk.c, ui.chk.r); applyBrush(ui.chk.c, ui.chk.r, d.brush, !brushOn(d.brush, x));
+      const t = S().tiles[key(ui.chk.c, ui.chk.r)]; if (t) t.bulk = false;
+      PP.app.commit(); return;
+    }
     if (d.brush) { ui.brush = ui.brush === d.brush ? null : d.brush; PP.app.refresh(); return; }
     if (d.alt) { ui.alt = d.alt === 'best' ? 0 : d.alt; ui.sel = null; PP.app.refresh(); requestAnimationFrame(fitPlan); return; }
     if (d.opt) { m.opts[d.opt] = !m.opts[d.opt]; ui.alt = 0; PP.app.commit(); return; }
@@ -2846,6 +2922,7 @@
     if (a === 'techMenu') { ui.techMenu = !ui.techMenu; PP.app.refresh(); return; }
     if (a === 'techAgain') { stopTech(); ui.techMenu = true; PP.app.refresh(); return; }
     if (a === 'tech') { ui.techMenu = false; startTech(); PP.app.refresh(); return; }
+    if (a === 'chkStart') { ui.chkSkip = new Set(); chkGo(); return; }
     if (a === 'growthMenu') { ui.growMenu = !ui.growMenu; PP.app.refresh(); return; }
     if (a === 'growQuick') { M().growQuick = M().growQuick !== true; PP.app.commit(); return; }
     if (a === 'growExact') { M().growQuick = false; growthAuto = true; PP.app.commit(); return; }
@@ -3141,6 +3218,16 @@
       }
       drawGrowBadges(ctx, D, u, big, true);
     }
+    if (ui.step === 2 && ui.chk) {
+      // v49: the tile being checked – thick glowing frame and an arrow above it, impossible to miss
+      const q = PP.board.tileToScreen(ui.chk.c, ui.chk.r), tsz = PP.board.tileScreenSize(), ah = clamp(tsz.h * 0.5, 14, 34);
+      ctx.save(); diamondPath(ctx, ui.chk.c, ui.chk.r, 1.04);
+      ctx.shadowColor = '#4cc9f0'; ctx.shadowBlur = 16; ctx.lineWidth = 6; ctx.strokeStyle = '#4cc9f0'; ctx.stroke();
+      ctx.shadowBlur = 0; ctx.lineWidth = 2; ctx.strokeStyle = '#fff'; ctx.stroke();
+      const ay = q.y - tsz.h * 0.62; ctx.beginPath(); ctx.moveTo(q.x, ay); ctx.lineTo(q.x - ah * 0.55, ay - ah); ctx.lineTo(q.x + ah * 0.55, ay - ah); ctx.closePath();
+      ctx.fillStyle = '#4cc9f0'; ctx.fill(); ctx.lineWidth = 2; ctx.strokeStyle = '#0b0f1f'; ctx.stroke(); ctx.restore();
+    }
+    if (ui.step === 2 && ui.hl) for (const k of ui.hl) { const [c, r] = k.split(',').map(Number); diamondPath(ctx, c, r, 1); ctx.lineWidth = 3.5; ctx.strokeStyle = '#ffb703'; ctx.stroke(); }
     if (ui.sel && !(ui.step === 3 && actOnSel())) { diamondPath(ctx, ui.sel.c, ui.sel.r, 1); ctx.lineWidth = 2.5; ctx.strokeStyle = '#fff'; ctx.setLineDash([4, 3]); ctx.stroke(); ctx.setLineDash([]); }
     ctx.restore();
   }

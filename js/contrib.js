@@ -20,7 +20,7 @@ window.PP = window.PP || {};
     const ctr = (c, r) => ({ x: +(g.ox + c * g.ux + r * g.vx).toFixed(1), y: +(g.oy + c * g.uy + r * g.vy).toFixed(1) });
     const T = { field: 'field', forest: 'forest', mountain: 'mountain', water: 'water', ocean: 'water', cloud: 'cloud', space: 'edge' };
     Object.keys(st.tiles || {}).forEach(k => {
-      const t = st.tiles[k]; if (!t || t.src === 'auto') return;
+      const t = st.tiles[k]; if (!t || t.src === 'auto' || t.bulk) return; // v49: tiles confirmed as a group were not looked at one by one
       const [c, r] = k.split(',').map(Number); if (!isFinite(c) || !isFinite(r)) return;
       const ter = t.city ? 'city' : T[t.terrain]; if (!ter) return;
       const parts = [ter].concat(ter === 'city' ? [] : (t.res || []).map(x => (x === 'ore' ? 'metal' : x)));

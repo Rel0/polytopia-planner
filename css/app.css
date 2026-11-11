@@ -335,3 +335,6 @@ html,body,header,main,#rail,#drawer,#sheet,#float,#empty,button,input,select,lab
 /* v49 menu sub-pages */
 .sheethead .back{border:0;background:var(--panel2);color:var(--text);width:36px;height:36px;border-radius:10px;font-size:22px;line-height:1;display:flex;align-items:center;justify-content:center;padding:0 0 3px}
 .menuh{margin:12px 2px 2px;font-size:12px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:var(--muted)}
+/* v49 checking the ? tiles on the map bar */
+#mapAct .ma-alt{background:rgba(255,255,255,.1);color:var(--text,#e8ecf8);padding:6px;min-width:38px;min-height:38px;display:flex;align-items:center;justify-content:center}
+#mapAct .ma-alt img,#mapAct .ma-alt svg{width:22px;height:22px}
