@@ -949,7 +949,17 @@
     m.cities = m.cities.filter(x => x && Number.isInteger(x.c) && Number.isInteger(x.r));
     m.cities.forEach(x => { if (x.rad !== 2) x.rad = 1; });
     if (!m.edits || typeof m.edits !== 'object' || Array.isArray(m.edits)) m.edits = {};
+    // v49 enemy cities (tapped in ①): their territory is left out of ours and of Border Growth
+    if (!Array.isArray(m.enemies)) m.enemies = [];
+    m.enemies = m.enemies.filter(x => x && Number.isInteger(x.c) && Number.isInteger(x.r));
     return m;
+  }
+  const enemyAt = (c, r) => M().enemies.find(e => e.c === c && e.r === r) || null;
+  // tiles of the enemy cities' territories (3×3 or 5×5 around their city tile)
+  function enemyTiles() {
+    const out = new Set();
+    for (const e of M().enemies) for (let dr = -(e.rad || 1); dr <= (e.rad || 1); dr++) for (let dc = -(e.rad || 1); dc <= (e.rad || 1); dc++) out.add(key(e.c + dc, e.r + dr));
+    return out;
   }
   const build = () => S().build || (S().build = {});
   const placements = () => { const b = build(); if (!Array.isArray(b.placements)) b.placements = []; return b.placements; };
@@ -1043,7 +1053,8 @@
     });
     const owner = new Map(), base = new Set(), ring = new Set(), cand = new Map();
     const cityK = new Map(cities.map(ci => [key(ci.c, ci.r), ci.k]));
-    const blocked = (k, t) => isCityAt(t.c, t.r) || m.edits[k] === 0 || cellAt(t.c, t.r).terrain === 'space';
+    const enT = enemyTiles();
+    const blocked = (k, t) => enT.has(k) || isCityAt(t.c, t.r) || m.edits[k] === 0 || cellAt(t.c, t.r).terrain === 'space';
     for (const ci of cities) {
       for (let dr = -ci.rad; dr <= ci.rad; dr++) for (let dc = -ci.rad; dc <= ci.rad; dc++) {
         const k = key(ci.c + dc, ci.r + dr);
@@ -1068,6 +1079,7 @@
         // v49: a tile added to a city that is not selected any more is left out – it used to go to the nearest other city
         // (a cut-off strip far from that city's territory)
         if (typeof v === 'string' && !cityK.has(v)) continue;
+        if (enT.has(k)) continue; // v49: inside an enemy city's territory
         const [c, r] = k.split(',').map(Number);
         if (!isFinite(c) || !isFinite(r) || isCityAt(c, r) || cellAt(c, r).terrain === 'space') continue;
         owner.set(k, typeof v === 'string' && cityK.has(v) ? cityK.get(v) : nearestOf(c, r, cities).k);
@@ -2070,12 +2082,23 @@
   }
   // tap in step ①: city → select (3×3) → 5×5 → off; other tiles → snap to a city next to it or mark a new city
   function tapCity(c, r) {
-    const s = selAt(c, r);
+    const s = selAt(c, r), m = M(), en = enemyAt(c, r);
     if (s && isCityAt(c, r)) {
       const nm1 = cityLabel(c, r);
-      if (s.rad === 1) { s.rad = 2; delete s.grow; M().touched = true; ui.alt = 0; toast(nm1 + ': 5×5 territory (tap again to remove)'); }
-      else { unselectCity(c, r); toast(nm1 + ' removed'); }
+      if (s.rad === 1) { s.rad = 2; delete s.grow; m.touched = true; ui.alt = 0; toast(nm1 + ': 5×5 territory · tap again: enemy city'); }
+      else {
+        // v49: next tap = an enemy city – it stays a city, its 3×3 is left out of our territories and Border Growth
+        for (const k in m.edits) if (m.edits[k] === key(c, r)) delete m.edits[k];
+        m.cities = m.cities.filter(x => x !== s); m.touched = true; ui.alt = 0;
+        const ce = cityEntry(c, r); if (ce) ce.side = 'enemy'; else upsertCity(c, r, 'user', { side: 'enemy' });
+        m.enemies.push({ c, r, rad: 1 }); toast(nm1 + ': enemy city (3×3 is not ours) · tap again for 5×5');
+      }
       return;
+    }
+    if (en && isCityAt(c, r)) {
+      if (en.rad !== 2) { en.rad = 2; toast(cityLabel(c, r) + ': enemy city 5×5 · tap again to remove'); }
+      else { m.enemies = m.enemies.filter(x => x !== en); toast(cityLabel(c, r) + ': not marked any more'); }
+      m.touched = true; ui.alt = 0; return;
     }
     if (!isCityAt(c, r)) {
       // v46: a tile right next to a selected city: the detection sat one tile off → the city moves here
@@ -2268,7 +2291,7 @@
     hint() {
       if (ui.step === 1 || !selCities().length) {
         if (ui.borders) { const A = area(), ek = editCityK(A), ci = A.cities.find(x => key(x.c, x.r) === ek); return ci ? 'Editing ' + cityName(ci, ci.k) + ': tap a tile to give it to ' + cityName(ci, ci.k) + ' · tap one of its tiles to remove it' : ''; }
-        return selCities().length ? 'Tap a city: 3×3 → 5×5 → off · wrong tile? tap the right one' : 'Tap your own cities (the city tile) to plan their Markets';
+        return selCities().length ? 'Tap a city: 3×3 → 5×5 → enemy → off · wrong tile? tap the right one' : 'Tap your own cities (the city tile) to plan their Markets';
       }
       if (ui.step === 2 && ui.chk) return '✓ if the framed tile is right · ⋯ all brushes';
       if (ui.step === 2) return ui.brush ? 'Tap or drag: ' + nm(ui.brush) + ' (tap again = remove)' : 'Pick a brush, then tap tiles';
@@ -3205,6 +3228,16 @@
       ctx.save();
       // known cities that are not selected: dashed ring = tap target
       const seen = new Set();
+      // v49 enemy cities: their territory red, the city with a red ring and "Enemy"
+      if (ui.step === 1 || ui.step === 2) {
+        for (const k of enemyTiles()) { const [c, r] = k.split(',').map(Number); diamondPath(ctx, c, r, 0.96); ctx.fillStyle = 'rgba(239,71,111,.16)'; ctx.fill(); }
+        for (const e of M().enemies) {
+          const q = PP.board.tileToScreen(e.c, e.r); if (!vis(q)) continue; seen.add(key(e.c, e.r));
+          const R = clamp(u * 0.42, 10, 28), fs = clamp(u * 0.17, 9, 11);
+          disc(ctx, q.x, q.y, R, 'rgba(60,10,20,.8)', '#ef476f', 3); drawIcon(ctx, 'city', q.x, q.y, R * 1.3, 0.85);
+          if (D && D.pill) { const t = 'Enemy · ' + (e.rad === 2 ? '5×5' : '3×3'), y = q.y + R + fs * 0.8; D.pill(ctx, q.x, y, t, 'rgba(239,71,111,.92)', fs); ctx.save(); ctx.font = `bold ${fs}px system-ui,sans-serif`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillStyle = '#fff'; ctx.fillText(t, q.x, y + 1); ctx.restore(); }
+        }
+      }
       const ring = (c, r, me) => {
         const k = key(c, r); if (seen.has(k) || selAt(c, r) && isCityAt(c, r)) return; seen.add(k);
         const q = PP.board.tileToScreen(c, r); if (!vis(q)) return;
