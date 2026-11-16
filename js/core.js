@@ -212,6 +212,40 @@ window.PP = window.PP || {};
     localStorage.setItem(LS_KEY, JSON.stringify(s));
     location.reload();
   }
+  // v49: one game as a file (state + screenshot) – to move it to another device or share it
+  const blobToDataUrl = b => new Promise(res => { const r = new FileReader(); r.onload = () => res(r.result); r.onerror = () => res(null); r.readAsDataURL(b); });
+  async function exportGame(g) {
+    saveNow();
+    const e = g.list.find(x => x.id === MY_GAME) || { name: 'Game' };
+    const blob = S().board === 'image' ? (await idb.get('img.' + MY_GAME)) || (await idb.get('img')) : null;
+    const data = { format: 'polytopia-planner-game', v: 1, name: e.name, saved: new Date().toISOString(), state: Object.assign({}, PP.state, { gameId: null }), image: blob ? await blobToDataUrl(blob) : null };
+    const fname = 'polytopia-' + (e.name || 'game').replace(/[^\w\- ]+/g, '').trim().replace(/\s+/g, '-').slice(0, 40) + '.json';
+    const file = new File([JSON.stringify(data)], fname, { type: 'application/json' });
+    // phone: the share sheet (AirDrop, messengers, mail …); else a download
+    try { if (navigator.canShare && navigator.canShare({ files: [file] })) { await navigator.share({ files: [file], title: e.name }); return; } } catch (er) { if (er && er.name === 'AbortError') return; }
+    const a = document.createElement('a'); a.href = URL.createObjectURL(file); a.download = fname; document.body.appendChild(a); a.click();
+    setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 1000);
+    toast('Game saved as ' + fname, 3000);
+  }
+  function importGame(g) {
+    const inp = document.createElement('input'); inp.type = 'file'; inp.accept = 'application/json,.json';
+    inp.onchange = async () => {
+      const f = inp.files && inp.files[0]; if (!f) return;
+      let d = null; try { d = JSON.parse(await f.text()); } catch (er) { d = null; }
+      if (!d || d.format !== 'polytopia-planner-game' || !isObj(d.state)) { toast('⚠ Not a Polytopia Planner game file', 4000); return; }
+      if (!(await parkCurrent(g))) { toast('⚠ Could not save this game first – not importing (storage full?)', 6000); return; }
+      const nid = gid(), st = Object.assign({}, d.state, { gameId: nid });
+      st.ui = Object.assign({}, S().ui, { mode: (d.state.ui && d.state.ui.mode) || S().ui.mode }); // keep this device's view settings
+      let okImg = true;
+      if (d.image) { try { const blob = await (await fetch(d.image)).blob(); okImg = await idb.set('img.' + nid, blob); } catch (er) { okImg = false; } }
+      if (!d.image || !okImg) { if (st.board === 'image') st.board = null; }
+      if (!(await idb.set('game.' + nid, JSON.stringify(st)))) { toast('⚠ Could not import (storage full?)', 6000); return; }
+      const used = new Set(g.list.map(x => x.name)); let name = String(d.name || 'Imported game').slice(0, 36); if (used.has(name)) name += ' (2)';
+      g.list.push({ id: nid, name, t: Date.now(), thumb: null });
+      await openGame(g, nid);
+    };
+    inp.click();
+  }
   const ago = t => { const m = Math.round((Date.now() - t) / 60000); return m < 1 ? 'just now' : m < 60 ? m + ' min ago' : m < 1440 ? Math.round(m / 60) + ' h ago' : Math.round(m / 1440) + ' d ago'; };
   function openGames() {
     const g = gamesList();
@@ -231,6 +265,8 @@ window.PP = window.PP || {};
       <p class="note" style="margin-top:0">Keep several games apart (e.g. a few 24 h games) – each with its own screenshot, units, plans and notes.</p>
       <div class="games">${g.list.slice().sort((a, b) => (b.id === g.cur) - (a.id === g.cur) || b.t - a.t).map(row).join('')}</div>
       <button class="btn block" data-g="new">＋ New game</button>
+      <div class="gx"><button class="btn" data-g="export">⤴ Export this game</button><button class="btn" data-g="import">⤵ Import a game</button></div>
+      <p class="note" style="margin-top:4px">Export makes one file (screenshot, marks, plan, notes) – open it with Import on another phone or computer.</p>
       <p class="note">Saved on this device only (this browser).</p>`,
     async (ev, b) => {
       if (!b || switching) return;
@@ -258,6 +294,8 @@ window.PP = window.PP || {};
         if (!(await parkCurrent(g))) { toast('⚠ Could not save this game first – not switching (storage full?)', 6000); return; }
         await openGame(g, id); return;
       }
+      if (a === 'export') { exportGame(g); return; }
+      if (a === 'import') { importGame(g); return; }
       if (a === 'save') { const ok = await parkCurrent(g); saveGames(g); toast(ok ? '💾 Saved' : '⚠ Could not save (storage full?)', 3000); openGames(); return; }
       if (a === 'new') {
         const used = new Set(g.list.map(x => x.name));

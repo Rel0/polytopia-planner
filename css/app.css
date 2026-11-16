@@ -342,3 +342,5 @@ html,body,header,main,#rail,#drawer,#sheet,#float,#empty,button,input,select,lab
 #staleBar{position:fixed;left:8px;right:8px;top:8px;z-index:50;display:flex;align-items:center;gap:10px;background:#3a2a06;color:#ffe2a8;border:1px solid #ffb703;border-radius:12px;padding:10px 12px;font-size:13.5px;box-shadow:0 8px 24px rgba(0,0,0,.5)}
 #staleBar span{flex:1}
 #staleBar button{border:0;border-radius:10px;background:#ffb703;color:#2a1d00;font-weight:800;padding:9px 14px}
+.gx{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-top:6px}
+.gx .btn{border:1px solid var(--line);text-align:center}
