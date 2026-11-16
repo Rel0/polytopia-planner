@@ -62,11 +62,22 @@ window.PP = window.PP || {};
 
   let saveTimer = 0;
   let switching = false; // v49: a saved game is being opened – no saving of the old state while the page reloads
+  // v49 (games got mixed up / lost): every tab remembers which game it shows. If another tab opens another game (or
+  // changes this one), this tab is "stale": it must not write its old state over the shared slot any more – its changes
+  // go to its own game's slot, and a bar asks to reload. Each game is also mirrored into its own IndexedDB slot.
+  let stale = false, saveFailed = false, mirrorTimer = 0, lastSaved = 0;
   function saveNow() {
     clearTimeout(saveTimer); saveTimer = 0;
     if (switching) return;
-    try { localStorage.setItem(LS_KEY, JSON.stringify(PP.state)); } catch (e) { console.warn('save failed', e); }
+    if (MY_GAME) PP.state.gameId = MY_GAME; // which game this state belongs to (checked at start)
+    const json = JSON.stringify(PP.state);
+    if (!stale) {
+      try { ownWrite = json; localStorage.setItem(LS_KEY, json); lastSaved = Date.now(); if (saveFailed) { saveFailed = false; PP.ui && PP.ui.toast && PP.ui.toast('Saved again ✓'); } }
+      catch (e) { console.warn('save failed', e); if (!saveFailed) { saveFailed = true; PP.ui && PP.ui.toast && PP.ui.toast('⚠ Could not save – the browser storage is full. Delete old games in Menu › Games.', 6000); } }
+    }
+    clearTimeout(mirrorTimer); mirrorTimer = setTimeout(() => mirrorGame(json), stale ? 0 : 1500);
   }
+  let ownWrite = null;
   // v32 undo: every save compares the state (without the view settings in .ui) with the last one; a change puts the
   // old state on the undo stack. A new screenshot clears it (the image itself cannot be undone).
   const UNDO_MAX = 50;
@@ -112,8 +123,9 @@ window.PP = window.PP || {};
     async set(k, v) {
       try {
         const db = await this.open();
-        await new Promise((res, rej) => { const tx = db.transaction('kv', 'readwrite'); tx.objectStore('kv').put(v, k); tx.oncomplete = res; tx.onerror = () => rej(tx.error); });
-      } catch (e) { console.warn('idb set failed', e); }
+        await new Promise((res, rej) => { const tx = db.transaction('kv', 'readwrite'); tx.objectStore('kv').put(v, k); tx.oncomplete = res; tx.onerror = () => rej(tx.error); tx.onabort = () => rej(tx.error); });
+        return true;
+      } catch (e) { console.warn('idb set failed', e); return false; }
     },
     async get(k) {
       try {
@@ -146,6 +158,23 @@ window.PP = window.PP || {};
     return g;
   }
   const saveGames = g => { try { localStorage.setItem(GAMES_KEY, JSON.stringify(g)); return true; } catch (e) { return false; } };
+  const MY_GAME = (() => { try { return gamesList().cur; } catch (e) { return null; } })();
+  // the open game is also kept in its own slot (what "Open" reads) – so nothing is lost if the shared slot gets mixed up
+  // the screenshot of this tab's game: its own slot, and the shared one unless another tab has taken over
+  function storeImg(blob) { if (MY_GAME) idb.set('img.' + MY_GAME, blob); if (!stale) idb.set('img', blob); }
+  async function mirrorGame(json) { if (!MY_GAME || switching) return false; const ok = await idb.set('game.' + MY_GAME, json || JSON.stringify(PP.state)); if (ok) lastSaved = Date.now(); return ok; }
+  function goStale(why) {
+    if (stale) return; stale = true;
+    const b = document.createElement('div'); b.id = 'staleBar';
+    b.innerHTML = `<span>⚠ ${why} – this tab shows an old state. Your changes here are kept in this game.</span><button type="button">Reload</button>`;
+    b.querySelector('button').onclick = () => location.reload();
+    document.body.appendChild(b);
+  }
+  window.addEventListener('storage', e => {
+    if (switching) return;
+    if (e.key === GAMES_KEY) { let g = null; try { g = JSON.parse(e.newValue); } catch (er) { g = null; } if (g && g.cur && g.cur !== MY_GAME) goStale('Another tab opened another game'); }
+    else if (e.key === LS_KEY && e.newValue !== ownWrite) goStale('This game was changed in another tab');
+  });
   // small picture of the screenshot for the list (JPEG, 120 px wide)
   function thumbOf() {
     try {
@@ -159,16 +188,21 @@ window.PP = window.PP || {};
   // park the open game in its slot (state + screenshot); also refreshes its entry in the list
   async function parkCurrent(g) {
     saveNow();
-    const e = g.list.find(x => x.id === g.cur);
-    await idb.set('game.' + g.cur, JSON.stringify(PP.state));
-    const blob = S().board === 'image' ? await idb.get('img') : null;
-    if (blob) await idb.set('img.' + g.cur, blob); else await idb.del('img.' + g.cur);
+    const id = MY_GAME || g.cur, e = g.list.find(x => x.id === id);
+    if (!(await idb.set('game.' + id, JSON.stringify(PP.state)))) return false;
+    // the screenshot: this tab's own copy (the shared 'img' may belong to another tab's game)
+    const blob = S().board === 'image' ? (await idb.get('img.' + id)) || (!stale ? await idb.get('img') : null) : null;
+    if (blob) { if (!(await idb.set('img.' + id, blob))) return false; } else if (S().board !== 'image') await idb.del('img.' + id);
     if (e) { e.t = Date.now(); const th = thumbOf(); if (th || S().board !== 'image') e.thumb = th; }
+    lastSaved = Date.now();
+    return true;
   }
   // make game id the open one (its parked state → LS_KEY, its screenshot → 'img'), then reload
-  async function openGame(g, id) {
+  async function openGame(g, id, fresh) {
     const st = id ? await idb.get('game.' + id) : null;
     let s = null; try { s = st ? JSON.parse(st) : null; } catch (e) { s = null; }
+    // a saved game whose data can't be read: don't open it as an empty game (that looked like "everything deleted")
+    if (!fresh && !isObj(s)) { toast('⚠ This game could not be loaded from the browser storage', 5000); return; }
     // a new / empty game keeps the view settings (panel, last unit …) but nothing of the board
     if (!isObj(s)) s = { ui: Object.assign({}, S().ui, { mode: S().ui.mode }) };
     const blob = id ? await idb.get('img.' + id) : null;
@@ -187,8 +221,8 @@ window.PP = window.PP || {};
       const on = x.id === g.cur;
       return `<div class="game${on ? ' on' : ''}">` +
         (x.thumb ? `<img src="${x.thumb}" alt="">` : '<span class="nothumb">🗺️</span>') +
-        `<span class="gn"><b>${esc(x.name)}</b><small>${on ? 'open now' : 'saved ' + ago(x.t)}</small></span>` +
-        (on ? '' : `<button class="gopen" data-g="open" data-id="${x.id}">Open</button>`) +
+        `<span class="gn"><b>${esc(x.name)}</b><small>${on ? 'open now' + (lastSaved ? ' · saved ' + new Date(lastSaved).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '') : 'saved ' + ago(x.t)}</small></span>` +
+        (on ? `<button class="gopen" data-g="save" title="Save this game now">💾 Save</button>` : `<button class="gopen" data-g="open" data-id="${x.id}">Open</button>`) +
         `<button class="gic" data-g="ren" data-id="${x.id}" aria-label="Rename ${esc(x.name)}">✏️</button>` +
         `<button class="gic" data-g="del" data-id="${x.id}" aria-label="Delete ${esc(x.name)}">🗑️</button></div>`;
     };
@@ -215,19 +249,24 @@ window.PP = window.PP || {};
         if (id === g.cur) { // the open game: go to the newest other one, or start a fresh one
           const nx = g.list.slice().sort((p, q) => q.t - p.t)[0];
           if (nx) { await openGame(g, nx.id); return; }
-          const nid = gid(); g.list.push({ id: nid, name: 'Game 1', t: Date.now(), thumb: null }); await openGame(g, nid); return;
+          const nid = gid(); g.list.push({ id: nid, name: 'Game 1', t: Date.now(), thumb: null }); await openGame(g, nid, true); return;
         }
         saveGames(g); openGames(); return;
       }
-      if (a === 'open' && e) { toast('Opening “' + e.name + '”…'); await parkCurrent(g); await openGame(g, id); return; }
+      if (a === 'open' && e) {
+        toast('Opening “' + e.name + '”…');
+        if (!(await parkCurrent(g))) { toast('⚠ Could not save this game first – not switching (storage full?)', 6000); return; }
+        await openGame(g, id); return;
+      }
+      if (a === 'save') { const ok = await parkCurrent(g); saveGames(g); toast(ok ? '💾 Saved' : '⚠ Could not save (storage full?)', 3000); openGames(); return; }
       if (a === 'new') {
         const used = new Set(g.list.map(x => x.name));
         let n = g.list.length + 1; while (used.has('Game ' + n)) n++;
         const name = (window.prompt('Name of the new game', 'Game ' + n) || '').trim();
         if (!name) return;
-        await parkCurrent(g);
+        if (!(await parkCurrent(g))) { toast('⚠ Could not save this game first – not switching (storage full?)', 6000); return; }
         const nid = gid(); g.list.push({ id: nid, name: name.slice(0, 40), t: Date.now(), thumb: null });
-        await openGame(g, nid);
+        await openGame(g, nid, true);
       }
     });
   }
@@ -1495,7 +1534,7 @@ window.PP = window.PP || {};
         const st = S();
         st.board = 'image';
         if (!fresh) { needFit = true; fit(); commit(); resolve({ det: null }); return; }
-        idb.set('img', blob);
+        storeImg(blob);
         const w = im.naturalWidth / 7, h = RATIO * w;
         st.grid = { ox: im.naturalWidth / 2, oy: im.naturalHeight / 2, ux: w / 2, uy: h / 2, vx: -w / 2, vy: h / 2 };
         needFit = true; fit();
@@ -1630,7 +1669,7 @@ window.PP = window.PP || {};
     if (imgUrl) URL.revokeObjectURL(imgUrl);
     img = a.img; imgUrl = a.url; pix = null; hiRes = null;
     const st = S(); st.board = 'image'; st.grid = G;
-    idb.set('img', a.blob);
+    storeImg(a.blob);
     setTimeout(clearUndo, 0);
     needFit = true; fit();
     PP.modes.set(a.back && registry[a.back] && TOOL_IDS.includes(a.back) ? a.back : firstTool());
@@ -1937,8 +1976,14 @@ window.PP = window.PP || {};
       PP.modes.current = m;
       hook(registry[m], 'onEnter');
       resize(); refresh();
+      // v49: the shared slot holds another game's state (mixed up by two tabs before) → take this game's own copy
+      if (st.gameId && MY_GAME && st.gameId !== MY_GAME) {
+        idb.get('game.' + MY_GAME).then(js => { let g = null; try { g = JSON.parse(js); } catch (e) { g = null; }
+          if (isObj(g) && (!g.gameId || g.gameId === MY_GAME)) { switching = true; localStorage.setItem(LS_KEY, js); location.reload(); } });
+        return;
+      }
       if (st.board === 'image') {
-        idb.get('img').then(blob => {
+        (MY_GAME ? idb.get('img.' + MY_GAME) : Promise.resolve(null)).then(b => b || idb.get('img')).then(blob => {
           if (blob) loadImageBlob(blob, false);
           else { st.board = null; commit(); toast('Screenshot not found – please load it again'); }
         });

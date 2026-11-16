@@ -338,3 +338,7 @@ html,body,header,main,#rail,#drawer,#sheet,#float,#empty,button,input,select,lab
 /* v49 checking the ? tiles on the map bar */
 #mapAct .ma-alt{background:rgba(255,255,255,.1);color:var(--text,#e8ecf8);padding:6px;min-width:38px;min-height:38px;display:flex;align-items:center;justify-content:center}
 #mapAct .ma-alt img,#mapAct .ma-alt svg{width:22px;height:22px}
+/* v49 another tab switched the game / changed this one */
+#staleBar{position:fixed;left:8px;right:8px;top:8px;z-index:50;display:flex;align-items:center;gap:10px;background:#3a2a06;color:#ffe2a8;border:1px solid #ffb703;border-radius:12px;padding:10px 12px;font-size:13.5px;box-shadow:0 8px 24px rgba(0,0,0,.5)}
+#staleBar span{flex:1}
+#staleBar button{border:0;border-radius:10px;background:#ffb703;color:#2a1d00;font-weight:800;padding:9px 14px}
