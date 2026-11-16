@@ -1712,7 +1712,18 @@
   let prover = null; // { sig, worker, res }
   const PROOF_SECS = 300, COST_SECS = 60, COST_MORE_SECS = 600; // income proof · automatic cost proof · on request
   function stopProver() { if (prover && prover.worker) try { prover.worker.terminate(); } catch (e) { /* gone */ } prover = null; }
-  function proofRefresh() { if (PP.modes && PP.modes.current === 'market' && ui.step === 3) PP.app.refresh(); }
+  function proofRefresh() { if (!prover) savePlanSnap(); if (PP.modes && PP.modes.current === 'market' && ui.step === 3) PP.app.refresh(); }
+  // v49: the finished plan is kept in the game (M().savedPlan) – opening the game again shows the same plan at once instead
+  // of a new search that can come out different (same ★, other layout). Only while the board is unchanged (hash of it).
+  const hashStr = t => { let h = 5381; for (let i = 0; i < t.length; i++) h = ((h * 33) ^ t.charCodeAt(i)) >>> 0; return h.toString(36) + ':' + t.length; };
+  function savePlanSnap() {
+    if (!cache || !cacheSig || running || cache.exactPending || cache.restored || !cache.best) return;
+    const keep = { best: cache.best, alts: cache.alts || [], fastPlan: cache.fastPlan || null, proof: cache.proof || null, large: cache.large ? { ub: cache.large.ub, optimal: cache.large.optimal } : null };
+    const h = hashStr(cacheSig), m = M();
+    if (m.savedPlan && m.savedPlan.h === h && m.savedPlan.t === (cache.best.income + '/' + cache.best.cost)) return;
+    m.savedPlan = { h, t: cache.best.income + '/' + cache.best.cost, res: JSON.parse(JSON.stringify(keep)) };
+    if (PP.app && PP.app.save) PP.app.save(); // stored without its own undo step
+  }
   // time budget (s) of a worker task – used for the "≤ … s" hints at the plan options
   const taskBudget = (t, costSecs) => (t === 'inc' ? PROOF_SECS : t === 'cost' || t === 'fast' ? costSecs : Math.min(costSecs, 30));
   // seconds until the task that refines an option is done (upper bound) – null if nothing is pending for it
@@ -1874,6 +1885,8 @@
     const m = M(); if (!selCities().length) return null;
     const sig = planSig();
     if (cache && sig === cacheSig) return cache;
+    // v49: the plan saved with this game, for exactly this board
+    if (m.savedPlan && m.savedPlan.res && m.savedPlan.h === hashStr(sig)) { stopProver(); running = null; cache = Object.assign({}, m.savedPlan.res, { restored: true }); cacheSig = sig; return cache; }
     if (prover && prover.sig !== sig) stopProver();
     if (growth && growth.sig !== sig) stopGrowth(); // board changed → that check is worthless
     if (tech && tech.sig.split('|')[0] !== sig) stopTech();
