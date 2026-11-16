@@ -1673,7 +1673,7 @@
     let h = '';
     { const PRr = growPrio(); h += `<div class="gw-prio" style="margin:0 0 8px">` + Object.values(GROW_PRIO).map(P => `<button class="${PRr.id === P.id ? 'on' : ''}" data-gprio="${P.id}"><b>${P.name}</b><small>${esc(P.note)}</small></button>`).join('') + '</div>'; }
     h += take.length
-      ? `<div class="gw-sum">👉 🌱 Border Growth in <b>${take.length} of ${g.cities.length}</b> ${g.cities.length === 1 ? 'city' : 'cities'}: ${take.map(c => nm(c.k, c.name)).join(', ')}${noTake.length ? `<br>👥 Population Growth in ${noTake.map(c => nm(c.k, c.name)).join(', ')}` : ''}<br>` +
+      ? `<div class="gw-sum">👉 🌱 Border Growth in <b>${take.length} of ${g.cities.length}</b> ${g.cities.length === 1 ? 'city' : 'cities'}: ${take.map(c => nm(c.k, c.name)).join(', ')}<br>` +
         `<b class="gw-plus">+${sum} ★/turn</b> <small>(${g.base.income} → ${g.best.income}${dc > 0 ? ' · builds ' + dc + ' ★ more · pays back in ' + plural(Math.ceil(dc / Math.max(1, sum)), 'turn', 'turns') : ''})</small></div>` +
         orderHtml(g) +
         `<button class="mk-btn pri" data-a="growthApply" style="width:100%;margin:0 0 8px">Plan with 5×5 for ${(g.order && g.order.length > 1 ? g.order : take).map(c => esc(c.name)).join(g.order && g.order.length > 1 && !g.order[0].free ? ' → ' : ', ')}</button>`
@@ -2161,8 +2161,9 @@
     if (id === 'monument') { if (on) storeTile(c, r, { terrain: 'field', res: [], bld: 'monument' }); else delete S().tiles[k]; return; }
     if (TER_B.indexOf(id) >= 0) {
       if (!on) { delete S().tiles[k]; return; } // back to "not marked" (= Empty)
-      const bld = x.bld && BASE[x.bld] === id && !(x.bld === 'farm' && id !== 'field') ? x.bld : null;
-      storeTile(c, r, { terrain: id, res: x.res.filter(q => RES_TER[q] === id), bld: x.bld === 'other' && id === x.terrain ? x.other : bld });
+      // v49: a terrain brush sets just that terrain – "Empty" really is empty (a detected fruit / crop / building goes);
+      // resources and buildings are added with their own brushes
+      storeTile(c, r, { terrain: id, res: [], bld: null });
       return;
     }
     if (RES_B.indexOf(id) >= 0) {
@@ -3261,6 +3262,7 @@
       }
       drawGrowBadges(ctx, D, u, big, true);
     }
+    if (ui.step === 2) drawBuiltInStep2(ctx, u, big);
     if (ui.step === 2 && ui.chk) {
       // v49: the tile being checked – thick glowing frame and an arrow above it, impossible to miss
       const q = PP.board.tileToScreen(ui.chk.c, ui.chk.r), tsz = PP.board.tileScreenSize(), ah = clamp(tsz.h * 0.5, 14, 34);
@@ -3313,6 +3315,22 @@
       const gl = f === 'destroy' ? '💥' : f === 'plant' ? '🌲' : st.some(x => x.item === 'burn') && !st.some(x => x.item === 'clear') ? '🔥' : '🪓';
       emoji(ctx, gl, q.x, q.y, big * 0.75, done ? 0.55 : 1);
       later.push(() => numBadge(ctx, done ? '✓' : st.map(x => x.no).join('·'), q.x - R * 0.8, q.y - R * 0.9, rad * (done ? 1.2 : 1), done ? BUILT_COL : col, done ? '#fff' : '#0b0f1f'));
+    }
+    later.forEach(f => f());
+  }
+  // v49: what you ticked as built in ③ also shows in ② (building + green ✓) – only shown, not stored as a mark: a mark
+  // would change the input of the plan and it could come out different while you are building it
+  function drawBuiltInStep2(ctx, u, big) {
+    const p = cache && cache.best; if (!p) return;
+    const rad = clamp(u * 0.15, 6.5, 11), later = [];
+    for (const t of p.tiles) {
+      if (!t.item || !t.steps.length || !t.steps.every(isDone)) continue;
+      const x = cellAt(t.c, t.r); if (x.stored && x.bld === t.item) continue;
+      const q = PP.board.tileToScreen(t.c, t.r), R = big * 0.55;
+      diamondPath(ctx, t.c, t.r, 0.92); ctx.lineWidth = clamp(u * 0.05, 2, 3.5); ctx.strokeStyle = BUILT_COL; ctx.stroke();
+      disc(ctx, q.x, q.y, R, BUILT_DARK, BUILT_COL, 2.2);
+      drawIcon(ctx, t.item, q.x, q.y, big * 0.82, 1);
+      later.push(() => numBadge(ctx, '✓', q.x - R * 0.8, q.y - R * 0.9, rad, BUILT_COL, '#fff'));
     }
     later.forEach(f => f());
   }
