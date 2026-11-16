@@ -920,7 +920,7 @@
     destroy: ['💥', 'Destroy buildings', 'move / replace'], produce: ['🏗️', 'New Farms, Mines, Lumber Huts', ''] };
   const TECH_OF_WS = { windmill: 'Construction', forge: 'Smithery', sawmill: 'Mathematics' }; // fallback when PP.TECH is missing
 
-  const ui = { step: 1, brush: 'forest', paint: null, alt: 0, sel: null, entered: false, borders: false, edit: null, only: null, sim: null, chk: null, chkSkip: null, hl: null, growMenu: false, techMenu: false };
+  const ui = { step: 1, brush: 'forest', paint: null, alt: 0, sel: null, entered: false, borders: false, edit: null, only: null, view: null, sim: null, chk: null, chkSkip: null, hl: null, growMenu: false, techMenu: false };
   const S = () => PP.state;
   // state.market: { cities: [{ c, r, rad: 1|2, made? }], edits: { 'c,r': 1 (added) | 0 (removed) }, touched, opts }
   // (v16 had a rectangle `region`; now always false – core resets it to null when a new screenshot is loaded)
@@ -1956,7 +1956,33 @@
   const ALT_TAGS = ['best', 'fast']; // v29: Cheaper / Fewer steps removed on request
   const altOf = (res, tag) => (!tag || tag === 'best' ? res.best
     : (res.alts || []).find(q => q.tag === tag && (tag !== 'fewer' || q.income >= res.best.income)) || null);
-  const curPlan = res => (res && !res.pending ? altOf(res, ui.alt) || res.best : null);
+  const curPlan = res => { const v = viewedPlan(); if (v) return v.plan; return res && !res.pending ? altOf(res, ui.alt) || res.best : null; };
+  // v49 saved plans (per game): compare plans (e.g. with / without Border Growth) and look at one on the map
+  const curPlanRaw = res => (res && !res.pending ? altOf(res, ui.alt) || res.best : null);
+  const savedPlans = () => { const m = M(); if (!Array.isArray(m.plans)) m.plans = []; return m.plans; };
+  const viewedPlan = () => (ui.view ? savedPlans().find(x => x.id === ui.view) || null : null);
+  function planLabel(p) {
+    const g = M().cities.filter(sc => sc.rad === 2 && sc.grow > 0), A = area();
+    const nmOf = sc => { const ci = A.cities.find(c => c.c === sc.c && c.r === sc.r); return ci ? cityName(ci, ci.k) : sc.c + '/' + sc.r; };
+    return (g.length ? 'BG ' + g.map(nmOf).join(', ') : 'No BG') + ' · ' + p.income + ' ★';
+  }
+  function savePlan(p) {
+    const l = savedPlans();
+    if (l.length >= 8) l.shift();
+    const name = planLabel(p);
+    l.push({ id: Date.now().toString(36), name, t: Date.now(), income: p.income, cost: p.cost, actions: p.actions, payback: p.payback || null, plan: JSON.parse(JSON.stringify(p)) });
+    return name;
+  }
+  function plansHtml(cur) {
+    const l = savedPlans(); if (!l.length) return '';
+    const v = viewedPlan(), rows = [{ id: '', name: 'Current plan', income: cur ? cur.income : null, cost: cur ? cur.cost : null, actions: cur ? cur.actions : null, payback: cur ? cur.payback : null }].concat(l);
+    const base = rows[0], d = (a, b, inv) => (a == null || b == null || a === b ? '' : `<small class="${(a > b) !== !!inv ? 'up' : 'dn'}">${a > b ? '+' : ''}${a - b}</small>`);
+    let h = '<div class="mk-plans"><div class="gw-oh">📌 Saved plans</div><table><thead><tr><th></th><th>★/turn</th><th>cost</th><th>steps</th><th>pays back</th><th></th></tr></thead><tbody>';
+    h += rows.map(r => { const on = (r.id || '') === (v ? v.id : '');
+      return `<tr class="${on ? 'on' : ''}"><td class="pn">${esc(r.name)}</td><td>${r.income ?? '–'}${r.id ? d(r.income, base.income) : ''}</td><td>${r.cost ?? '–'}${r.id ? d(r.cost, base.cost, true) : ''}</td><td>${r.actions ?? '–'}</td><td>${r.payback ? r.payback + ' t' : '–'}</td>` +
+        `<td class="pa">${on ? '<b>shown</b>' : `<button class="lnk" data-pview="${r.id}">Show</button>`}${r.id ? `<button class="lnk" data-pren="${r.id}" title="Rename">✏️</button><button class="lnk" data-pdel="${r.id}" title="Delete">🗑️</button>` : ''}</td></tr>`; }).join('');
+    return h + '</tbody></table></div>';
+  }
   function altsHtml(res) {
     const q = res.proof || {}, info = { best: 'most ★/turn', fast: 'return on investment' };
     const pending = tag => !res.proof || res.altPending || (tag === 'fast' ? q.fast === 'waiting' || q.fast === 'running'
@@ -2466,6 +2492,17 @@
 .mk .mk-chkh .mk-btn{margin:0 0 0 auto}
 .mk .mk-chkg{display:flex;align-items:center;gap:12px;margin-top:6px;font-size:13px}
 .mk .mk-chkg span{flex:1;display:flex;align-items:center;gap:6px}
+.mk .mk-view{margin:6px 0;padding:8px 10px;border-radius:10px;background:rgba(76,201,240,.12);border:1px solid rgba(76,201,240,.5);font-size:13px;display:flex;flex-wrap:wrap;align-items:center;gap:8px}
+.mk .mk-view .mk-btn{margin:0 0 0 auto}
+.mk .mk-plans{margin:10px 0 4px;padding:8px 10px;border:1px solid var(--line,#33406e);border-radius:10px;overflow-x:auto}
+.mk .mk-plans table{width:100%;border-collapse:collapse;font-size:12.5px;margin-top:6px}
+.mk .mk-plans th{color:var(--muted,#9aa5c8);font-weight:600;text-align:left;padding:3px 4px}
+.mk .mk-plans td{padding:5px 4px;border-top:1px solid var(--line,#33406e);white-space:nowrap}
+.mk .mk-plans td.pn{white-space:normal;font-weight:600}
+.mk .mk-plans tr.on td{background:rgba(76,201,240,.1)}
+.mk .mk-plans small{margin-left:3px;font-weight:700}
+.mk .mk-plans small.up{color:#7bd389}.mk .mk-plans small.dn{color:#ff8ca6}
+.mk .mk-plans .pa .lnk{margin-right:6px}
 .mk .mk-only{display:flex;align-items:center;gap:5px;flex-wrap:wrap;margin:6px 0}
 .mk .mk-only>span{font-size:12.5px;color:var(--muted,#9aa5c8);margin-right:2px}
 .mk .mk-only button{border:1px solid var(--line,#33406e);background:var(--bg,#12172b);color:var(--text,#e8ecf8);border-radius:9px;padding:5px 9px;min-height:36px;font-size:12.5px;font-weight:600}
@@ -2588,8 +2625,9 @@
       h += `<div class="mk-note" style="margin:6px 0">🪄 Tiles you haven't marked are filled in from your screenshot automatically (lighter, dashed edge). Tap a brush and fix the wrong ones – <b style="color:#ffb703">?</b> means the detection is unsure.</div>`;
       h += '<button class="mk-btn sm" data-a="clearTiles">Clear marks in territories</button>';
     } else {
-      const res = planResult(), p = curPlan(res);
+      const res = planResult(), p = curPlan(res), vp = viewedPlan();
       const added = p && p.actions && planAdded(p);
+      if (vp) h += `<div class="mk-view">👁 Showing the saved plan <b>${esc(vp.name)}</b> <button class="mk-btn sm pri" data-pview="">Back to the current plan</button></div>`;
       h += `<div data-peek="plan:${ui.alt}:${ui.only || ''}:${ui.sel ? ui.sel.c + '/' + ui.sel.r : ''}:${res && res.pending ? 'p' : 'd'}">${stepsHtml()}<div class="mk-key"><div class="t">${keyLine(p, res)}</div>` +
         (p && p.actions ? `<button class="mk-btn ${added ? 'ok' : 'pri'}" data-a="${added ? 'fromPlan' : 'toPlan'}">${added ? '✓ In plan' : '➕ Cost plan'}</button>` : '') + '</div>';
       // v49: the plan builds on tiles the detection is unsure about → say so right at the top (they have a ? on the map)
@@ -2598,7 +2636,9 @@
       // v49: "show only …" (forests to cut down, buildings to destroy, forests to grow, Border Growth) – also on the map bar
       const av = onlyAvail(p), of = onlyOn(p);
       if (av.length) h += '<div class="mk-only"><span>Show only:</span>' + av.map(f => `<button class="${of === f ? 'on' : ''}" data-only="${f}" aria-pressed="${of === f}">${ONLY[f].ic} ${ONLY[f].on}</button>`).join('') + '</div>';
-      if (p) h += altsHtml(res);
+      if (p && !vp) h += altsHtml(res);
+      if (p && !vp && !(res && (res.pending || res.altPending))) h += `<button class="mk-btn sm" data-a="savePlan" style="margin:6px 0 0">📌 Save this plan to compare</button>`;
+      h += plansHtml(vp ? (curPlanRaw(res)) : p);
       h += (ui.sel && p ? selLine(p, ui.sel.c, ui.sel.r) : '') + '</div>';
       h += '<h3>Allowed actions</h3><div class="mk-opts">' + OPT_KEYS.map(k => {
         const [ic, lab, sub] = OPT_LABEL[k];
@@ -2868,7 +2908,7 @@
       chkStore(x, nt, false); if (nt !== x.terrain) simPropose(x.c, x.r, nt); PP.app.commit(); chkGo(); return;
     }
     if (b.dataset.ma === 'step') {
-      ui.step = +b.dataset.to; ui.sel = null; ui.only = null; ui.chk = null; ui.hl = null; ui.sim = null; ui.borders = false;
+      ui.step = +b.dataset.to; ui.sel = null; ui.only = null; ui.chk = null; ui.hl = null; ui.sim = null; ui.view = null; ui.borders = false;
       PP.app.refresh(); requestAnimationFrame(ui.step === 3 ? fitPlan : fitRegion); return;
     }
     if (b.dataset.ma === 'open') { if (PP.drawer && PP.drawer.open) PP.drawer.open(); return; }
@@ -2931,7 +2971,7 @@
     const b = ev.target.closest('button,[data-go]'); if (!b || b.disabled) return;
     const d = b.dataset, m = M();
     if (d.step) {
-      ui.step = +d.step; ui.sel = null; ui.only = null; ui.chk = null; ui.hl = null; ui.sim = null; if (ui.step !== 1) ui.borders = false;
+      ui.step = +d.step; ui.sel = null; ui.only = null; ui.chk = null; ui.hl = null; ui.sim = null; ui.view = null; if (ui.step !== 1) ui.borders = false;
       PP.app.refresh();
       requestAnimationFrame(ui.step === 3 ? fitPlan : fitRegion);
       return;
@@ -2943,6 +2983,9 @@
       if (PP.drawer && PP.drawer.isOverlay()) PP.drawer.yieldMap();
       requestAnimationFrame(() => fitTiles(l.map(x => [x.c, x.r]), 150)); return;
     }
+    if (d.pview !== undefined) { ui.view = d.pview || null; ui.sel = null; ui.only = null; PP.app.refresh(); requestAnimationFrame(fitPlan); return; }
+    if (d.pdel) { M().plans = savedPlans().filter(x => x.id !== d.pdel); if (ui.view === d.pdel) ui.view = null; PP.app.commit(); return; }
+    if (d.pren) { const x = savedPlans().find(q => q.id === d.pren); const n = x && window.prompt('Name of this plan', x.name); if (n && n.trim()) { x.name = n.trim().slice(0, 40); PP.app.commit(); } return; }
     if (d.only) { ui.only = ui.only === d.only ? null : d.only; ui.sel = null; PP.app.refresh(); requestAnimationFrame(fitPlan); return; }
     if (d.brush && ui.step === 2 && ui.chk) {
       // v49: while checking, a brush changes the tile being checked (tap again = take it off, like painting)
@@ -3002,6 +3045,7 @@
     if (a === 'techMenu') { ui.techMenu = !ui.techMenu; PP.app.refresh(); return; }
     if (a === 'techAgain') { stopTech(); ui.techMenu = true; PP.app.refresh(); return; }
     if (a === 'tech') { ui.techMenu = false; startTech(); PP.app.refresh(); return; }
+    if (a === 'savePlan') { const p = curPlanRaw(planResult()); if (p) { const n = savePlan(p); PP.app.commit(); toast('📌 Saved: ' + n); } return; }
     if (a === 'chkStart') { ui.chkSkip = new Set(); chkGo(); return; }
     if (a === 'growthMenu') { ui.growMenu = !ui.growMenu; PP.app.refresh(); return; }
     if (a === 'growQuick') { M().growQuick = M().growQuick !== true; PP.app.commit(); return; }
