@@ -549,8 +549,35 @@
     const steps = [];
     cells.forEach((x, i) => stepsAt[i].forEach((item, q) => steps.push({ i, c: x.c, r: x.r, item, q, cost: C[item], city: home[i],
       what: item === 'destroy' ? cells[i].bld : null })));
-    steps.sort((a, b) => PHASE[a.item] - PHASE[b.item] || a.city - b.city || a.r - b.r || a.c - b.c || a.q - b.q);
+    // v49 order: income first. Market by market (with its workshops and their producers) – the one that earns the most per
+    // star still to spend first, so cheap ones on existing resources come early and burning comes later, when you have
+    // more stars. Shared workshops count for the first market only. Inside a market the phases (burn before farm …).
+    const rank = new Map(), tileCost = i => stepsAt[i].reduce((v, it) => v + C[it], 0);
+    const bundle = markets.map((m, mi) => {
+      const set = new Set([m.i]);
+      ws.forEach(w => { if (w.feeds.indexOf(mi) < 0) return; set.add(w.i); nb[w.i].forEach(t => { if (fin[t] === PROD[fin[w.i]]) set.add(t); }); });
+      return { m, tiles: [...set].filter(i => stepsAt[i].length) };
+    }).filter(bd => bd.m.income > 0);
+    let next = 1; const bundleOrder = [];
+    while (bundle.length) {
+      let best = -1, bv = -Infinity;
+      bundle.forEach((bd, j) => {
+        const left = bd.tiles.filter(i => !rank.has(i)), cost = left.reduce((v, i) => v + tileCost(i), 0);
+        const v = bd.m.income / Math.max(0.5, cost) - left.length * 1e-6;
+        if (v > bv) { bv = v; best = j; }
+      });
+      bundle[best].tiles.forEach(i => { if (!rank.has(i)) rank.set(i, next); });
+      bundleOrder.push([next, bundle[best].m]);
+      next++; bundle.splice(best, 1);
+    }
+    const rk = i => (rank.has(i) ? rank.get(i) : 0); // steps of no Market (e.g. only destroying) come first
+    steps.sort((a, b) => rk(a.i) - rk(b.i) || PHASE[a.item] - PHASE[b.item] || a.city - b.city || a.r - b.r || a.c - b.c || a.q - b.q);
     steps.forEach((s, k) => { s.no = k + 1; });
+    // the step that finishes a Market: the ★/turn from then on (incAfter); firstInc = ★ spent until the first income
+    { const inc = new Map(); bundleOrder.forEach(([r, m]) => inc.set(r, (inc.get(r) || 0) + m.income));
+      let run = 0, spent = 0, firstInc = null; const lastOf = new Map(); steps.forEach((s, k) => { if (rank.has(s.i)) lastOf.set(rank.get(s.i), k); });
+      steps.forEach((s, k) => { spent += s.cost; const r = rank.has(s.i) ? rank.get(s.i) : null; if (r != null && lastOf.get(r) === k && inc.get(r)) { run += inc.get(r); s.incAfter = run; if (firstInc == null) firstInc = spent; } });
+      materialize.firstInc = firstInc; }
     let cost = 0; steps.forEach(s => { cost += s.cost; });
     const tiles = [];
     cells.forEach((x, i) => { if (stepsAt[i].length) tiles.push(Object.assign(at(i), { item: fin[i], from: cells[i].bld, city: home[i], steps: steps.filter(s => s.i === i) })); });
@@ -566,7 +593,7 @@
       tag, income, cost, actions: steps.length, steps, tiles, markets, workshops: used, groups,
       marketCount: markets.filter(m => m.income > 0).length, capped: markets.some(m => m.capped),
       buildings: used.concat(markets), n: steps.length,
-      payback: income > 0 && cost > 0 ? Math.ceil(cost / income) : null,
+      payback: income > 0 && cost > 0 ? Math.ceil(cost / income) : null, firstInc: materialize.firstInc,
       final: fin.map((b, i) => (b ? { c: cells[i].c, r: cells[i].r, bld: b } : null)).filter(Boolean),
       ownerOk: steps.every(s => owner[s.i] >= 0),
     };
@@ -2886,7 +2913,8 @@
     const all = t.steps.every(isDone), s0 = t.steps[0];
     const nos = t.steps.map(s => `<span class="no" style="background:${pCol(p, s.city)}">${s.no}</span>`).join('');
     const what = t.steps.map(s => esc(stepName(s))).join(' → ');
-    return undo + `<span class="ma-tx">${t.tile ? '' : '<small>Next:</small> '}${nos}${what}<br><small>${s0.c}/${s0.r} · ${cnt}</small></span>` +
+    const inc = t.steps.reduce((v, s) => s.incAfter || v, 0);
+    return undo + `<span class="ma-tx">${t.tile ? '' : '<small>Next:</small> '}${nos}${what}<br><small>${s0.c}/${s0.r} · ${cnt}${inc ? ` · <b style="color:#ffd166">💰 then ${inc} ★/turn</b>` : ''}</small></span>` +
       (all ? '<button class="ma-un" data-ma="toggle">Not built</button>' : '<button class="ma-ok" data-ma="toggle">✓ Built</button>');
   }
   function mapActClick(ev) {
@@ -2941,7 +2969,7 @@
         : `<div class="mk-prog"><div class="bar"><i style="width:${Math.round(100 * nDone / p.steps.length)}%"></i></div><span>${nDone ? `<b>${nDone}</b> of ${p.steps.length} built · ${left} ★ to go` : `0 of ${p.steps.length} built`}</span></div>`;
       if (nDone) h += '<button class="mk-btn" data-a="clearDone" style="margin:0 0 6px">Clear all ✓ marks</button>';
     }
-    h += `<ol class="mk-list"><li class="tot"><span class="tx">Total: ${p.income} ★/turn${p.marketCount ? ' <small>(max ' + p.marketCount * CAP + ')</small>' : ''} · ${plural(p.actions, 'step', 'steps')}${p.payback ? ' · pays off in ' + plural(p.payback, 'turn', 'turns') : ''}</span><span class="co">${p.cost} ★</span></li></ol>`;
+    h += `<ol class="mk-list"><li class="tot"><span class="tx">Total: ${p.income} ★/turn${p.marketCount ? ' <small>(max ' + p.marketCount * CAP + ')</small>' : ''} · ${plural(p.actions, 'step', 'steps')}${p.payback ? ' · pays off in ' + plural(p.payback, 'turn', 'turns') : ''}${p.firstInc != null && p.firstInc < p.cost ? ' · first ★/turn after ' + p.firstInc + ' ★' : ''}</span><span class="co">${p.cost} ★</span></li></ol>`;
     const owned = (S().build && Array.isArray(S().build.owned)) ? S().build.owned : [];
     const techs = [];
     p.steps.forEach(s => { const t = (ITEM(s.item) || {}).tech; if (t && owned.indexOf(t) < 0 && techs.indexOf(t) < 0) techs.push(t); });
