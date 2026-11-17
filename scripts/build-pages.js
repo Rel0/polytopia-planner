@@ -23,7 +23,7 @@ function changed(files) {
 const sandbox = { window: {} };
 sandbox.globalThis = sandbox;
 vm.createContext(sandbox);
-for (const f of ['js/data.js', 'js/icons.js']) vm.runInContext(fs.readFileSync(path.join(ROOT, f), 'utf8'), sandbox, { filename: f });
+for (const f of ['js/data.js', 'js/icons.js', 'js/engine.js']) vm.runInContext(fs.readFileSync(path.join(ROOT, f), 'utf8'), sandbox, { filename: f });
 const PP = sandbox.window.PP;
 const U = PP.UNITS;
 
@@ -153,8 +153,31 @@ function battlePage(p) {
     ['Does a unit in a forest always get a defense bonus?', 'No. The ×1.5 bonus on Forest needs Archery, on Mountain Climbing and on Water / ocean Aquatism – for the tribe of the defending unit. Without that tech the unit fights with ×1. In the calculator above, tap the defender and tick or untick “Has Archery” (or Climbing / Aquatism) to compare both results.'],
     ['Which units get the city defense bonus?', 'Only units with the Fortify skill (e.g. Warrior, Archer, Defender, Rider, Knight). A Giant, Swordsman or Catapult gets no bonus in a city, but still gets terrain bonuses.'],
     ['Does the calculator work for all tribes?', 'Yes – all 55 current units, including ships and the special tribes Aquarion, ∑∫ỹriȱŋ, Polaris and Cymanti. Pick the tribe in the menu above the unit list.'],
+    ['Does a veteran deal more damage in Polytopia?', 'Not directly – a veteran has +5 max HP. Damage depends on HP / max HP, so a full-HP veteran hits as hard as a normal unit, but it keeps more HP after a fight and so stays stronger in the next one.'],
+    ['How strong is a city wall?', 'A city wall multiplies the defense of a unit with Fortify in that city by 4 (instead of 1.5 without the wall). A poisoned unit only gets ×2.'],
+    ['When does a unit strike back?', 'Only if it survives the attack and the attacker is within its range. Units with Stiff (e.g. Catapult, Mind Bender) never strike back, and attackers with Surprise (Dagger, Pirate …) never get retaliation.'],
     ['How does the calculator find the best attack order?', 'Every attacker attacks once. The calculator tries how to split your units over the enemies and in which order they attack – splash first if it weakens the neighbours, the next unit on another enemy if a target is already dead. “Sort by” sets what counts most: most kills, most damage, no own losses or fewest attacks. “Custom” uses only the attacks you choose, in your order.'],
   ];
+  // v49 damage chart: the standard units against each other at full HP, worked out by the calculator's own engine
+  // (PP.engine.attack) – collapsed, so the page stays short
+  const CH = ['warrior', 'archer', 'defender', 'rider', 'swordsman', 'catapult', 'knight', 'giant'].filter(k => U[k]);
+  const E = PP.engine;
+  const chart = bonus => {
+    const cell = (a, d) => {
+      const at = { type: a, hp: E.maxHp({ type: a }), side: 'me' }, df = { type: d, hp: E.maxHp({ type: d }), side: 'enemy', bonus };
+      const r = E.attack(at, df, null);
+      const kill = r.defHp <= 0, dm = Math.round(r.dmg * 10) / 10;
+      return `<td class="n${kill ? ' kill' : ''}">${dm}${kill ? ' ☠' : r.ret ? `<small> / ${r.ret}</small>` : ''}</td>`;
+    };
+    return `<div class="tw"><table class="chart"><thead><tr><th title="attacker ↓ · defender →">↓ hits →</th>${CH.map(d => `<th class="n">${esc(U[d].name)}</th>`).join('')}</tr></thead><tbody>
+${CH.map(a => `<tr><th>${esc(U[a].name)}</th>${CH.map(d => cell(a, d)).join('')}</tr>`).join('\n')}
+</tbody></table></div>`;
+  };
+  const chartSec = `<section id="damage-chart"><h2>Polytopia damage chart</h2>
+<p>Damage at full HP: <b>damage</b> / <small>damage back</small> · ☠ = the defender dies.</p>
+<details class="fold"><summary>Open field</summary>${chart(1)}</details>
+<details class="fold"><summary>Defense bonus ×1.5</summary><p class="muted" style="margin:0 14px 8px">Forest with Archery, mountain with Climbing, city with Fortify.</p>${chart(1.5)}</details>
+<p class="muted">Each unit attacks from its own range (an Archer or Catapult gets nothing back from melee units). Other HP, veterans, walls or several attackers: use the calculator above.</p></section>`;
   const body = `<div class="sky"><h1><span>Polytopia</span>Damage Calculator</h1>
 <p>Battle calculator for any number of attackers and defenders – splash, terrain, tech and the best attack order.</p>
 <p class="fresh">Rules checked ${CHECKED_HUMAN} · all ${Object.keys(PP.UNITS).length} units</p>${horizon()}</div>
@@ -187,6 +210,7 @@ retaliation  = round(defenseForce / total × defense × 4.5)   (only if the defe
 <div class="tw"><table><thead><tr><th>Where the defender stands</th><th class="n">Bonus</th></tr></thead><tbody>
 ${KIND.map(k => `<tr><td>${esc(k[0])}</td><td class="n">${k[1]}</td></tr>`).join('')}
 </tbody></table></div></section>
+${chartSec}
 <section><h2>Unit skills in battle</h2><p>The calculator also handles the special abilities that change a fight:</p>
 <div class="tw"><table><thead><tr><th>Skill</th><th>Units</th><th>Effect</th></tr></thead><tbody>
 ${skillRows.map(r => `<tr><td><b>${esc(r[0])}</b></td><td class="sk">${esc(r[1])}</td><td class="sk">${esc(r[2])}</td></tr>`).join('')}

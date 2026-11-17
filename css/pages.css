@@ -79,3 +79,14 @@ footer nav{display:flex;flex-wrap:wrap;gap:6px 16px;margin-bottom:10px}
 .feat li{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:12px 14px}
 .feat b{display:block;margin-bottom:2px}
 .feat span{color:var(--muted);font-size:14.5px}
+/* v49 damage chart (collapsed) */
+details.fold{border:1px solid var(--line);border-radius:12px;margin:8px 0;background:var(--panel)}
+details.fold>summary{cursor:pointer;padding:11px 14px;font-weight:600;list-style:none}
+details.fold>summary::-webkit-details-marker{display:none}
+details.fold>summary::before{content:'▸';display:inline-block;width:1.1em;transition:transform .15s}
+details.fold[open]>summary::before{transform:rotate(90deg)}
+details.fold .tw{margin:0 10px 12px}
+table.chart{font-size:13px}
+table.chart th,table.chart td{padding:5px 6px;white-space:nowrap}
+table.chart td small{color:var(--muted)}
+table.chart td.kill{font-weight:700;color:#c0392b}
