@@ -1386,6 +1386,21 @@
     const valOf = (r, set) => (r.income - g.base.income) * PR.H - (r.cost - g.base.cost) - set.size * PR.pg;
     const better = (a, sa, b, sb) => { if (!b) return true; const va = valOf(a, sa), vb = valOf(b, sb); return va > vb + 1e-9 || (Math.abs(va - vb) <= 1e-9 && sa.size < sb.size); };
     const near = (a, b) => Math.max(Math.abs(a.c - b.c), Math.abs(a.r - b.r)) <= 5;
+    // v49: in the game cities grow ONE AFTER THE OTHER (the first gets the tiles between them) – so what counts is the result
+    // in the order, not of all growing at once (that showed "+10 (64 → 74)" above an order that reaches 72 with a city at
+    // ±0). A city that adds nothing in the order is taken out and the order worked out again; the verdicts and the summary
+    // then use the order's result.
+    async function settleOrder(set) {
+      for (;;) {
+        const o = set.size ? await g.orderOf(set) : []; if (!o) return null;
+        const z = o.find(st => st.gain != null && st.gain <= 0);
+        if (z && set.size > 1) { set = new Set([...set].filter(k => k !== z.key)); continue; }
+        if (z) { set = new Set(); continue; }
+        const last = o[o.length - 1], r = last && last.income != null ? { income: last.income, cost: last.cost } : set.size ? got(set) : g.base;
+        if (r) g.verdicts(set, r);
+        return { set, order: o };
+      }
+    }
     // a chosen city whose Border Growth adds no ★/turn on top of the others (known plans only) → its key, else null
     // v49 "try it yourself": the plan for any choice of cities (known at once when the check had it, else solved now)
     g.tryGot = set => (set.size ? got(set) : g.base) || null;
@@ -1470,7 +1485,7 @@
       g.byKey = {}; g.cities.forEach(ci => { g.byKey[ci.key] = ci; });
       };
       g.verdicts(bestSet, bestR);
-      g.order = await g.orderOf(bestSet); if (!g.order) return;
+      { const so = await settleOrder(bestSet); if (!so) return; bestSet = so.set; g.order = so.order; }
       // v40: all combinations known → another priority is just another choice among them (no new plans needed)
       if (exhaustive) g.rechoose = P2 => {
         Object.assign(PR, P2); g.prio = P2.id;
@@ -1480,9 +1495,9 @@
         g.verdicts(bs, br);
         // v47 the order of the new choice may need a few more plans (the worker was closed – a new one is made)
         g.order = null; g.ordering = true;
-        g.orderOf(bs).then(o => {
-          if (!alive(g)) return;
-          g.order = o; g.ordering = false;
+        settleOrder(bs).then(so => {
+          if (!alive(g) || !so) return;
+          g.order = so.order; g.ordering = false;
           stopPool(g); refresh();
         });
       };
