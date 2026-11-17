@@ -30,7 +30,7 @@ window.PP = window.PP || {};
     '.un-mode button{flex:1;border:0;background:none;border-radius:9px;padding:4px 2px;font-weight:800;font-size:13px;color:var(--muted,#9aa5c8);min-height:36px;min-width:0;white-space:nowrap}',
     '.un-mode button.on{background:var(--panel2,#2e3866);color:#fff;box-shadow:inset 0 0 0 1px rgba(255,255,255,.12)}',
     '.un-top .un-side{flex:none;padding:3px;gap:2px}',
-    '.un-top .un-side button{min-height:36px;padding:0 6px;font-size:12px;gap:4px;flex:none}',
+    '.un-top .un-side button{min-height:36px;padding:0 10px;font-size:12.5px;gap:5px;flex:none}',
     '.un-top .un-side button i{width:10px;height:10px}',
     '.un-era{border:1px solid var(--line,#33406e);background:none;color:var(--muted,#9aa5c8);border-radius:12px;padding:0;width:40px;font-size:17px;min-height:40px;flex:none}',
     '.un-era.on{border-color:#ff8ca6;color:#ff8ca6;background:rgba(239,71,111,.14)}',
@@ -121,9 +121,17 @@ window.PP = window.PP || {};
     '.un-btns{display:flex;gap:6px;margin-top:8px;flex-wrap:wrap}',
     '.un-tech{margin-left:4px;border:1px solid var(--line,#33406e);border-radius:8px;padding:3px 8px;background:var(--panel2,#252e52);color:var(--text,#e8ecf8);font-size:12px;font-weight:700}',
     '.un-tech.on{border-color:#06d6a0;color:#06d6a0}',
-    '.un-seqb{display:block;width:100%;border:0;border-radius:11px;padding:10px;margin:0 0 8px;font-weight:800;font-size:14px;background:var(--accent,#4cc9f0);color:#08121f;min-height:44px}',
-    '.un-seqb small{font-weight:600;opacity:.75}',
-    '.un-seqb.on{background:var(--panel2,#252e52);color:var(--text,#e8ecf8);box-shadow:inset 0 0 0 2px var(--accent,#4cc9f0)}',
+    '.un-seqb{display:block;width:100%;border:1px solid var(--line,#33406e);border-radius:11px;padding:8px 10px;margin:0 0 8px;font-weight:800;font-size:13.5px;background:none;color:var(--accent,#4cc9f0);min-height:40px;text-align:left}',
+    '.un-seqb small{font-weight:600;color:var(--muted,#9aa5c8)}',
+    '.un-seqb.on{border-color:var(--accent,#4cc9f0);background:rgba(76,201,240,.08)}',
+    '.un-seqmsg{font-size:12px;color:var(--muted,#9aa5c8);margin:-4px 2px 8px}',
+    '.un-bonb{display:flex;align-items:center;gap:8px;width:100%;margin-top:8px;border:0;border-radius:10px;background:var(--bg,#12172b);padding:0 10px;min-height:38px;color:var(--text,#e8ecf8);font-size:13px;text-align:left}',
+    '.un-bonb>span{font-size:11.5px;font-weight:700;color:var(--muted,#9aa5c8)}',
+    '.un-bonb b{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-weight:700}',
+    '.un-bonb b small{font-size:10.5px;font-weight:700;color:var(--muted,#9aa5c8);text-transform:uppercase;letter-spacing:.04em}',
+    '.un-bonb i{font-style:normal;color:var(--muted,#9aa5c8);transition:transform .15s}',
+    '.un-bonb.open i{transform:rotate(180deg)}',
+    '.un-bonx{margin-top:4px}',
     '.un-seq{margin:0 0 10px;padding:8px 10px;border:1px solid var(--line,#33406e);border-radius:12px;background:rgba(76,201,240,.06);font-size:13px}',
     '.un-seq .sum{font-size:14px;margin-bottom:6px}',
     '.un-seq .tg{margin:6px 0;padding:6px 8px;border-radius:9px;background:rgba(255,255,255,.04)}',
@@ -136,10 +144,10 @@ window.PP = window.PP || {};
     '.un-seq .nt{display:block;margin-top:6px;color:var(--muted,#9aa5c8);font-size:11.5px}',
     '.un-seq .bar{height:7px;border-radius:4px;background:rgba(255,255,255,.12);overflow:hidden;margin:2px 0 4px}',
     '.un-seq .bar i{display:block;height:100%;background:var(--accent,#4cc9f0)}',
-    '.un-sort{margin:0 0 12px}',
-    '.un-sort>span{display:block;font-size:11px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;color:var(--muted,#9aa5c8);margin-bottom:4px}',
-    '.un-sort>div{display:flex;gap:4px;background:var(--bg,#12172b);border-radius:11px;padding:3px}',
-    '.un-sort button{flex:1 1 0;min-width:0;border:0;background:none;border-radius:9px;padding:7px 4px;font-size:12px;font-weight:700;color:var(--muted,#9aa5c8);min-height:36px;line-height:1.15}',
+    '.un-sort{display:flex;align-items:center;gap:8px;margin:12px 0 2px}',
+    '.un-sort>span{font-size:11.5px;font-weight:700;color:var(--muted,#9aa5c8)}',
+    '.un-sort>div{flex:1;display:flex;gap:3px;background:var(--bg,#12172b);border-radius:10px;padding:3px;min-width:0}',
+    '.un-sort button{flex:1 1 0;min-width:0;border:0;background:none;border-radius:8px;padding:4px 3px;font-size:11.5px;font-weight:700;color:var(--muted,#9aa5c8);min-height:32px;line-height:1.1}',
     '.un-sort button.on{background:var(--panel2,#252e52);color:var(--text,#e8ecf8);box-shadow:inset 0 0 0 1.5px var(--accent,#4cc9f0)}',
     '.un-sort small{display:block;font-size:11px;color:var(--muted,#9aa5c8);margin-top:4px}',
     '.un-btns button{flex:1 1 90px;border:0;border-radius:11px;padding:8px 6px;font-weight:800;font-size:13px;background:var(--panel2,#252e52);color:var(--text,#e8ecf8);min-height:42px;min-width:0}',
@@ -737,10 +745,15 @@ window.PP = window.PP || {};
   function cp(u, o) { return Object.assign({}, u, o); }
   // v27: one target, attackers in order – with the unit skills (see PP.SKILL_INFO). Side effects on other enemies
   // (splash, explosions) are collected in res.fx; target status (poisoned, frozen, converted) in res.
-  function simulate(t, order) {
-    var E = PP.engine, tb = effBonus(t), hp = t.hp, tPois = !!t.poison, tFroz = !!t.frozen, conv = false;
+  // init (optional): continue from a state { hp, poison, frozen, ex: { id: { hp, poison } } } – used by the sequence search
+  function simulate(t, order, init) {
+    var E = PP.engine, tb = effBonus(t), hp = init ? init.hp : t.hp, tPois = init ? init.poison : !!t.poison, tFroz = init ? init.frozen : !!t.frozen, conv = false;
     var steps = [], killedAt = 0, losses = [], ex = {};
-    var exOf = function (x) { return ex[x.id] || (ex[x.id] = { u: x, before: x.hp, hp: x.hp, poison: !!x.poison, b: effBonus(x) }); };
+    var exOf = function (x) {
+      if (ex[x.id]) return ex[x.id];
+      var o = init && init.ex[x.id], h0 = o ? o.hp : x.hp;
+      return (ex[x.id] = { u: x, before: h0, hp: h0, poison: o ? o.poison : !!x.poison, b: effBonus(x) });
+    };
     var hitOther = function (a, aHp, x, kind, poison) {
       var e = exOf(x); if (e.hp <= 0) return null;
       var dm = E.splash(cp(a, { hp: aHp }), cp(x, { hp: e.hp, bonus: e.b, poison: e.poison }));
@@ -795,7 +808,7 @@ window.PP = window.PP || {};
       steps.push(s);
     });
     var fx = Object.keys(ex).map(function (k) { return ex[k]; }).filter(function (e) { return e.hp !== e.before || e.poison !== !!e.u.poison; });
-    return { t: t, bonus: tb, steps: steps, hpAfter: hp, killedAt: killedAt, losses: losses, converted: conv, poison: tPois && hp > 0, frozen: tFroz && hp > 0, fx: fx,
+    return { t: t, bonus: tb, steps: steps, hpAfter: hp, ex: ex, killedAt: killedAt, losses: losses, converted: conv, poison: tPois && hp > 0, frozen: tFroz && hp > 0, fx: fx,
       used: steps.filter(function (s) { return s.dmg != null; }).length };
   }
   function done(res) { return res.hpAfter <= 0 || !!res.converted; }
@@ -856,7 +869,7 @@ window.PP = window.PP || {};
   }
   function better(a, b) { for (var i = 0; i < a.length; i++) if (a[i] !== b[i]) return a[i] > b[i]; return false; }
   // Sorting criteria for the attack order (Battle): the chosen one stays active and re-sorts automatically.
-  var SORTS = [['dmg', 'Max damage'], ['units', 'Fewest units'], ['safe', 'Least damage taken']];
+  var SORTS = [['dmg', 'Max damage'], ['units', 'Fewest units'], ['safe', 'Least taken']];
   function scoreBy(res, by) {
     var taken = 0, used = 0, dealt = 0;
     res.steps.forEach(function (s) { if (s.dmg != null) { used++; taken += s.aBefore - Math.max(0, s.aAfter); dealt += s.tBefore - s.tAfter; } });
@@ -885,7 +898,7 @@ window.PP = window.PP || {};
   function sortHtml() {
     var p = uiPrefs(), cb = sel();
     if (!cb.active || cb.attackers.length < 2) return '';
-    return '<div class="un-sort"><span>Sort attackers</span><div>' + SORTS.map(function (x) {
+    return '<div class="un-sort"><span>Order</span><div>' + SORTS.map(function (x) {
       return '<button data-un="sort" data-v="' + x[0] + '" class="' + (p.sortBy === x[0] ? 'on' : '') + '" aria-pressed="' + (p.sortBy === x[0]) + '">' + x[1] + '</button>';
     }).join('') + '</div></div>';
   }
@@ -904,13 +917,14 @@ window.PP = window.PP || {};
     return best && better(bestS, cur) ? best.map(function (u) { return u.id; }) : null;
   }
 
-  // ================================================================ v32 best attack sequence (several targets)
+  // ================================================================ v33 best attack sequence (several targets)
   // Which attacker attacks which target, and in which order. Every attacker attacks at most once. Goal, in this order:
   // most targets defeated, fewest own units lost, least damage taken, most damage dealt, fewest attacks used.
-  // Per target: the best order for every set of attackers that can reach it (all orders up to 6 attackers; a set is
-  // skipped if a smaller one already defeats the target). Then the best split of the attackers over the targets (DP).
-  // Targets are computed one by one on the current HP (splash on another target is not carried over).
-  var SEQ_MAX_A = 8, SEQ_MAX_T = 5, SEQ_PERM = 6;
+  // Per target (exact): the attacks one after the other, layer by layer – a state is "attackers used so far + the
+  // target's HP / poison / frozen + what splash did to its neighbours"; the same state reached in two orders is only
+  // continued from the better one. That gives the best order for every set of attackers. Then the best split of the
+  // attackers over the targets (DP). Targets are computed one by one (splash on another target is not carried over).
+  var SEQ_MAX_A = 16, SEQ_MAX_T = 10;
   var seq = null; // { sig, side, state: 'running'|'done'|'too', plan: [{ t, order: [units], res }], tot, ms, pct }
   function seqSig() {
     var cb = sel();
@@ -926,6 +940,8 @@ window.PP = window.PP || {};
     return [done(res) ? 1 : 0, -res.losses.length, -taken, dealt, -used];
   }
   function vAdd(a, b) { return a.map(function (x, i) { return x + b[i]; }); }
+  // a + b better than c? (without building a + b)
+  function sumBetter(a, b, c) { for (var i = 0; i < c.length; i++) { var x = a[i] + b[i]; if (x !== c[i]) return x > c[i]; } return false; }
   var V0 = [0, 0, 0, 0, 0];
   function bits(m) { var c = 0; for (; m; m &= m - 1) c++; return c; }
   function startSeq() {
@@ -935,54 +951,86 @@ window.PP = window.PP || {};
     var n = A.length, m = T.length, best = [], reach = T.map(function (t) {
       var r = 0; A.forEach(function (a, i) { if ((U(a.type).atk > 0 || U(a.type).convert || U(a.type).freeze) && canReach(a, t, dist(a, t))) r |= 1 << i; }); return r;
     });
-    // work list: per target, the subsets of its reachable attackers by size
-    var jobs = [];
-    T.forEach(function (t, ti) {
-      best[ti] = {}; best[ti][0] = { v: V0, order: [] };
-      var subs = []; for (var sm = reach[ti]; sm; sm = (sm - 1) & reach[ti]) subs.push(sm);
-      subs.sort(function (a, b) { return bits(a) - bits(b); });
-      subs.forEach(function (sm) { jobs.push([ti, sm]); });
-    });
-    var ji = 0, total = jobs.length || 1;
-    var evalSet = function (ti, sm) {
-      var t = T[ti], idx = []; for (var i = 0; i < n; i++) if (sm & (1 << i)) idx.push(i);
-      // a smaller set that already defeats the target makes this one pointless (the extra attacker stays free)
-      for (var k = 0; k < idx.length; k++) { var sub = best[ti][sm & ~(1 << idx[k])]; if (sub && sub.v[0] === 1) return; }
-      var bv = null, bo = null, tryOrder = function (o) {
-        var r = simulate(t, o.map(function (i) { return A[i]; })), v = seqVal(r);
-        if (!bv || better(v, bv)) { bv = v; bo = o.slice(); }
-      };
-      if (idx.length <= SEQ_PERM) {
-        (function perm(pre, rest) {
-          if (!rest.length) { tryOrder(pre); return; }
-          for (var q = 0; q < rest.length; q++) perm(pre.concat([rest[q]]), rest.slice(0, q).concat(rest.slice(q + 1)));
-        })([], idx);
-      } else {
-        // big set: best order of the set without one attacker, that attacker put first or last
-        idx.forEach(function (i) { var b = best[ti][sm & ~(1 << i)]; if (b) { tryOrder([i].concat(b.order)); tryOrder(b.order.concat([i])); } });
-        if (!bo) tryOrder(idx);
-      }
-      best[ti][sm] = { v: bv, order: bo };
+    var N2 = 1 << n;
+    // per target: layers of states; at[mask] = best state that used exactly these attackers
+    var ti = 0, layer = null, li = 0, next = null, at = null, depth = 0;
+    var exKey = function (ex) { return Object.keys(ex).sort().map(function (k) { return k + ':' + ex[k].hp + (ex[k].poison ? 'p' : ''); }).join(','); };
+    var startTarget = function () {
+      var t = T[ti];
+      layer = [{ used: 0, st: { hp: t.hp, poison: !!t.poison, frozen: !!t.frozen, ex: {} }, v: V0, par: null, a: -1, end: false }];
+      li = 0; next = new Map(); at = new Array(N2); at[0] = layer[0]; depth = 0;
     };
-    var finish = function () {
-      // DP over the targets: F[ti][mask] = best total of targets ti… with the attackers in mask
-      var full = (1 << n) - 1, F = [], C = [];
-      for (var ti = m; ti >= 0; ti--) { F[ti] = new Array(full + 1); C[ti] = new Array(full + 1); }
-      for (var mk = 0; mk <= full; mk++) F[m][mk] = V0;
-      for (ti = m - 1; ti >= 0; ti--) {
-        for (mk = 0; mk <= full; mk++) {
-          var bv = null, bs = 0, opts = mk & reach[ti];
-          for (var sm = opts; ; sm = (sm - 1) & opts) {
-            var b = best[ti][sm];
-            if (b) { var v = vAdd(b.v, F[ti + 1][mk & ~sm]); if (!bv || better(v, bv)) { bv = v; bs = sm; } }
-            if (!sm) break;
-          }
-          F[ti][mk] = bv; C[ti][mk] = bs;
+    var expand = function (nd) {
+      if (nd.end) return;
+      var t = T[ti], free = reach[ti] & ~nd.used;
+      for (var i = 0; i < n; i++) if (free & (1 << i)) {
+        var r = simulate(t, [A[i]], nd.st), s0 = r.steps[0];
+        if (!s0 || s0.dmg == null) continue;                       // this attacker can't attack
+        var ex = {}; Object.keys(nd.st.ex).forEach(function (k) { ex[k] = nd.st.ex[k]; });
+        Object.keys(r.ex).forEach(function (k) { ex[k] = { hp: r.ex[k].hp, poison: r.ex[k].poison }; });
+        var end = done(r), st2 = { hp: r.hpAfter, poison: !!r.poison, frozen: !!r.frozen, ex: ex }, used = nd.used | (1 << i);
+        var key = used + '|' + (end ? 'x' : st2.hp + (st2.poison ? 'p' : '') + (st2.frozen ? 'f' : '') + '|' + exKey(ex));
+        var v = vAdd(nd.v, seqVal(r)), o = next.get(key);
+        if (!o || better(v, o.v)) {
+          var q = { used: used, st: st2, v: v, par: nd, a: i, end: end };
+          next.set(key, q);
+          if (!at[used] || better(v, at[used].v)) at[used] = q;
         }
       }
+    };
+    var endTarget = function () {
+      // best for every set of attackers = best over its subsets (the others stay free)
+      var g = at;
+      for (var b = 0; b < n; b++) for (var S = 0; S < N2; S++) if ((S & (1 << b)) && g[S ^ (1 << b)] && (!g[S] || better(g[S ^ (1 << b)].v, g[S].v))) g[S] = g[S ^ (1 << b)];
+      best[ti] = {
+        g: g,
+        get: function (S) {
+          var nd = g[S]; if (!nd) return null; if (nd.order) return nd;
+          var o = []; for (var x = nd; x && x.a >= 0; x = x.par) o.unshift(x.a);
+          nd.order = o; return nd;
+        }
+      };
+    };
+    var tick = function () {
+      if (seq !== me) return;
+      var t0 = Date.now();
+      while (ti < m && Date.now() - t0 < 40) {
+        if (!layer) startTarget();
+        if (li < layer.length) { expand(layer[li++]); continue; }
+        if (next.size) { layer = Array.from(next.values()); next = new Map(); li = 0; depth++; continue; }
+        endTarget(); ti++; layer = null;
+      }
+      // progress: the targets ~70 %, the split ~30 %
+      var pT = (ti + (layer ? Math.min(1, depth / Math.max(1, bits(reach[ti] || 0))) : 0)) / m;
+      if (ti < m) { me.pct = Math.round(70 * pT); refresh(); setTimeout(tick, 0); return; }
+      if (!splitStep(t0)) { me.pct = 70 + Math.round(30 * (m - 1 - fi + fmk / N2) / m); refresh(); setTimeout(tick, 0); return; }
+      finish();
+    };
+    // DP over the targets: F[ti][mask] = best total of targets ti… with the attackers in mask (in slices, see tick)
+    var full = N2 - 1, F = [], C = [], fi = -1, fmk = 0;
+    var splitStep = function (t0) {
+      if (fi < 0) { for (var k = m; k >= 0; k--) { F[k] = new Array(full + 1); C[k] = new Array(full + 1); } for (var z = 0; z <= full; z++) F[m][z] = V0; fi = m - 1; fmk = 0; }
+      while (fi >= 0) {
+        var g = best[fi].g, Fn = F[fi + 1], Fi = F[fi], Ci = C[fi], rc = reach[fi];
+        for (; fmk <= full; fmk++) {
+          if ((fmk & 255) === 0 && Date.now() - t0 > 40) return false;
+          var bv = null, bs = 0, opts = fmk & rc;
+          for (var sm = opts; ; sm = (sm - 1) & opts) {
+            var b = g[sm];
+            if (b && (!bv || sumBetter(b.v, Fn[fmk & ~sm], bv))) { bv = vAdd(b.v, Fn[fmk & ~sm]); bs = sm; }
+            if (!sm) break;
+          }
+          Fi[fmk] = bv; Ci[fmk] = bs;
+        }
+        fi--; fmk = 0;
+      }
+      return true;
+    };
+    var finish = function () {
+      var ti;
       var plan = [], left = full;
       for (ti = 0; ti < m; ti++) {
-        var smk = C[ti][left], o = best[ti][smk].order;
+        var smk = C[ti][left], o = best[ti].get(smk).order;
         left &= ~smk;
         if (!o.length) { plan.push({ t: T[ti], order: [], res: null }); continue; }
         var ord = o.map(function (i) { return A[i]; }), r = simulate(T[ti], ord);
@@ -997,14 +1045,6 @@ window.PP = window.PP || {};
       me.plan = plan; me.tot = tot; me.free = A.filter(function (a) { return !plan.some(function (p) { return p.order.indexOf(a) >= 0; }); });
       me.state = 'done'; me.ms = Date.now() - me.t0; me.nT = m;
       refresh(); redraw();
-    };
-    var tick = function () {
-      if (seq !== me) return;
-      var t0 = Date.now();
-      while (ji < jobs.length && Date.now() - t0 < 40) { evalSet(jobs[ji][0], jobs[ji][1]); ji++; }
-      me.pct = Math.round(100 * ji / total);
-      if (ji < jobs.length) { refresh(); setTimeout(tick, 0); return; }
-      finish();
     };
     refresh();
     setTimeout(tick, 0);
@@ -1023,9 +1063,9 @@ window.PP = window.PP || {};
     if (!nA || !nT || (nA < 2 && nT < 2)) return '';
     var S = seqNow();
     var b = '<button class="un-seqb' + (S && S.show && S.state === 'done' ? ' on' : '') + '" data-un="seq">⚔️ ' + (S && S.state === 'done' ? (S.show ? 'Hide best attack sequence' : 'Show best attack sequence') : 'Best attack sequence') +
-      ' <small>(' + nA + ' attacker' + (nA > 1 ? 's' : '') + ' → ' + nT + ' target' + (nT > 1 ? 's' : '') + ')</small></button>';
+      (S && S.state === 'done' && S.show ? '' : ' <small>(' + nA + ' attacker' + (nA > 1 ? 's' : '') + ' → ' + nT + ' target' + (nT > 1 ? 's' : '') + ')</small>') + '</button>';
     if (!S) return b;
-    if (S.state === 'too') return b + '<div class="un-seq"><small>⚠ Too many: at most ' + SEQ_MAX_A + ' attackers and ' + SEQ_MAX_T + ' targets</small></div>';
+    if (S.state === 'too') return b + '<div class="un-seqmsg">⚠ Too many – at most ' + SEQ_MAX_A + ' attackers and ' + SEQ_MAX_T + ' targets</div>';
     if (S.state === 'running') return b + '<div class="un-seq"><div class="bar"><i style="width:' + S.pct + '%"></i></div><small>Calculating… ' + S.pct + '%</small></div>';
     if (!S.show) return b;
     var w = words(), h = '<div class="un-seq">', T = S.tot;
@@ -1251,12 +1291,12 @@ window.PP = window.PP || {};
         (bonusDesc(t) ? ' · <span data-bonus-desc>' + esc(bonusDesc(t)) + '</span>' : '') + '</small></div>' +
       '<button class="un-x" data-un="untarget" data-id="' + t.id + '" aria-label="Remove target">✕</button></div>' +
       '<div class="un-ctl"><span style="min-width:44px">HP</span>' + hpCtl(t, 'hp') + statusChips(t) + '</div>' +
-      '<div class="un-ctl" style="display:block"><span>Defense bonus</span>' + bonusHtml(t) + '</div>';
+      bonusFold(t);
     if (!res || !res.steps.length) {
       h += '<div class="un-empty">Now tap ' + words().att + '</div></div>';
       return h;
     }
-    h += '<div class="un-tbl">';
+    h += sortHtml() + '<div class="un-tbl">';
     res.steps.forEach(function (s) {
       var a = s.a;
       h += '<div class="un-row' + (s.skipped || s.none ? ' skip' : '') + '"><div class="l1"><span class="un-n">' + s.n + '</span>' + coinSvg(a.type, a.side, 22) +
@@ -1335,15 +1375,14 @@ window.PP = window.PP || {};
       '<button data-un="sub" data-v="battle" class="' + (p.sub === 'battle' ? 'on' : '') + '" role="tab">⚔️ Battle</button></div>';
     if (p.sub === 'place') {
       h += '<button class="un-era' + (p.eraser ? ' on' : '') + '" data-un="eraser" aria-pressed="' + !!p.eraser + '" title="Eraser: tap units to delete them" aria-label="Eraser">🧽</button>';
-    }
-    h += '</div>';
-    if (p.sub === 'battle') {
+    } else {
+      // who attacks – same row
       var as = atkSide();
-      h += '<div class="un-att"><span>Attacker</span><div class="un-side" role="radiogroup" aria-label="Attacking side">' +
+      h += '<div class="un-side" role="radiogroup" aria-label="Attacking side" title="Who attacks?">' +
         '<button data-un="as" data-v="me" class="me' + (as === 'me' ? ' on' : '') + '" role="radio" aria-checked="' + (as === 'me') + '"><i style="background:#3a7bf0"></i>Me</button>' +
-        '<button data-un="as" data-v="enemy" class="enemy' + (as === 'enemy' ? ' on' : '') + '" role="radio" aria-checked="' + (as === 'enemy') + '"><i style="background:#e63b55"></i>Enemy</button></div></div>';
+        '<button data-un="as" data-v="enemy" class="enemy' + (as === 'enemy' ? ' on' : '') + '" role="radio" aria-checked="' + (as === 'enemy') + '"><i style="background:#e63b55"></i>Enemy</button></div>';
     }
-    return h;
+    return h + '</div>';
   }
   function sideHtml(p) {
     return '<div class="un-side" title="Side of new units"><button data-un="side" data-v="me" class="me' + (p.side === 'me' ? ' on' : '') + '"><i style="background:#3a7bf0"></i>Mine</button>' +
@@ -1437,6 +1476,15 @@ window.PP = window.PP || {};
     if (sc && effBonus(u) !== (u.bonus || 1)) why += (why ? ' · ' : '') + 'city list overrides: <b>' + esc(kindText(sc.walls ? 'wall' : 'city')) + '</b>';
     return h + (why ? '<div class="un-why">' + why + '</div>' : '');
   }
+  // calculator card: the defense bonus as one line (value ▾); the choices open on tap
+  function bonusFold(u) {
+    var p = uiPrefs(), av = autoValue(u), a = av.a, au = isAuto(u), k = kindOf(u), img = !!boardImg(), sc = stateCityAt(u), val;
+    if (sc && effBonus(u) !== (u.bonus || 1)) val = kindText(sc.walls ? 'wall' : 'city');
+    else if (au && img) val = (a.kind && a.kind !== 'none' ? KINDS[a.kind].ic + ' ' : '') + (av.noTech ? KINDS[a.kind].name + ' – no ' + av.noTech + ' ×1' : kindText(a.kind || 'none'));
+    else val = k ? (k !== 'none' ? KINDS[k].ic + ' ' : '') + kindText(k) : '×' + fmt(u.bonus || 1);
+    return '<button class="un-bonb' + (p.bonusOpen ? ' open' : '') + '" data-un="bonfold" aria-expanded="' + !!p.bonusOpen + '"><span>Defense bonus</span><b>' +
+      (au && img ? '<small>Auto</small> ' : '') + esc(val) + '</b><i>▾</i></button>' + (p.bonusOpen ? '<div class="un-bonx">' + bonusHtml(u) + '</div>' : '');
+  }
   // compact quick editor for one unit (panel in Place mode, popover on long-press in Battle mode)
   function quickEdHtml(u, popover) {
     var p = uiPrefs(), side = u.side === 'enemy' ? 'enemy' : 'me', mx = maxHp(u);
@@ -1520,7 +1568,7 @@ window.PP = window.PP || {};
         '<small class="un-stat">' + esc(statLine(p.brush)) + '</small></div>';
       h += autoHtml();
     } else {
-      h += battlePeekHtml() + '<div style="height:8px"></div>' + seqBtnHtml() + sortHtml() + modeHtml(p) + calcHtml();
+      h += battlePeekHtml() + '<div style="height:8px"></div>' + modeHtml(p) + seqBtnHtml() + calcHtml();
       if (units().length) h += '<div class="un-foot"><button data-un="wipe">Remove all units</button></div>';
     }
     el.innerHTML = h + '</div>';
@@ -1565,6 +1613,7 @@ window.PP = window.PP || {};
       return;
     }
     if (a === 'seqload') { seqLoad(id); return; }
+    if (a === 'bonfold') { p.bonusOpen = !p.bonusOpen; refresh(); return; }
     if (a === 'tech' && u) { toggleTech(u.side, v); syncAuto(); commit(); return; }
     if (a === 'sub') {
       if (v === 'battle' && !units().length) { toast('Place some units first'); return; }
