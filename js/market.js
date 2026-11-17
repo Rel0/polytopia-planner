@@ -715,7 +715,10 @@
   // available (job.partial; job.version counts improvements). Proven optimal when every possible Market has 8 ★.
   function createLargeJob(cellsIn, opts) {
     const t0 = Date.now(), P = prepare(cellsIn || [], opts), K = P.cities.length, raw = (cellsIn || []).map(normCell);
-    const budget = opts && opts.largeMs != null ? opts.largeMs : 3000, perWin = opts && opts.winMs != null ? opts.winMs : 3000;
+    // v49: the main plan searches until a whole sweep brings nothing more (was: 3 s – on big boards that ended in the first
+    // sweep: 14-city test board 87 ★ after 3 s, 91 ★ when run to the end in 64 s). Cap 150 s; the best plan so far is shown
+    // and replaced while it improves. The Border Growth / tech checks pass their own short largeMs.
+    const budget = opts && opts.largeMs != null ? opts.largeMs : 150000, perWin = opts && opts.winMs != null ? opts.winMs : 3000;
     const st = { combos: 0, nodes: 0, leaves: 0, windows: 0, improved: 0, skipped: 0 };
     const { cells, idx, E } = P;
     const cheb = (a, b) => Math.max(Math.abs(a.c - b.c), Math.abs(a.r - b.r));
