@@ -1020,7 +1020,7 @@
         const rs = p.res && p.resConf >= (p.res === 'crop' ? TM.CROP_SURE || 0.6 : p.res === 'fruit' ? TM.FRUIT_SURE || 0.6 : TM.RES_SURE || 0.7) ? (p.res === 'metal' ? 'ore' : p.res) : null; // v3: crop from 0.6
         // v4 models: an existing Farm / Lumber Hut when the model is sure enough (only on the matching terrain)
         const bld = p.bld && p.bldProb >= (TM.BLD_SURE || 0.5) && ((p.bld === 'farm' && t === 'field') || (p.bld === 'lumber' && t === 'forest')) ? p.bld : null;
-        out = { terrain: t, model: p.terrain, conf: p.conf, bld, leaves: p.leaves || null, sure: p.conf >= (t === 'forest' ? TM.FOREST_SURE || TM.SURE : TM.SURE), res: rs && RES_TER[rs] === t ? [rs] : [], cloud: p.terrain === 'cloud' };
+        out = { terrain: t, model: p.terrain, conf: p.conf, bld, leaves: p.leaves || null, resConf: p.resConf || 0, sure: p.conf >= (t === 'forest' ? TM.FOREST_SURE || TM.SURE : TM.SURE), res: rs && RES_TER[rs] === t ? [rs] : [], cloud: p.terrain === 'cloud' };
       }
     } catch (e) { out = null; }
     autoMemo.m.set(k, out);
@@ -1042,7 +1042,10 @@
       return { c, r, terrain: ter, res, bld, other: bld === 'other' ? t.bld : null, stored: true, cloud };
     }
     const a = autoTerrain(c, r);
-    if (a) return { c, r, terrain: a.terrain, res: a.bld === 'farm' ? ['crop'] : a.res || [], bld: a.bld || null, stored: false, auto: true, unsure: !a.sure, conf: a.conf, cloud: !!(a.cloud && a.sure) };
+    // v49: a unit on the tile is often taken for fruit (10 % of the fields with a unit vs 1 % without, 52 labelled
+    // screenshots) – where a unit stands (Units tool), a fruit / crop needs ≥ 0.8 (then 0 of 30 wrong)
+    const unitHere = a && a.res && a.res.length && a.resConf < 0.8 && Array.isArray(S().units) && S().units.some(u => u && u.c === c && u.r === r);
+    if (a) return { c, r, terrain: a.terrain, res: a.bld === 'farm' ? ['crop'] : unitHere ? a.res.filter(q => q === 'ore') : a.res || [], bld: a.bld || null, stored: false, auto: true, unsure: !a.sure, conf: a.conf, cloud: !!(a.cloud && a.sure) };
     return { c, r, terrain: 'field', res: [], bld: null, stored: false };
   }
   // ------------------------------------------------------------------ planning area = territories of the selected cities
