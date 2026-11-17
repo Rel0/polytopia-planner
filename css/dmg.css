@@ -2,11 +2,11 @@
 body.sun.narrow main{max-width:600px}
 body.sun #calculator{margin:-70px 0 0;position:relative}
 body.sun .calc{background:var(--card);border:0;border-radius:18px;padding:12px;box-shadow:0 10px 30px -14px rgba(20,40,70,.45)}
-body.sun.narrow .sky{padding-bottom:0;height:250px}
+body.sun.narrow .sky{padding-bottom:84px;height:auto;min-height:250px;box-sizing:border-box} /* grows with its text; the calculator overlaps the last 70px */
 /* computer: the battlefield big on the left; picking units, the selected unit and the attack order on the right */
 @media (min-width:980px){
   body.sun.narrow main{max-width:1180px}
-  body.sun.narrow .sky{height:300px}
+  body.sun.narrow .sky{min-height:300px;padding-bottom:108px}
   body.sun.narrow #calculator{margin-top:-90px}
   body.sun.narrow section:not(#calculator){max-width:980px;margin-left:auto;margin-right:auto}
   body.sun .calc{padding:16px}
