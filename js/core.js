@@ -918,6 +918,10 @@ window.PP = window.PP || {};
     // v49: a height the user dragged the sheet to stays (until More / Less or dragging it down into the peek)
     dr.classList.toggle('free', isSheet() && !peek && !!st.ui.sheetFree && !!st.ui.drawerH);
     renderSheetSwitch(pk);
+    { const sx = $('#sheetExtra'), m = curMode(); let h = '';
+      if (sx && isSheet() && !dr.hidden && st.ui.drawerOpen && m && m.sheetExtra) { try { h = m.sheetExtra() || ''; } catch (e) { h = ''; } }
+      if (sx) { sx.hidden = !h; if (sx.innerHTML !== h) sx.innerHTML = h; }
+      dr.classList.toggle('hasextra', !!h); }
     if (peek) {
       // new peek content (other selection / sub-mode) or just switched to peek → show it from the top
       const key = pk.getAttribute('data-peek') || '';
@@ -1930,6 +1934,11 @@ window.PP = window.PP || {};
       if (b && m.sheetSwitch) { try { m.sheetSwitch.set(b.dataset.sw); } catch (e) { reportError(e, 'sheetSwitch'); } }
     });
     drawerEl.appendChild(sw);
+    // v49: optional small button on the sheet's top edge next to More / Less: mode.sheetExtra() → html | '', mode.sheetExtraClick(ev)
+    const sx = document.createElement('div');
+    sx.id = 'sheetExtra'; sx.hidden = true;
+    sx.addEventListener('click', ev => { const m = curMode(); if (m && m.sheetExtraClick) try { m.sheetExtraClick(ev); } catch (e) { reportError(e, 'sheetExtra'); } });
+    drawerEl.appendChild(sx);
     let rsT = 0;
     window.addEventListener('resize', () => { clearTimeout(rsT); rsT = setTimeout(() => { fitSheet(); placeHint(); }, 60); });
     // re-place hint + canvas after the drawer slid in/out or docked

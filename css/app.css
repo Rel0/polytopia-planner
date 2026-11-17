@@ -344,3 +344,14 @@ html,body,header,main,#rail,#drawer,#sheet,#float,#empty,button,input,select,lab
 #staleBar button{border:0;border-radius:10px;background:#ffb703;color:#2a1d00;font-weight:800;padding:9px 14px}
 .gx{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-top:6px}
 .gx .btn{border:1px solid var(--line);text-align:center}
+/* v49 the map bar folded into a small button */
+#mapAct:has(.ma-mini){padding:4px;border-left-width:1px;width:auto !important}
+#mapAct .ma-mini{background:rgba(255,255,255,.08);color:var(--text,#e8ecf8);padding:8px 14px;min-height:36px;font-size:13px}
+#mapAct .ma-fold{min-width:32px;padding:6px 4px;background:transparent;color:var(--muted,#9aa5c8);font-size:16px}
+/* v49 small extra button on the sheet's top edge, left of More / Less (e.g. show the hidden step bar) */
+#sheetExtra{display:none}
+@media (max-width:899px){
+  #drawer:not(.collapsed) #sheetExtra:not([hidden]){display:flex;position:absolute;right:92px;top:-30px;height:30px}
+  #sheetExtra button{width:34px;height:30px;border:1px solid var(--line);border-bottom:0;border-radius:10px 10px 0 0;background:var(--panel);color:var(--muted);font-size:15px;line-height:1;padding:0;opacity:.85}
+  #drawer.haspeek.hasextra:not(.collapsed) #drawerTab{left:calc(50% + 14px)}
+}

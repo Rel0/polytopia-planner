@@ -36,3 +36,4 @@
 .look-dark #rail button.on span{color:var(--accent)}
 .look-dark #drawerTitle .ti{color:var(--accent)}
 .look-dark #rail button.on.open{box-shadow:inset 0 0 0 1.5px rgba(47,129,247,.6)}
+.look-dark #sheetExtra button{background:var(--sheet);border-color:var(--line)}

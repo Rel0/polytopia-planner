@@ -1302,7 +1302,8 @@
     } finally { unlock(); }
     if (!alive(g) || !r) return null;
     const b = r.best;
-    let out = { income: b ? b.income : 0, cost: b ? b.cost : 0, proven: !r.large || !!(b && b.income >= r.large.ub) };
+    // v49: the plan itself is kept too – after "Plan with 5×5" the main plan starts from it (no weaker first result)
+    let out = { income: b ? b.income : 0, cost: b ? b.cost : 0, proven: !r.large || !!(b && b.income >= r.large.ub), plan: b || null, D: r.decision || null };
     if (out.proven || quick) return out;
     const P = prepare(cells, Object.assign({}, opts));
     const pr = await milpRun(g, P, { mode: 'income' }, r.decision, GROW_PROOF_SECS);
@@ -1310,10 +1311,10 @@
     if (!pr) return out;
     out.proven = pr.optimal;
     if (pr.p && pr.p.income > out.income) {
-      out.income = pr.p.income; out.cost = pr.p.cost;
+      out.income = pr.p.income; out.cost = pr.p.cost; out.plan = pr.p; out.D = pr.D;
       const pc = await milpRun(g, P, { mode: 'cost', minIncome: out.income }, pr.D, GROW_COST_SECS);
       if (!alive(g)) return null;
-      if (pc && pc.p && pc.p.income >= out.income && pc.p.cost < out.cost) out.cost = pc.p.cost;
+      if (pc && pc.p && pc.p.income >= out.income && pc.p.cost < out.cost) { out.cost = pc.p.cost; out.plan = pc.p; out.D = pc.D; }
     }
     return out;
   }
@@ -1967,8 +1968,17 @@
     if (prover && prover.sig !== sig) stopProver();
     if (growth && growth.sig !== sig) stopGrowth(); // board changed → that check is worthless
     if (tech && tech.sig.split('|')[0] !== sig) stopTech();
-    if (running && running.sig === sig) return running.job.partial ? Object.assign({}, running.job.partial, { altPending: true, etaMs: running.job.eta ? running.job.eta() : null }) : { pending: true, job: running.job };
+    if (running && running.sig === sig) {
+      const ws = running.withSeed || (r => r), sp = running.seed;
+      return running.job.partial ? ws(Object.assign({}, running.job.partial, { altPending: true, etaMs: running.job.eta ? running.job.eta() : null }))
+        : sp ? { best: Object.assign({}, sp.plan, { tag: 'best' }), alts: [], altPending: true, decision: sp.D } : { pending: true, job: running.job };
+    }
     let job = createJob(optCells(areaCells()), Object.assign({}, m.opts)), exact = null;
+    // v49: a plan the Border Growth / tech check already found for exactly this board is shown at once and kept unless
+    // the search finds a better one
+    const sd = scenCache.get(sig) || scenCache.get('q' + sig), seed = sd && sd.plan ? sd : null;
+    const vW = p => (p ? p.income * HUGE - ((p.wcost != null ? p.wcost : p.cost) * BIG + p.actions) : -Infinity);
+    const withSeed = r => (!seed || !r || r.pending || vW(seed.plan) <= vW(r.best) ? r : Object.assign({}, r, { best: Object.assign({}, seed.plan, { tag: 'best' }), decision: seed.D || r.decision }));
     // v29: results first. Tiny problems: the exact search right away. Otherwise the fast group search shows a plan within
     // milliseconds and quick options within seconds; if the problem is small enough (≤ MAX_COMBOS Market combinations)
     // the exact search runs afterwards and replaces it with the proven result. More: group search + HiGHS proof.
@@ -1977,7 +1987,7 @@
       if (job.combos <= MAX_COMBOS) exact = createJob(optCells(areaCells()), Object.assign({}, m.opts, { alts: false }));
       job = createLargeJob(optCells(areaCells()), Object.assign({}, m.opts));
     }
-    const run = running = { sig, job };
+    const run = running = { sig, job, seed, withSeed };
     // the exact search after the quick one (same board): its result replaces the quick one and starts the proof
     const runExact = () => {
       if (!exact) { startProof(cache, sig); return; }
@@ -1993,19 +2003,19 @@
         // keep the better plan (the exact one is never worse – but keep quick options it doesn't have)
         const quickAlts = (cache.alts || []).filter(q => !r.alts.some(a => a.tag === q.tag));
         r.alts = r.alts.concat(quickAlts);
-        cache = r; ui.alt = ui.alt || 0;
+        cache = withSeed(r); ui.alt = ui.alt || 0;
         startProof(cache, sig);
         if (PP.modes && PP.modes.current === 'market') PP.app.refresh();
       };
       setTimeout(tickEx, 0);
     };
-    if (job.step(Date.now() + 60)) { running = null; cacheSig = sig; cache = job.result; ui.alt = 0; runExact(); return cache; }
+    if (job.step(Date.now() + 60)) { running = null; cacheSig = sig; cache = withSeed(job.result); ui.alt = 0; runExact(); return cache; }
     let shown = !!job.partial, ver = job.version || 0;
     const tick = () => {
       if (running !== run) return; // abandoned (board changed)
       const done = job.step(Date.now() + 28);
       if (done) {
-        running = null; cacheSig = sig; cache = job.result;
+        running = null; cacheSig = sig; cache = withSeed(job.result);
         runExact();
       } else setTimeout(tick, 0);
       const better = job.large && job.version !== ver; ver = job.version || 0;
@@ -2015,7 +2025,7 @@
       }
     };
     setTimeout(tick, 0);
-    return job.partial ? Object.assign({}, job.partial, { altPending: true, etaMs: job.eta ? job.eta() : null }) : { pending: true, job };
+    return job.partial ? withSeed(Object.assign({}, job.partial, { altPending: true, etaMs: job.eta ? job.eta() : null })) : seed ? { best: Object.assign({}, seed.plan, { tag: 'best' }), alts: [], altPending: true, decision: seed.D } : { pending: true, job };
   }
   // v29: the plan options are fixed (ui.alt = tag); a missing one falls back to Best
   const ALT_TAGS = ['best', 'fast']; // v29: Cheaper / Fewer steps removed on request
@@ -2378,6 +2388,8 @@
   const mode = {
     label: 'Market', icon: '🏪',
     mapAct: () => mapActHtml(),
+    sheetExtra: () => (ui.step === 3 && S().ui && S().ui.barMin ? '<button type="button" data-sx="bar" title="Show the step bar on the map" aria-label="Show the step bar on the map">▭</button>' : ''),
+    sheetExtraClick(ev) { const b = ev.target.closest('[data-sx]'); if (b && b.dataset.sx === 'bar') { S().ui.barMin = false; PP.app.commit(); } },
     mapActClick,
     hint() {
       if (ui.step === 1 || !selCities().length) {
@@ -2396,7 +2408,10 @@
       const m = M();
       ui.only = null;
       if (!m.touched && !m.cities.length) knownOwn().forEach(q => { if (cityEntry(q.c, q.r)) m.cities.push({ c: q.c, r: q.r, rad: 1 }); });
-      if (!selCities().length) ui.step = 1; else if (ui.step === 1 && !ui.entered) ui.step = 2;
+      // v49: a game opens in the step it was left in (③ with its saved plan), else ② once cities are chosen
+      if (!selCities().length) ui.step = 1;
+      else if (!ui.entered && (m.lastStep === 2 || m.lastStep === 3)) ui.step = m.lastStep;
+      else if (ui.step === 1 && !ui.entered) ui.step = 2;
       ui.entered = true;
     },
     onExit() { ui.paint = null; ui.edit = null; },
@@ -2568,6 +2583,7 @@
 .mk .mk-plans small{margin-left:3px;font-weight:700}
 .mk .mk-plans small.up{color:#7bd389}.mk .mk-plans small.dn{color:#ff8ca6}
 .mk .mk-plans .pa .lnk{margin-right:6px}
+.mk .mk-barback{display:block;margin:0 0 4px auto;font-size:11.5px;color:var(--muted,#9aa5c8);opacity:.8}
 .mk .mk-only{display:flex;align-items:center;gap:5px;flex-wrap:wrap;margin:6px 0}
 .mk .mk-only>span{font-size:12.5px;color:var(--muted,#9aa5c8);margin-right:2px}
 .mk .mk-only button{border:1px solid var(--line,#33406e);background:var(--bg,#12172b);color:var(--text,#e8ecf8);border-radius:9px;padding:5px 9px;min-height:36px;font-size:12.5px;font-weight:600}
@@ -2654,6 +2670,7 @@
   }
 
   function renderPanel(el) {
+    if (M().lastStep !== ui.step) { M().lastStep = ui.step; if (PP.app && PP.app.save) PP.app.save(); }
     injectCss();
     const m = M();
     if (!selCities().length) ui.step = 1;
@@ -2692,7 +2709,9 @@
     } else {
       const res = planResult(), p = curPlan(res), vp = viewedPlan();
       const added = p && p.actions && planAdded(p);
-      if (vp) h += `<div class="mk-view">👁 Showing the saved plan <b>${esc(vp.name)}</b> <button class="mk-btn sm pri" data-pview="">Back to the current plan</button></div>`;
+      if (vp) h += `<div class="mk-view">👁 Showing the saved plan <b>${esc(vp.name)}</b> <small style="color:#ff8fe0">· pink dashed = different from the current plan</small> <button class="mk-btn sm pri" data-pview="">Back to the current plan</button></div>`;
+      // phone: a small button on the sheet's top edge (sheetExtra); desktop: a quiet link here
+      if (S().ui && S().ui.barMin && !(PP.drawer && PP.drawer.isSheet && PP.drawer.isSheet())) h += '<button class="lnk mk-barback" data-a="barShow">show the step bar</button>';
       h += `<div data-peek="plan:${ui.alt}:${ui.only || ''}:${ui.sel ? ui.sel.c + '/' + ui.sel.r : ''}:${res && res.pending ? 'p' : 'd'}">${stepsHtml()}<div class="mk-key"><div class="t">${keyLine(p, res)}</div>` +
         (p && p.actions ? `<button class="mk-btn ${added ? 'ok' : 'pri'}" data-a="${added ? 'fromPlan' : 'toPlan'}">${added ? '✓ In plan' : '➕ Cost plan'}</button>` : '') + '</div>';
       // v49: the plan builds on tiles the detection is unsure about → say so right at the top (they have a ? on the map)
@@ -2923,7 +2942,15 @@
       return `<span class="ma-tx"><small>② What’s here</small><br>Mark the tiles, then plan</span>${nu ? `<button class="ma-un" data-ma="chknext" title="Check the tiles with ?">❓ ${nu}</button>` : ''}<button class="ma-ok ma-next" data-ma="step" data-to="3">▶ Plan</button>`; }
     return '';
   }
+  // v49: the bar can be folded into a small button (it is in the way of the map at times) – S().ui.barMin
   function mapActHtml() {
+    if (ui.step === 2 && (ui.sim || ui.chk)) return stepActHtml(); // checking tiles: always open
+    const h = mapActOpen(); if (!h) return '';
+    if (ui.step !== 3) return h; // ① / ②: only shown with the panel folded – that one stays
+    if (S().ui && S().ui.barMin) return ''; // hidden – step ③ in the panel has "Show the step bar on the map" 
+    return h + '<button class="ma-alt ma-fold" data-ma="barmin" title="Hide this bar (show it again in the panel)" aria-label="Hide this bar">✕</button>';
+  }
+  function mapActOpen() {
     if (ui.step === 1 || ui.step === 2) return stepActHtml();
     if (ui.step !== 3) return '';
     const pr = bgProg(), ph = pr ? `<button class="ma-prog" data-ma="open" title="Open the panel"><span><span class="mk-spin"></span>${pr.tx}</span>` +
@@ -2958,6 +2985,7 @@
   function mapActClick(ev) {
     const b = ev.target.closest('button[data-ma]'); if (!b || b.disabled) return;
     const m = M(), p = curPlan(planResult());
+    if (b.dataset.ma === 'barmin' || b.dataset.ma === 'barmax') { S().ui.barMin = b.dataset.ma === 'barmin'; PP.app.commit(); return; }
     if (b.dataset.ma === 'simok' && ui.sim) {
       const S0 = ui.sim; S0.keys.forEach(k => { const [c, r] = k.split(',').map(Number); storeTile(c, r, { terrain: S0.ter, res: [], bld: null, bulk: true }); });
       ui.sim = null; PP.app.commit(); toast(plural(S0.keys.size, 'tile', 'tiles') + ' changed to ' + nm(S0.ter)); return;
@@ -3049,7 +3077,8 @@
       if (PP.drawer && PP.drawer.isOverlay()) PP.drawer.yieldMap();
       requestAnimationFrame(() => fitTiles(l.map(x => [x.c, x.r]), 150)); return;
     }
-    if (d.pview !== undefined) { ui.view = d.pview || null; ui.sel = null; ui.only = null; PP.app.refresh(); requestAnimationFrame(fitPlan); return; }
+    // the map stays where it is (moving it made it hard to see what changes)
+    if (d.pview !== undefined) { ui.view = d.pview || null; ui.sel = null; ui.only = null; PP.app.refresh(); return; }
     if (d.pdel) { M().plans = savedPlans().filter(x => x.id !== d.pdel); if (ui.view === d.pdel) ui.view = null; PP.app.commit(); return; }
     if (d.pren) { const x = savedPlans().find(q => q.id === d.pren); const n = x && window.prompt('Name of this plan', x.name); if (n && n.trim()) { x.name = n.trim().slice(0, 40); PP.app.commit(); } return; }
     if (d.only) { ui.only = ui.only === d.only ? null : d.only; ui.sel = null; PP.app.refresh(); requestAnimationFrame(fitPlan); return; }
@@ -3111,6 +3140,7 @@
     if (a === 'techMenu') { ui.techMenu = !ui.techMenu; PP.app.refresh(); return; }
     if (a === 'techAgain') { stopTech(); ui.techMenu = true; PP.app.refresh(); return; }
     if (a === 'tech') { ui.techMenu = false; startTech(); PP.app.refresh(); return; }
+    if (a === 'barShow') { S().ui.barMin = false; PP.app.commit(); return; }
     if (a === 'savePlan') { const p = curPlanRaw(planResult()); if (p) { const n = savePlan(p); PP.app.commit(); toast('📌 Saved: ' + n); } return; }
     if (a === 'chkStart') { ui.chkSkip = new Set(); chkGo(); return; }
     if (a === 'growthMenu') { ui.growMenu = !ui.growMenu; PP.app.refresh(); return; }
@@ -3640,6 +3670,17 @@
         ctx.lineWidth = isM ? 3.5 : 2.2; ctx.strokeStyle = isM ? '#ffd166' : 'rgba(255,255,255,.95)'; ctx.stroke();
       }
       ctx.restore();
+    }
+    // v49: viewing a saved plan – tiles where it builds something else than the current plan: pink dashed frame
+    const vp = viewedPlan(), cp = vp ? curPlanRaw(planResult()) : null;
+    if (vp && cp) {
+      const fin = q => { const m = new Map(); (q.final || []).forEach(f => m.set(key(f.c, f.r), f.bld)); return m; };
+      const a = fin(vp.plan), b = fin(cp);
+      for (const k of new Set([...a.keys(), ...b.keys()])) {
+        if (a.get(k) === b.get(k)) continue;
+        const [c, r] = k.split(',').map(Number);
+        diamondPath(ctx, c, r, 1.0); ctx.lineWidth = clamp(u * 0.06, 2.5, 4); ctx.strokeStyle = '#ff5fd2'; ctx.setLineDash([6, 4]); ctx.stroke(); ctx.setLineDash([]);
+      }
     }
     // v49: a ? on tiles the plan uses although the detection is unsure about them
     for (const k of planUnsure(p)) {
