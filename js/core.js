@@ -228,22 +228,35 @@ window.PP = window.PP || {};
     toast('Game saved as ' + fname, 3000);
   }
   function importGame(g) {
-    const inp = document.createElement('input'); inp.type = 'file'; inp.accept = 'application/json,.json';
-    inp.onchange = async () => {
-      const f = inp.files && inp.files[0]; if (!f) return;
-      let d = null; try { d = JSON.parse(await f.text()); } catch (er) { d = null; }
-      if (!d || d.format !== 'polytopia-planner-game' || !isObj(d.state)) { toast('⚠ Not a Polytopia Planner game file', 4000); return; }
-      if (!(await parkCurrent(g))) { toast('⚠ Could not save this game first – not importing (storage full?)', 6000); return; }
-      const nid = gid(), st = Object.assign({}, d.state, { gameId: nid });
-      st.ui = Object.assign({}, S().ui, { mode: (d.state.ui && d.state.ui.mode) || S().ui.mode }); // keep this device's view settings
-      let okImg = true;
-      if (d.image) { try { const blob = await (await fetch(d.image)).blob(); okImg = await idb.set('img.' + nid, blob); } catch (er) { okImg = false; } }
-      if (!d.image || !okImg) { if (st.board === 'image') st.board = null; }
-      if (!(await idb.set('game.' + nid, JSON.stringify(st)))) { toast('⚠ Could not import (storage full?)', 6000); return; }
-      const used = new Set(g.list.map(x => x.name)); let name = String(d.name || 'Imported game').slice(0, 36); if (used.has(name)) name += ' (2)';
-      g.list.push({ id: nid, name, t: Date.now(), thumb: null });
-      await openGame(g, nid);
-    };
+    // v49: the input is put into the page (iPhone Safari does not report the chosen file of a detached input) and takes any
+    // file (a .json filter greys the file out on some phones); every problem is said instead of silently doing nothing
+    const inp = document.createElement('input'); inp.type = 'file';
+    inp.style.cssText = 'position:fixed;left:-1000px;top:0;width:1px;height:1px;opacity:0';
+    document.body.appendChild(inp);
+    const cleanup = () => setTimeout(() => inp.remove(), 1000);
+    inp.addEventListener('change', async () => {
+      try {
+        const f = inp.files && inp.files[0]; if (!f) { cleanup(); return; }
+        toast('Importing “' + f.name + '”…', 4000);
+        let d = null; try { d = JSON.parse(f.text ? await f.text() : await new Response(f).text()); } catch (er) { d = null; }
+        if (!d || d.format !== 'polytopia-planner-game' || !isObj(d.state)) { toast('⚠ “' + f.name + '” is not a Polytopia Planner game file (Menu › Games › Export)', 6000); cleanup(); return; }
+        if (!(await parkCurrent(g))) { toast('⚠ Could not save this game first – not importing (storage full?)', 6000); cleanup(); return; }
+        const nid = gid(), st = Object.assign({}, d.state, { gameId: nid });
+        st.ui = Object.assign({}, S().ui, { mode: (d.state.ui && d.state.ui.mode) || S().ui.mode }); // keep this device's view settings
+        let okImg = true;
+        if (d.image) {
+          try { const bin = atob(d.image.split(',')[1] || ''), u8 = new Uint8Array(bin.length); for (let i = 0; i < bin.length; i++) u8[i] = bin.charCodeAt(i);
+            const mime = (d.image.match(/^data:([^;,]+)/) || [])[1] || 'image/png'; okImg = await idb.set('img.' + nid, new Blob([u8], { type: mime })); }
+          catch (er) { okImg = false; }
+        }
+        if (!d.image || !okImg) { if (st.board === 'image') st.board = null; if (d.image) toast('⚠ The screenshot could not be stored – the game comes without it', 5000); }
+        if (!(await idb.set('game.' + nid, JSON.stringify(st)))) { toast('⚠ Could not import (storage full?)', 6000); cleanup(); return; }
+        const used = new Set(g.list.map(x => x.name)); let name = String(d.name || 'Imported game').slice(0, 36); if (used.has(name)) name += ' (2)';
+        g.list.push({ id: nid, name, t: Date.now(), thumb: null });
+        cleanup();
+        await openGame(g, nid);
+      } catch (er) { toast('⚠ Import failed: ' + (er && er.message ? er.message : er), 6000); cleanup(); }
+    });
     inp.click();
   }
   const ago = t => { const m = Math.round((Date.now() - t) / 60000); return m < 1 ? 'just now' : m < 60 ? m + ' min ago' : m < 1440 ? Math.round(m / 60) + ' h ago' : Math.round(m / 1440) + ' d ago'; };
