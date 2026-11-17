@@ -920,14 +920,14 @@
   const toast = m => PP.ui && PP.ui.toast && PP.ui.toast(m);
   const NAME = { field: 'Empty', forest: 'Forest', mountain: 'Mountain', water: 'Water', city: 'City', crop: 'Crop (for Farm)', ore: 'Metal', fruit: 'Fruit',
     lumber: 'Lumber Hut', plant: 'Grow Forest', fruitH: 'Harvest Fruit', other: 'Other building' };
-  const nm = id => NAME[id] || (ITEM(id) || {}).name || ({ cloud: 'Cloud', space: 'Space', monument: 'Monument' })[id] || id;
+  const nm = id => NAME[id] || (ITEM(id) || {}).name || ({ cloud: 'Cloud', space: 'Space', monument: 'Monument', enemy: 'Enemy territory' })[id] || id;
   const stepName = s => (s.item === 'destroy' ? 'Destroy ' + nm(s.what || 'building') : s.item === 'fruit' ? 'Harvest Fruit' : UNIQUE.indexOf(s.item) >= 0 || PRODS.indexOf(s.item) >= 0 ? 'Build ' + nm(s.item) : nm(s.item));
   const ICON = {
     field: '🟩', forest: '🌲', mountain: '⛰️', water: '🌊', city: '🏠', crop: '🌾', ore: '💎', fruit: '🍒',
     farm: '🌾', mine: '⛏️', lumber: '🪵', windmill: '🌬️', forge: '🔨', sawmill: '🪚', market: '🏪',
-    destroy: '💥', clear: '🪓', burn: '🔥', plant: '🌱', other: '🏛️', space: '🌌', cloud: '☁️', monument: '🗽',
+    destroy: '💥', clear: '🪓', burn: '🔥', plant: '🌱', other: '🏛️', space: '🌌', cloud: '☁️', monument: '🗽', enemy: '🚩',
   };
-  const ICON_NAME = { ore: 'metal', plant: 'forest', destroy: null, clear: null, burn: null, other: null };
+  const ICON_NAME = { ore: 'metal', plant: 'forest', destroy: null, clear: null, burn: null, other: null, enemy: null };
   const iconName = id => (id in ICON_NAME ? ICON_NAME[id] : id);
   const hasIcon = id => { const n = iconName(id); return !!(n && PP.icons && PP.icons.has && PP.icons.has(n)); };
   function iconHtml(id, size) {
@@ -945,9 +945,11 @@
   const TER_B = ['field', 'forest', 'mountain', 'water', 'space', 'cloud', 'city'];
   const RES_B = ['crop', 'ore', 'fruit'];
   const BLD_B = ['farm', 'mine', 'lumber', 'windmill', 'forge', 'sawmill', 'market'];
-  const BRUSH = TER_B.concat(RES_B, BLD_B, ['monument']);
-  const PAL_ORDER = ['field', 'sawmill', 'lumber', 'forest', 'windmill', 'farm', 'crop', 'fruit', 'forge', 'mine', 'ore', 'mountain', 'city', 'market', 'water', 'space', 'cloud', 'monument'];
-  const BRUSH_LABEL = { field: 'Empty', forest: 'Forest', mountain: 'Mountain', water: 'Water', space: 'Space', cloud: 'Cloud', monument: 'Monument', city: 'City', crop: 'Crop', ore: 'Metal', fruit: 'Fruit',
+  const BRUSH = TER_B.concat(RES_B, BLD_B, ['monument', 'enemy']);
+  // v50 three rows: what the tile is · what is built on it · the rest (as suggested by a player)
+  const PAL_ROWS = [['field', 'forest', 'crop', 'fruit', 'mountain', 'ore', 'water'], ['lumber', 'sawmill', 'farm', 'windmill', 'mine', 'forge', 'market'],
+    ['city', 'enemy', 'space', 'cloud', 'monument']];
+  const BRUSH_LABEL = { field: 'Empty', forest: 'Forest', mountain: 'Mountain', water: 'Water', space: 'Space', cloud: 'Cloud', monument: 'Monument', city: 'City', crop: 'Crop', ore: 'Metal', fruit: 'Fruit', enemy: 'Enemy',
     farm: 'Farm', mine: 'Mine', lumber: 'Lumber', windmill: 'Windmill', forge: 'Forge', sawmill: 'Sawmill', market: 'Market' };
   const RES_TER = { crop: 'field', fruit: 'field', ore: 'mountain' };
   const OPT_LABEL = { clear: ['🪓', 'Clear Forest', '+1 ★'], burn: ['🔥', 'Burn Forest', '→ Crop'], grow: ['🌱', 'Grow Forest', 'Empty → Forest'],
@@ -986,6 +988,9 @@
     // v49 enemy cities (tapped in ①): their territory is left out of ours and of Border Growth
     if (!Array.isArray(m.enemies)) m.enemies = [];
     m.enemies = m.enemies.filter(x => x && Number.isInteger(x.c) && Number.isInteger(x.r));
+    // v50 single tiles marked as enemy territory in ② (their city is off the screenshot, or the border isn't a square)
+    if (!Array.isArray(m.enemyT)) m.enemyT = [];
+    m.enemyT = m.enemyT.filter(k => typeof k === 'string' && /^-?\d+,-?\d+$/.test(k));
     return m;
   }
   const enemyAt = (c, r) => M().enemies.find(e => e.c === c && e.r === r) || null;
@@ -993,6 +998,7 @@
   function enemyTiles() {
     const out = new Set();
     for (const e of M().enemies) for (let dr = -(e.rad || 1); dr <= (e.rad || 1); dr++) for (let dc = -(e.rad || 1); dc <= (e.rad || 1); dc++) out.add(key(e.c + dc, e.r + dr));
+    for (const k of M().enemyT) out.add(k);
     return out;
   }
   const build = () => S().build || (S().build = {});
@@ -1027,7 +1033,7 @@
         const rs = p.res && p.resConf >= (p.res === 'crop' ? TM.CROP_SURE || 0.6 : p.res === 'fruit' ? TM.FRUIT_SURE || 0.6 : TM.RES_SURE || 0.7) ? (p.res === 'metal' ? 'ore' : p.res) : null; // v3: crop from 0.6
         // v4 models: an existing Farm / Lumber Hut when the model is sure enough (only on the matching terrain)
         const bld = p.bld && p.bldProb >= (TM.BLD_SURE || 0.5) && ((p.bld === 'farm' && t === 'field') || (p.bld === 'lumber' && t === 'forest')) ? p.bld : null;
-        out = { terrain: t, model: p.terrain, conf: p.conf, bld, leaves: p.leaves || null, resConf: p.resConf || 0, sure: p.conf >= (t === 'forest' ? TM.FOREST_SURE || TM.SURE : TM.SURE), res: rs && RES_TER[rs] === t ? [rs] : [], cloud: p.terrain === 'cloud' };
+        out = { terrain: t, model: p.terrain, conf: p.conf, probs: p.probs || null, bld, leaves: p.leaves || null, resConf: p.resConf || 0, sure: p.conf >= (t === 'forest' ? TM.FOREST_SURE || TM.SURE : TM.SURE), res: rs && RES_TER[rs] === t ? [rs] : [], cloud: p.terrain === 'cloud' };
       }
     } catch (e) { out = null; }
     autoMemo.m.set(k, out);
@@ -2041,8 +2047,12 @@
     const nmOf = sc => { const ci = A.cities.find(c => c.c === sc.c && c.r === sc.r); return ci ? cityName(ci, ci.k) : sc.c + '/' + sc.r; };
     return (g.length ? 'BG ' + g.map(nmOf).join(', ') : 'No BG') + ' · ' + p.income + ' ★';
   }
+  // the same plan (same buildings on the same tiles, same steps) is saved only once
+  const planKey = p => JSON.stringify([(p.final || []).map(f => f.c + ',' + f.r + ':' + f.bld).sort(), (p.steps || []).map(st => st.c + ',' + st.r + ':' + st.item).sort(), p.income, p.cost]);
+  const savedTwin = p => (p ? savedPlans().find(x => x.plan && planKey(x.plan) === planKey(p)) || null : null);
   function savePlan(p) {
-    const l = savedPlans();
+    const l = savedPlans(), twin = savedTwin(p);
+    if (twin) return null;
     if (l.length >= 8) l.shift();
     const name = planLabel(p);
     l.push({ id: Date.now().toString(36), name, t: Date.now(), income: p.income, cost: p.cost, actions: p.actions, payback: p.payback || null, plan: JSON.parse(JSON.stringify(p)) });
@@ -2277,6 +2287,7 @@
     tiles[k] = next;
   }
   function brushOn(id, x) {
+    if (id === 'enemy') return M().enemyT.indexOf(key(x.c, x.r)) >= 0;
     if (id === 'city') return x.terrain === 'city';
     if (id === 'cloud') return x.stored && !!x.cloud;
     if (id === 'monument') return !!x.monument;
@@ -2288,6 +2299,12 @@
   function applyBrush(c, r, id, on) {
     if (!inPaint(c, r) || BRUSH.indexOf(id) < 0) return;
     const x = cellAt(c, r), k = key(c, r);
+    // v50 enemy territory: only the mark – what the tile is stays as it is (also for the training data)
+    if (id === 'enemy') {
+      if (x.terrain === 'city') return;
+      const m = M(); m.enemyT = m.enemyT.filter(q => q !== k); if (on) m.enemyT.push(k);
+      return;
+    }
     if (id === 'city') {
       // a city inside the area is one of the planned cities (own territory 3×3)
       if (on) { upsertCity(c, r, 'user', { side: 'me' }); storeTile(c, r, { terrain: 'field', res: [], bld: null }); selectCity(c, r); }
@@ -2495,13 +2512,15 @@
 .mk .mk-steps button{flex:1;min-width:0;border:0;background:none;color:var(--muted,#9aa5c8);font-weight:650;font-size:13px;padding:6px 2px;border-radius:8px;line-height:1.1;min-height:36px;white-space:nowrap;touch-action:manipulation}
 .mk .mk-steps button.on{background:var(--panel2,#252e52);color:var(--text,#e8ecf8)}
 .mk .mk-steps button:disabled{opacity:.4}
-.mk .mk-pal{display:grid;grid-template-columns:repeat(9,minmax(0,1fr));gap:3px;margin:0 0 2px}
+.mk .mk-pal{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:3px;margin:0 0 2px}
 .mk .mk-pal button{border:1px solid var(--line,#33406e);background:var(--panel2,#252e52);color:var(--text,#e8ecf8);border-radius:8px;padding:2px 0 1px;font-size:clamp(7.5px,2.45vw,9.5px);letter-spacing:-.4px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:0;min-width:0;min-height:44px;overflow:hidden;white-space:nowrap;touch-action:manipulation}
 .mk .mk-pal button span{font-size:18px;line-height:1.1;height:22px;display:flex;align-items:center}
 .mk .mk-pal button.on{border-color:var(--gold,#ffd166);background:rgba(255,209,102,.22);color:var(--gold,#ffd166);box-shadow:inset 0 0 0 1px var(--gold,#ffd166)}
 .mk .mk-pal button.t{background:rgba(155,211,90,.08)}
 .mk .mk-pal button.rs{background:rgba(255,255,255,.04);border-style:dashed}
 .mk .mk-pal button.b{background:rgba(76,201,240,.08)}
+.mk .mk-pal button.o{background:rgba(255,255,255,.03)}
+.mk .mk-pal button.en.on{border-color:#ef476f;background:rgba(239,71,111,.22);color:#ff8fa3;box-shadow:inset 0 0 0 1px #ef476f}
 .mk .mk-pal button.on{background:rgba(255,209,102,.22)}
 .mk .mk-plan{margin:6px 0 2px;min-height:46px;font-size:15px;border-radius:12px}
 .mk .mk-pal button.go{background:var(--accent,#4cc9f0);color:#08121f;border-color:transparent;font-weight:800;font-size:11px}
@@ -2694,9 +2713,9 @@
     } else if (ui.step === 2) {
       // v49: while checking a tile the palette shows what that tile has (and its brushes change it)
       const chkX = ui.chk ? cellAt(ui.chk.c, ui.chk.r) : null, bOn = id => (chkX ? (chkX.stored ? brushOn(id, chkX) : id === (chkX.cloud ? 'cloud' : chkX.terrain) || chkX.res.indexOf(id) >= 0 || chkX.bld === id) : ui.brush === id);
-      const bt = id => `<button data-brush="${id}" class="${bOn(id) ? 'on' : ''} ${TER_B.indexOf(id) >= 0 ? 't' : RES_B.indexOf(id) >= 0 ? 'rs' : 'b'}" title="${esc(nm(id))}"><span>${iconHtml(id, 21)}</span>${BRUSH_LABEL[id]}</button>`;
+      const bt = id => `<button data-brush="${id}" class="${bOn(id) ? 'on' : ''} ${PAL_ROWS[2].indexOf(id) >= 0 ? 'o' + (id === 'enemy' ? ' en' : '') : TER_B.indexOf(id) >= 0 ? 't' : RES_B.indexOf(id) >= 0 ? 'rs' : 'b'}" title="${esc(nm(id))}"><span>${iconHtml(id, 21)}</span>${BRUSH_LABEL[id]}</button>`;
       // v33: brushes grouped by what belongs together (16 = two rows of 8), the Plan button as a wide row below
-      h += `<div data-peek="tiles">${stepsHtml()}<div class="mk-pal">` + PAL_ORDER.map(bt).join('') + '</div>' +
+      h += `<div data-peek="tiles">${stepsHtml()}<div class="mk-pal">` + PAL_ROWS.map(row => row.map(bt).join('') + '<i></i>'.repeat(7 - row.length)).join('') + '</div>' +
         '<button class="mk-btn pri mk-plan" data-step="3">▶ Show the plan</button></div>' +
         // v37: the explanation is below the collapsed panel (Less shows only up to "Show the plan")
         chkPanelHtml();
@@ -2721,7 +2740,8 @@
       const av = onlyAvail(p), of = onlyOn(p);
       if (av.length) h += '<div class="mk-only"><span>Show only:</span>' + av.map(f => `<button class="${of === f ? 'on' : ''}" data-only="${f}" aria-pressed="${of === f}">${ONLY[f].ic} ${ONLY[f].on}</button>`).join('') + '</div>';
       if (p && !vp) h += altsHtml(res);
-      if (p && !vp && !(res && (res.pending || res.altPending))) h += `<button class="mk-btn sm" data-a="savePlan" style="margin:6px 0 0">📌 Save this plan to compare</button>`;
+      if (p && !vp && !(res && (res.pending || res.altPending))) { const tw = savedTwin(curPlanRaw(res));
+        h += tw ? `<div class="mk-note" style="margin:6px 0 0">📌 This plan is saved as <b>${esc(tw.name)}</b></div>` : `<button class="mk-btn sm" data-a="savePlan" style="margin:6px 0 0">📌 Save this plan to compare</button>`; }
       h += plansHtml(vp ? (curPlanRaw(res)) : p);
       h += (ui.sel && p ? selLine(p, ui.sel.c, ui.sel.r) : '') + '</div>';
       h += '<h3>Allowed actions</h3><div class="mk-opts">' + OPT_KEYS.map(k => {
@@ -2888,13 +2908,38 @@
   }
   const CHK_T = ['field', 'forest', 'mountain', 'water'];
   const cellText = x => [x.cloud ? nm('cloud') : x.monument ? nm('monument') : nm(x.terrain)].concat((x.res || []).filter(q => !(q === 'crop' && x.bld === 'farm')).map(nm), x.bld ? [nm(x.bld)] : []).map(esc).join(' + ');
+  // v50: what else the tile could be, most likely first (the model's terrain probabilities × the resource / building
+  // models for that terrain) – instead of always the same four terrains. → [{ t, res, bld, p }] without what is shown now
+  function chkCands(x) {
+    const a = autoTerrain(x.c, x.r), TM = PP.tilemodel, g = S().grid, P = PP.board && PP.board.pixels ? PP.board.pixels() : null;
+    if (!a || !a.probs || !TM || !TM.subProbs || !P || !g) return null;
+    const ctr = PP.grid.center(x.c, x.r), w = Math.abs(g.ux - g.vx), pr = a.probs, out = [];
+    const add = (t, res, bld, p) => { if (p >= 0.02) out.push({ t, res, bld, p }); };
+    for (const t of ['field', 'forest', 'mountain', 'water', 'cloud']) {
+      const pt = (pr[t] || 0) + (t === 'water' ? pr.outside || 0 : 0); if (pt < 0.02) continue;
+      const sub = t === 'field' || t === 'forest' || t === 'mountain' ? TM.subProbs(P, ctr.x, ctr.y, w, t) : null;
+      if (t === 'field' && sub && sub.res) {
+        const pf = (sub.bld && sub.bld.farm) || 0, rp = sub.res;
+        add(t, ['crop'], 'farm', pt * pf); add(t, ['crop'], null, pt * (1 - pf) * (rp.crop || 0));
+        add(t, ['fruit'], null, pt * (1 - pf) * (rp.fruit || 0)); add(t, [], null, pt * (1 - pf) * (rp.none || 0));
+      } else if (t === 'forest' && sub && sub.bld) { const pl = sub.bld.lumber || 0; add(t, [], 'lumber', pt * pl); add(t, [], null, pt * (1 - pl)); }
+      else if (t === 'mountain' && sub && sub.res) { add(t, ['ore'], null, pt * (sub.res.metal || 0)); add(t, [], null, pt * (sub.res.none || 0)); }
+      else add(t, [], null, pt);
+    }
+    const now = (x.cloud ? 'cloud' : x.terrain) + '|' + (x.res || []).join() + '|' + (x.bld || '');
+    return out.filter(q => q.t + '|' + q.res.join() + '|' + (q.bld || '') !== now).sort((u, v) => v.p - u.p).slice(0, 3);
+  }
+  const candText = q => [nm(q.t)].concat(q.res.filter(r => !(r === 'crop' && q.bld === 'farm')).map(nm), q.bld ? [nm(q.bld)] : []).join(' + ');
   function chkActHtml() {
     const x = cellAt(ui.chk.c, ui.chk.r), sub = `<small>${ui.chk.n} to check · ${x.c}/${x.r}${x.inPlan ? ' · used by the plan' : ''}</small>`;
     // ⋯ opens the panel with all brushes (they change only this tile), ✕ stops checking
     const more = '<button class="ma-alt" data-ma="chkedit" title="All brushes (resources, buildings …)">⋯</button>', end = '<button class="ma-alt" data-ma="chkend" title="Stop checking">✕</button>';
     // you changed it: what it is now, ✓ goes on to the next tile
     if (x.stored) return `<span class="ma-tx"><b>${cellText(x)}</b><br>${sub}</span><button class="ma-ok" data-ma="chkdone" title="Done – next tile">✓ Next</button>` + (ui.chk.edit ? '' : more) + end;
-    const alt = ui.chk.edit ? '' : CHK_T.filter(t => t !== x.terrain).map(t => `<button class="ma-alt" data-ma="chkset" data-t="${t}" title="It is ${esc(nm(t))}">${iconHtml(t, 20)}</button>`).join('');
+    const cands = ui.chk.edit ? null : chkCands(x);
+    const alt = ui.chk.edit ? '' : cands && cands.length
+      ? cands.map(q => `<button class="ma-alt" data-ma="chkset" data-t="${q.t}" data-res="${q.res.join()}" data-bld="${q.bld || ''}" data-full="1" title="It is ${esc(candText(q))} (${Math.round(q.p * 100)} %)">${iconHtml(q.bld || q.res[0] || q.t, 20)}</button>`).join('')
+      : CHK_T.filter(t => t !== x.terrain).map(t => `<button class="ma-alt" data-ma="chkset" data-t="${t}" title="It is ${esc(nm(t))}">${iconHtml(t, 20)}</button>`).join('');
     return `<span class="ma-tx"><b>${cellText(x)}?</b><br>${sub}</span><button class="ma-ok" data-ma="chkok" title="Yes, that's right">✓</button>${alt}` + (ui.chk.edit ? '' : more) + end;
   }
   // v49 "similar tiles follow": after you correct a detected tile, the unmarked tiles the model sees the same way (same
@@ -2999,7 +3044,9 @@
     if (b.dataset.ma === 'chkskip' && ui.chk) { (ui.chkSkip || (ui.chkSkip = new Set())).add(key(ui.chk.c, ui.chk.r)); chkGo(); return; }
     if ((b.dataset.ma === 'chkok' || b.dataset.ma === 'chkset') && ui.chk) {
       const x = cellAt(ui.chk.c, ui.chk.r), nt = b.dataset.ma === 'chkok' ? x.terrain : b.dataset.t;
-      chkStore(x, nt, false); if (nt !== x.terrain) simPropose(x.c, x.r, nt); PP.app.commit(); chkGo(); return;
+      if (b.dataset.full) storeTile(x.c, x.r, { terrain: nt, res: b.dataset.res ? b.dataset.res.split(',') : [], bld: b.dataset.bld || null, bulk: false });
+      else chkStore(x, nt, false);
+      if (nt !== x.terrain) simPropose(x.c, x.r, nt); PP.app.commit(); chkGo(); return;
     }
     if (b.dataset.ma === 'step') {
       ui.step = +b.dataset.to; ui.sel = null; ui.only = null; ui.chk = null; ui.hl = null; ui.sim = null; ui.view = null; ui.borders = false;
@@ -3141,7 +3188,7 @@
     if (a === 'techAgain') { stopTech(); ui.techMenu = true; PP.app.refresh(); return; }
     if (a === 'tech') { ui.techMenu = false; startTech(); PP.app.refresh(); return; }
     if (a === 'barShow') { S().ui.barMin = false; PP.app.commit(); return; }
-    if (a === 'savePlan') { const p = curPlanRaw(planResult()); if (p) { const n = savePlan(p); PP.app.commit(); toast('📌 Saved: ' + n); } return; }
+    if (a === 'savePlan') { const p = curPlanRaw(planResult()); if (p) { const tw = savedTwin(p), n = tw ? null : savePlan(p); PP.app.commit(); toast(n ? '📌 Saved: ' + n : '📌 Already saved as ' + tw.name); } return; }
     if (a === 'chkStart') { ui.chkSkip = new Set(); chkGo(); return; }
     if (a === 'growthMenu') { ui.growMenu = !ui.growMenu; PP.app.refresh(); return; }
     if (a === 'growQuick') { M().growQuick = M().growQuick !== true; PP.app.commit(); return; }
@@ -3314,6 +3361,11 @@
         }
         ctx.fillStyle = TER_FILL[x.monument ? 'monument' : x.cloud ? 'cloud' : x.terrain] || TER_FILL.water; ctx.fill();
         ctx.lineWidth = 1.4; ctx.strokeStyle = 'rgba(255,255,255,.55)'; ctx.stroke();
+      }
+      // v50 tiles marked as enemy territory: red, with a red edge (not part of any territory)
+      for (const k of M().enemyT) {
+        const [c, r] = k.split(',').map(Number); diamondPath(ctx, c, r, 0.94);
+        ctx.fillStyle = 'rgba(239,71,111,.32)'; ctx.fill(); ctx.lineWidth = 1.6; ctx.strokeStyle = 'rgba(239,71,111,.9)'; ctx.stroke();
       }
     }
     // v49: in ① the borders of today – tiles of a planned Border Growth only get the dashed ring above

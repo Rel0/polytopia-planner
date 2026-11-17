@@ -279,6 +279,19 @@ window.PP = window.PP || {};
   // terrain below SURE is shown as "please check"; resources are only filled in at RES_SURE or above
   // v49 FOREST_SURE: a forest that isn't there ("ghost forest") spoils a plan (Lumber Huts, Sawmills). Leave-one-
   // screenshot-out on 38 screenshots: forest called at ≥ 0.6 → 20 of 405 wrong, at ≥ 0.75 → 2 of 266 wrong
-  PP.tilemodel = { classify, features, plateFeatures, cropFeatures, cityProb, forest, SURE: 0.6, FOREST_SURE: 0.75, BLD_SURE: 0.5, RES_SURE: 0.7, CROP_SURE: 0.6, FRUIT_SURE: 0.6, CITY_SURE: 0.4,
+  // v50: resource / building probabilities as if the tile were terrain t (for the ranked suggestions when you check a tile)
+  // → { res: { crop, fruit, metal, none }, bld: { farm | lumber: p } }
+  function subProbs(P, x, y, w, t) {
+    const M = PP.TILE_MODEL;
+    if (!P || !P.data || !(w > 6) || !M) return null;
+    const f = features(P, x, y, w), out = { res: null, bld: null };
+    const fc = t === 'field' && M.fieldFeat ? f.concat(cropFeatures(P, x, y, w)) : f;
+    const R = t === 'field' ? M.field : t === 'mountain' ? M.mountain : null;
+    if (R) out.res = forest(R, t === 'field' ? fc : f).probs;
+    const B = t === 'field' ? M.farm : t === 'forest' ? M.lumber : null;
+    if (B) { const k = t === 'field' ? 'farm' : 'lumber'; out.bld = { [k]: forest(B, t === 'field' ? fc : f).probs[k] || 0 }; }
+    return out;
+  }
+  PP.tilemodel = { classify, subProbs, features, plateFeatures, cropFeatures, cityProb, forest, SURE: 0.6, FOREST_SURE: 0.75, BLD_SURE: 0.5, RES_SURE: 0.7, CROP_SURE: 0.6, FRUIT_SURE: 0.6, CITY_SURE: 0.4,
     get ready() { return !!(PP.TILE_MODEL && PP.TILE_MODEL.terrain); }, get cityReady() { return !!(PP.CITY_MODEL && PP.CITY_MODEL.trees); } };
 })(window.PP);
