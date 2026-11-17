@@ -38,7 +38,8 @@
   const RANGE = 2; // city territory radius (Chebyshev)
   const BASE = { farm: 'field', mine: 'mountain', lumber: 'forest', windmill: 'field', forge: 'field', sawmill: 'field', market: 'field' };
   const PHASE = { destroy: 0, fruit: 1, plant: 2, clear: 3, burn: 4, farm: 5, mine: 5, lumber: 5, windmill: 6, forge: 6, sawmill: 6, market: 7 };
-  const BIG = 10000;     // w = primary·BIG + secondary (cost & actions)
+  const BIG = 10000;
+  const FRUIT_POP = 3.5; // v49: ★ value of the +1 population from harvesting fruit (only for choosing between plans)     // w = primary·BIG + secondary (cost & actions)
   const HUGE = 1e9;      // V = income·HUGE − w
   const NB = [[-1, -1], [0, -1], [1, -1], [-1, 0], [1, 0], [-1, 1], [0, 1], [1, 1]];
   const key = (c, r) => c + ',' + r;
@@ -144,7 +145,9 @@
     const home = owner.map((w, i) => (w >= 0 ? w : implicit ? 0 : nearestCity(cells[i], cities, 1e9)));
     const canAct = cells.map((x, i) => owner[i] >= 0 && x.t !== 'city');
     const dOK = canAct.map(a => a && o.destroy);
-    const seq = steps => { let cost = 0; for (const s of steps) cost += C[s]; return { steps, cost, act: steps.length }; };
+    // v49: harvesting fruit also gives +1 population – for the choice of tiles it counts FRUIT_POP ★ less (the shown cost
+    // stays the real ★), so a building goes on a fruit tile you harvest anyway rather than on a forest you clear
+    const seq = steps => { let cost = 0; for (const s of steps) cost += C[s] - (s === 'fruit' ? FRUIT_POP : 0); return { steps, cost, act: steps.length }; };
     const pField = cells.map((x, i) => { if (!canAct[i]) return null; const p = fieldPath(x, o); return p ? seq(p) : null; });
     const pProd = cells.map((x, i) => {
       const m = {};
@@ -579,6 +582,7 @@
       steps.forEach((s, k) => { spent += s.cost; const r = rank.has(s.i) ? rank.get(s.i) : null; if (r != null && lastOf.get(r) === k && inc.get(r)) { run += inc.get(r); s.incAfter = run; if (firstInc == null) firstInc = spent; } });
       materialize.firstInc = firstInc; }
     let cost = 0; steps.forEach(s => { cost += s.cost; });
+    const wcost = cost - FRUIT_POP * steps.filter(s => s.item === 'fruit').length; // what the search compares
     const tiles = [];
     cells.forEach((x, i) => { if (stepsAt[i].length) tiles.push(Object.assign(at(i), { item: fin[i], from: cells[i].bld, city: home[i], steps: steps.filter(s => s.i === i) })); });
     const used = ws.filter(w => w.feeds.length || w.isNew);
@@ -590,7 +594,7 @@
     });
     ws.forEach(w => { delete w.i; }); markets.forEach(m => { delete m.i; });
     return {
-      tag, income, cost, actions: steps.length, steps, tiles, markets, workshops: used, groups,
+      tag, income, cost, wcost, actions: steps.length, steps, tiles, markets, workshops: used, groups,
       marketCount: markets.filter(m => m.income > 0).length, capped: markets.some(m => m.capped),
       buildings: used.concat(markets), n: steps.length,
       payback: income > 0 && cost > 0 ? Math.ceil(cost / income) : null, firstInc: materialize.firstInc,
@@ -735,7 +739,7 @@
     const optOf = (k, T, kind, x) => (kind === 'new' ? { kind, x, tiles: [x], frees: E[k][T].slice() } : kind === 'destroy' ? { kind, tiles: [], frees: E[k][T].slice() } : keepOpt(k, T));
     let cur = { mSel: P.cities.map((_, k) => keepOpt(k, 'market')), stages: [], prods: [] };
     for (let k = 0; k < K; k++) for (const T of WS) cur.stages.push({ k, T, o: keepOpt(k, T) });
-    const value = p => (p ? p.income * HUGE - (p.cost * BIG + p.actions) : 0);
+    const value = p => (p ? p.income * HUGE - ((p.wcost != null ? p.wcost : p.cost) * BIG + p.actions) : 0);
     let curP = materialize(P, cur, 'best'), curV = value(curP);
     let level = 0, gi = 0, sub = null, winStart = 0, swept = false, done = false, msBest = 0, complete = true, quickAlts = [];
     const job = { P, done: false, result: null, partial: null, combos: 0, large: true, version: 0 };
@@ -810,7 +814,7 @@
       return d;
     }
     // group search maximising λ·★ − w from a start decision (Dinkelbach step); returns the best plan found
-    const wOfP = p => p.cost * BIG + p.actions, rq = p => wOfP(p) / p.income;
+    const wOfP = p => (p.wcost != null ? p.wcost : p.cost) * BIG + p.actions, rq = p => wOfP(p) / p.income;
     function* groupImprove(D0, p0, lam, until) {
       let D = D0, p = p0, v = lam * p0.income - wOfP(p0), improved = true;
       while (improved && Date.now() < until) {
@@ -1352,7 +1356,17 @@
     g.orderOf = async set => {
       const keys = [...set], ord = [], steps = []; let prev = g.base;
       // v49: no free tile that two of them could take → every order gives the same territories → no order to show
-      if (keys.length > 1 && orderFree(keys)) return keys.map(k => { const c = cand.find(x => x.key === k); return { key: k, k: c.k, name: c.name, free: true }; });
+      // order doesn't matter: still what each city adds one after the other (biggest first), so the numbers add up to the total
+      if (keys.length > 1 && orderFree(keys)) {
+        const gainOf = k => { const c = (g.cities || []).find(x => x.key === k); return c ? c.gain : 0; };
+        const ks = keys.slice().sort((a, b) => gainOf(b) - gainOf(a)), out = [];
+        for (let i = 0; i < ks.length; i++) {
+          const r = await solve(new Set(ks.slice(0, i + 1))); if (!r) return null;
+          const c = cand.find(x => x.key === ks[i]);
+          out.push({ key: ks[i], k: c.k, name: c.name, free: true, gain: r.income - prev.income, dcost: r.cost - prev.cost, income: r.income, cost: r.cost }); prev = r;
+        }
+        return out;
+      }
       if (keys.length > 1) g.total = Math.max(g.total, g.done + keys.length * (keys.length - 1) / 2);
       while (ord.length < keys.length) {
         let best = null;
@@ -1723,9 +1737,12 @@
         orderHtml(g) +
         `<button class="mk-btn pri" data-a="growthApply" style="width:100%;margin:0 0 8px">Plan with 5×5 for ${(g.order && g.order.length > 1 ? g.order : take).map(c => esc(c.name)).join(g.order && g.order.length > 1 && !g.order[0].free ? ' → ' : ', ')}</button>`
       : '<div class="gw-sum">👉 <b>Population Growth in every city</b> – Border Growth doesn\'t pay back fast enough here (Giant sooner).</div>';
+    // v49: one number per city everywhere (list, cards, map): what it adds in the order of the list – they add up to the total
+    const stepOf = c => (g.order || []).find(o => o.key === c.key && o.gain != null);
     const card = c => {
       const rr = rs[c.k] || { open: 0, unsure: 0 };
       let x = '';
+      const so = c.take ? stepOf(c) : null; if (so) c = Object.assign({}, c, { gain: so.gain, dcost: so.dcost });
       if (c.take) {
         x += `<div class="gw-d"><b class="gw-plus">+${c.gain} ★/turn</b>${c.dcost > 0 ? ` · builds ${c.dcost} ★ · pays back in ${plural(Math.ceil(c.dcost / Math.max(1, c.gain)), 'turn', 'turns')}` : c.dcost < 0 ? ` · plan gets ${-c.dcost} ★ cheaper` : ' · no extra cost'}</div>`;
         if (c.partners.length) x += `<div class="gw-x">🔗 ${c.alone > 0 ? 'Pays off more' : 'Only pays off'} together with ${c.partners.map(d => nm(d.k, d.name)).join(' + ')} <small>(alone +${c.alone})</small></div>`;
@@ -1804,7 +1821,7 @@
     let worker;
     try { worker = pr.worker = new Worker('js/market-worker.js?v=STAMP'); } catch (e) { res.proof.noSolver = true; ['inc', 'cost', 'fast'].forEach(k => { if (res.proof[k] !== 'proven') res.proof[k] = 'open'; }); return; }
     const SC = PP.marketMilp.SCALE;
-    const val = p => p.income * HUGE - (p.cost * BIG + p.actions);
+    const val = p => p.income * HUGE - ((p.wcost != null ? p.wcost : p.cost) * BIG + p.actions);
     const score = p => (p.cost * SC + p.actions) / p.income;   // fastest payback: ★ cost per ★/turn (steps break ties)
     const same = (a, b) => a && b && a.income === b.income && a.cost === b.cost && a.actions === b.actions;
     const setAlt = (tag, p) => {
@@ -3276,7 +3293,8 @@
     T.cities.forEach(ci => {
       const gi = ci.rad === 1 ? growVerdict(key(ci.c, ci.r)) : null; if (!gi) return;
       const q = PP.board.tileToScreen(ci.c, ci.r), R = big * (small ? 0.42 : 0.66);
-      const gt = gi.take ? '🌱 Grow · +' + gi.gain + ' ★/turn' : '👥 Pop. Growth', gy = q.y + R + fs * 0.8 + fs * 1.5, gf = fs * 0.95;
+      const so = gi.take ? ((growthNow().order || []).find(o => o.key === key(ci.c, ci.r) && o.gain != null)) : null;
+      const gt = gi.take ? '🌱 Grow · +' + (so ? so.gain : gi.gain) + ' ★/turn' : '👥 Pop. Growth', gy = q.y + R + fs * 0.8 + fs * 1.5, gf = fs * 0.95;
       D.pill(ctx, q.x, gy, gt, gi.take ? 'rgba(31,138,76,.97)' : 'rgba(70,76,100,.95)', gf);
       ctx.save(); ctx.font = `bold ${gf}px system-ui,sans-serif`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
       ctx.fillStyle = gi.take ? '#eafff0' : '#d6dbea'; ctx.fillText(gt, q.x, gy + 1); ctx.restore();
