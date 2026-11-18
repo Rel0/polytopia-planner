@@ -292,6 +292,6 @@ window.PP = window.PP || {};
     if (B) { const k = t === 'field' ? 'farm' : 'lumber'; out.bld = { [k]: forest(B, t === 'field' ? fc : f).probs[k] || 0 }; }
     return out;
   }
-  PP.tilemodel = { classify, subProbs, features, plateFeatures, cropFeatures, cityProb, forest, SURE: 0.6, FOREST_SURE: 0.75, BLD_SURE: 0.5, RES_SURE: 0.7, CROP_SURE: 0.6, FRUIT_SURE: 0.6, CITY_SURE: 0.4,
+  PP.tilemodel = { classify, subProbs, features, plateFeatures, cropFeatures, cityProb, forest, SURE: 0.6, FOREST_SURE: 0.75, BLD_SURE: 0.5, RES_SURE: 0.7, CROP_SURE: 0.6, FRUIT_SURE: 0.7, CITY_SURE: 0.4,
     get ready() { return !!(PP.TILE_MODEL && PP.TILE_MODEL.terrain); }, get cityReady() { return !!(PP.CITY_MODEL && PP.CITY_MODEL.trees); } };
 })(window.PP);

@@ -123,6 +123,39 @@ probability ≥ 0.5 (`BLD_SURE`). Leave-one-screenshot-out: farms 29 of 52 found
 
 The forest threshold `FOREST_SURE` 0.75 still fits: 9 ghosts among 419 sure forests (2.1 %).
 
+## Tile models v5 + city model v5 (18 Nov 2026)
+
+Training data: 123 screenshots, 6,750 labelled tiles (`dataset_v6` = v5 + 71 contributed screenshots from 11–18 Nov;
+one upload per duplicate group, the one with the most marks). The city marks were checked before training: the city
+detector scored every mark, the 124 marks below 0.5 were looked at by hand (84 villages relabelled, 6 unclear marks
+dropped) and a random sample of the others was all real cities.
+
+On the 71 new screenshots (land tiles; the new model leaves the tested screenshot out):
+
+| | v4 model (shipped before) | v5 model |
+|---|---|---|
+| all land tiles | 74.9 % | 85.6 % |
+| sure (≥ 0.6) | 89.5 % on 42 % | 94.7 % on 59 % |
+| ghost forests at ≥ 0.75 | 13 | 9 |
+
+The 52 older screenshots got a little better too (83.5 % → 84.8 %, mountains 223 → 233 of 311).
+
+Resources and buildings on the new screenshots (found of the marked ones; *wrong* = on a tile marked with something else):
+crop 238 → 248 of 300 (wrong 12 → 7), lumber huts 34 → 89 of 127 (0 wrong), farms 82 → 83 of 99, metal 72 → 72 of 78.
+Fruit: the new field model also fires on some fields under a city's name plate, so `FRUIT_SURE` is now **0.7** (was 0.6).
+At 0.7: new screenshots 168 of 276 fruits (was 132 at 0.6), 3 wrong (was 4); the hand-labelled old screenshots 67 of 143
+with 2 false alarms (was 69 and 6).
+
+City detector (app-like test, see below), threshold now **0.5** (`CITY_TH` in `js/vision.js`, was 0.4):
+
+| | old 52 screenshots: found · false alarms | new 71: found · false alarms |
+|---|---|---|
+| v4 model, 0.4 (shipped before) | 171 / 186 · 41 | 335 / 353 · 77 |
+| v5 model, 0.4 | 173 / 186 · 52 | 342 / 353 · 98 |
+| v5 model, 0.5 (used) | 169 / 186 · 33 | 341 / 353 · 72 |
+
+(False alarms include unlabelled tiles – contributed screenshots don't mark every city, so some of them are real cities.)
+
 ## City detector (v3, Nov 2026)
 
 Every city, own or enemy, has a **name plate** centred on its tile: white italic text with a dark shadow on a
