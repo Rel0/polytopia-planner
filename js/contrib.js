@@ -35,6 +35,12 @@ window.PP = window.PP || {};
       if (!u || u.src === 'auto' || u.src === 'ai') return;
       units.push(Object.assign({ c: u.c, r: u.r, side: u.side, type: u.type, hp: u.hp }, ctr(u.c, u.r)));
     });
+    // v50 Market ② "Unit" marks: a unit stands here (side / type unknown) – the unit detector only needs that
+    const mk = st.market && Array.isArray(st.market.unitT) ? st.market.unitT : [];
+    mk.forEach(k => {
+      const [c, r] = k.split(',').map(Number); if (!isFinite(c) || !isFinite(r) || units.some(u => u.c === c && u.r === r)) return;
+      units.push(Object.assign({ c, r, side: null, type: null, hp: null }, ctr(c, r)));
+    });
     return { tiles: out, units };
   }
   // JPEG of the screenshot, the game's top bar (names, stars) and bottom bar (buttons) blacked out

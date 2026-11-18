@@ -920,14 +920,14 @@
   const toast = m => PP.ui && PP.ui.toast && PP.ui.toast(m);
   const NAME = { field: 'Empty', forest: 'Forest', mountain: 'Mountain', water: 'Water', city: 'City', crop: 'Crop (for Farm)', ore: 'Metal', fruit: 'Fruit',
     lumber: 'Lumber Hut', plant: 'Grow Forest', fruitH: 'Harvest Fruit', other: 'Other building' };
-  const nm = id => NAME[id] || (ITEM(id) || {}).name || ({ cloud: 'Cloud', space: 'Space', monument: 'Monument', enemy: 'Enemy territory' })[id] || id;
+  const nm = id => NAME[id] || (ITEM(id) || {}).name || ({ cloud: 'Cloud', space: 'Space', monument: 'Monument', enemy: 'Enemy territory', unit: 'Unit on it' })[id] || id;
   const stepName = s => (s.item === 'destroy' ? 'Destroy ' + nm(s.what || 'building') : s.item === 'fruit' ? 'Harvest Fruit' : UNIQUE.indexOf(s.item) >= 0 || PRODS.indexOf(s.item) >= 0 ? 'Build ' + nm(s.item) : nm(s.item));
   const ICON = {
     field: '🟩', forest: '🌲', mountain: '⛰️', water: '🌊', city: '🏠', crop: '🌾', ore: '💎', fruit: '🍒',
     farm: '🌾', mine: '⛏️', lumber: '🪵', windmill: '🌬️', forge: '🔨', sawmill: '🪚', market: '🏪',
-    destroy: '💥', clear: '🪓', burn: '🔥', plant: '🌱', other: '🏛️', space: '🌌', cloud: '☁️', monument: '🗽', enemy: '🚩',
+    destroy: '💥', clear: '🪓', burn: '🔥', plant: '🌱', other: '🏛️', space: '🌌', cloud: '☁️', monument: '🗽', enemy: '🚩', unit: '🧍',
   };
-  const ICON_NAME = { ore: 'metal', plant: 'forest', destroy: null, clear: null, burn: null, other: null, enemy: null };
+  const ICON_NAME = { ore: 'metal', plant: 'forest', destroy: null, clear: null, burn: null, other: null, enemy: null, unit: null };
   const iconName = id => (id in ICON_NAME ? ICON_NAME[id] : id);
   const hasIcon = id => { const n = iconName(id); return !!(n && PP.icons && PP.icons.has && PP.icons.has(n)); };
   function iconHtml(id, size) {
@@ -944,11 +944,14 @@
   const TER_B = ['field', 'forest', 'mountain', 'water', 'space', 'cloud', 'city'];
   const RES_B = ['crop', 'ore', 'fruit'];
   const BLD_B = ['farm', 'mine', 'lumber', 'windmill', 'forge', 'sawmill', 'market'];
-  const BRUSH = TER_B.concat(RES_B, BLD_B, ['monument', 'enemy']);
+  const BRUSH = TER_B.concat(RES_B, BLD_B, ['monument', 'enemy', 'unit']);
   // v50 three rows: what the tile is · what is built on it · the rest (as suggested by a player)
   const PAL_ROWS = [['field', 'forest', 'crop', 'fruit', 'mountain', 'ore', 'water'], ['lumber', 'sawmill', 'farm', 'windmill', 'mine', 'forge', 'market'],
-    ['city', 'enemy', 'space', 'cloud', 'monument']];
-  const BRUSH_LABEL = { field: 'Empty', forest: 'Forest', mountain: 'Mountain', water: 'Water', space: 'Space', cloud: 'Cloud', monument: 'Monument', city: 'City', crop: 'Crop', ore: 'Metal', fruit: 'Fruit', enemy: 'Enemy',
+    ['city', 'enemy', 'unit', 'space', 'cloud', 'monument']];
+  // v50 the brushes behind three tabs – only one group open at a time
+  const PAL_TABS = [['ter', '🟩', 'Terrain'], ['bld', '🏠', 'Buildings'], ['oth', '⋯', 'Other']];
+  const palTabOf = id => (PAL_ROWS[1].indexOf(id) >= 0 ? 'bld' : PAL_ROWS[2].indexOf(id) >= 0 ? 'oth' : 'ter');
+  const BRUSH_LABEL = { field: 'Empty', forest: 'Forest', mountain: 'Mountain', water: 'Water', space: 'Space', cloud: 'Cloud', monument: 'Monument', city: 'City', crop: 'Crop', ore: 'Metal', fruit: 'Fruit', enemy: 'Enemy', unit: 'Unit',
     farm: 'Farm', mine: 'Mine', lumber: 'Lumber', windmill: 'Windmill', forge: 'Forge', sawmill: 'Sawmill', market: 'Market' };
   const RES_TER = { crop: 'field', fruit: 'field', ore: 'mountain' };
   const OPT_LABEL = { clear: ['🪓', 'Clear Forest', '+1 ★'], burn: ['🔥', 'Burn Forest', '→ Crop'], grow: ['🌱', 'Grow Forest', 'Empty → Forest'],
@@ -990,6 +993,9 @@
     // v50 single tiles marked as enemy territory in ② (their city is off the screenshot, or the border isn't a square)
     if (!Array.isArray(m.enemyT)) m.enemyT = [];
     m.enemyT = m.enemyT.filter(k => typeof k === 'string' && /^-?\d+,-?\d+$/.test(k));
+    // v50 "a unit stands here" (② Unit brush) – only the mark; used for the resources under it and sent for training
+    if (!Array.isArray(m.unitT)) m.unitT = [];
+    m.unitT = m.unitT.filter(k => typeof k === 'string' && /^-?\d+,-?\d+$/.test(k));
     return m;
   }
   const enemyAt = (c, r) => M().enemies.find(e => e.c === c && e.r === r) || null;
@@ -1038,6 +1044,7 @@
     autoMemo.m.set(k, out);
     return out;
   }
+  const unitMarked = (c, r) => { const m = S().market; return !!(m && Array.isArray(m.unitT) && m.unitT.indexOf(key(c, r)) >= 0); };
   function cellAt(c, r) {
     const k = key(c, r), t = S().tiles[k], ce = cityEntry(c, r);
     if ((ce || (t && t.city)) && noCity().indexOf(k) < 0) {
@@ -1056,7 +1063,7 @@
     const a = autoTerrain(c, r);
     // v49: a unit on the tile is often taken for fruit (10 % of the fields with a unit vs 1 % without, 52 labelled
     // screenshots) – where a unit stands (Units tool), a fruit / crop needs ≥ 0.8 (then 0 of 30 wrong)
-    const unitHere = a && a.res && a.res.length && a.resConf < 0.8 && Array.isArray(S().units) && S().units.some(u => u && u.c === c && u.r === r);
+    const unitHere = a && a.res && a.res.length && a.resConf < 0.8 && ((Array.isArray(S().units) && S().units.some(u => u && u.c === c && u.r === r)) || unitMarked(c, r));
     if (a) return { c, r, terrain: a.terrain, res: a.bld === 'farm' ? ['crop'] : unitHere ? a.res.filter(q => q === 'ore') : a.res || [], bld: a.bld || null, stored: false, auto: true, unsure: !a.sure, conf: a.conf, cloud: !!(a.cloud && a.sure) };
     return { c, r, terrain: 'field', res: [], bld: null, stored: false };
   }
@@ -2287,6 +2294,7 @@
   }
   function brushOn(id, x) {
     if (id === 'enemy') return M().enemyT.indexOf(key(x.c, x.r)) >= 0;
+    if (id === 'unit') return M().unitT.indexOf(key(x.c, x.r)) >= 0;
     if (id === 'city') return x.terrain === 'city';
     if (id === 'cloud') return x.stored && !!x.cloud;
     if (id === 'monument') return !!x.monument;
@@ -2304,6 +2312,8 @@
       const m = M(); m.enemyT = m.enemyT.filter(q => q !== k); if (on) m.enemyT.push(k);
       return;
     }
+    // v50 a unit stands on the tile (also on a city): only the mark – what the tile is stays as it is
+    if (id === 'unit') { const m = M(); m.unitT = m.unitT.filter(q => q !== k); if (on) m.unitT.push(k); return; }
     if (id === 'city') {
       // a city inside the area is one of the planned cities (own territory 3×3)
       if (on) { upsertCity(c, r, 'user', { side: 'me' }); storeTile(c, r, { terrain: 'field', res: [], bld: null }); selectCity(c, r); }
@@ -2512,6 +2522,10 @@
 .mk .mk-steps button.on{background:var(--panel2,#252e52);color:var(--text,#e8ecf8)}
 .mk .mk-steps button:disabled{opacity:.4}
 .mk .mk-pal{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:3px;margin:0 0 2px}
+.mk .mk-ptabs{display:flex;gap:3px;background:var(--bg,#12172b);border-radius:10px;padding:3px;margin:0 0 5px}
+.mk .mk-ptabs button{flex:1;min-width:0;border:0;background:none;color:var(--muted,#9aa5c8);font-weight:700;font-size:12.5px;border-radius:8px;min-height:32px;white-space:nowrap;position:relative;touch-action:manipulation}
+.mk .mk-ptabs button.on{background:var(--panel2,#252e52);color:var(--text,#e8ecf8);box-shadow:inset 0 0 0 1px rgba(255,255,255,.12)}
+.mk .mk-ptabs button i{position:absolute;top:5px;right:8px;width:6px;height:6px;border-radius:50%;background:var(--gold,#ffd166)}
 .mk .mk-pal button{border:1px solid var(--line,#33406e);background:var(--panel2,#252e52);color:var(--text,#e8ecf8);border-radius:8px;padding:2px 0 1px;font-size:clamp(7.5px,2.45vw,9.5px);letter-spacing:-.4px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:0;min-width:0;min-height:44px;overflow:hidden;white-space:nowrap;touch-action:manipulation}
 .mk .mk-pal button span{font-size:18px;line-height:1.1;height:22px;display:flex;align-items:center}
 .mk .mk-pal button.on{border-color:var(--gold,#ffd166);background:rgba(255,209,102,.22);color:var(--gold,#ffd166);box-shadow:inset 0 0 0 1px var(--gold,#ffd166)}
@@ -2711,10 +2725,14 @@
       h += '</div>';
     } else if (ui.step === 2) {
       // v49: while checking a tile the palette shows what that tile has (and its brushes change it)
-      const chkX = ui.chk ? cellAt(ui.chk.c, ui.chk.r) : null, bOn = id => (chkX ? (chkX.stored ? brushOn(id, chkX) : id === (chkX.cloud ? 'cloud' : chkX.terrain) || chkX.res.indexOf(id) >= 0 || chkX.bld === id) : ui.brush === id);
+      const chkX = ui.chk ? cellAt(ui.chk.c, ui.chk.r) : null, bOn = id => (chkX ? (chkX.stored || id === 'unit' || id === 'enemy' ? brushOn(id, chkX) : id === (chkX.cloud ? 'cloud' : chkX.terrain) || chkX.res.indexOf(id) >= 0 || chkX.bld === id) : ui.brush === id);
       const bt = id => `<button data-brush="${id}" class="${bOn(id) ? 'on' : ''} ${PAL_ROWS[2].indexOf(id) >= 0 ? 'o' + (id === 'enemy' ? ' en' : '') : TER_B.indexOf(id) >= 0 ? 't' : RES_B.indexOf(id) >= 0 ? 'rs' : 'b'}" title="${esc(nm(id))}"><span>${iconHtml(id, 21)}</span>${BRUSH_LABEL[id]}</button>`;
       // v33: brushes grouped by what belongs together (16 = two rows of 8), the Plan button as a wide row below
-      h += `<div data-peek="tiles">${stepsHtml()}<div class="mk-pal">` + PAL_ROWS.map(row => row.map(bt).join('') + '<i></i>'.repeat(7 - row.length)).join('') + '</div>' +
+      const su = S().ui || (S().ui = {}), tab = PAL_TABS.some(t => t[0] === su.palTab) ? su.palTab : palTabOf(ui.brush), row = PAL_ROWS[PAL_TABS.findIndex(t => t[0] === tab)];
+      // which tab has the active brush (a dot when it is not the open one)
+      const act = ui.brush ? palTabOf(ui.brush) : null;
+      h += `<div data-peek="tiles:${tab}">${stepsHtml()}<div class="mk-ptabs" role="tablist">` + PAL_TABS.map(t => `<button data-paltab="${t[0]}" role="tab" aria-selected="${t[0] === tab}" class="${t[0] === tab ? 'on' : ''}">${t[1]} ${t[2]}${act === t[0] && t[0] !== tab ? '<i></i>' : ''}</button>`).join('') + '</div>' +
+        `<div class="mk-pal">` + row.map(bt).join('') + '<i></i>'.repeat(Math.max(0, 7 - row.length)) + '</div>' +
         '<button class="mk-btn pri mk-plan" data-step="3">▶ Show the plan</button></div>' +
         // v37: the explanation is below the collapsed panel (Less shows only up to "Show the plan")
         chkPanelHtml();
@@ -3135,6 +3153,7 @@
       const t = S().tiles[key(ui.chk.c, ui.chk.r)]; if (t) t.bulk = false;
       PP.app.commit(); return;
     }
+    if (d.paltab) { (S().ui || (S().ui = {})).palTab = d.paltab; PP.app.refresh(); return; }
     if (d.brush) { ui.brush = ui.brush === d.brush ? null : d.brush; PP.app.refresh(); return; }
     if (d.alt) { ui.alt = d.alt === 'best' ? 0 : d.alt; ui.sel = null; PP.app.refresh(); requestAnimationFrame(fitPlan); return; }
     if (d.opt) { m.opts[d.opt] = !m.opts[d.opt]; ui.alt = 0; PP.app.commit(); return; }
@@ -3485,6 +3504,12 @@
           disc(ctx, rx, ry, big * 0.3, 'rgba(10,14,30,.75)', 'rgba(255,255,255,.7)', 1);
           drawIcon(ctx, rs, rx, ry, big * 0.48);
         });
+      }
+      // v50 unit marks: a small figure on the tile (top left, so the terrain / resource icons stay readable)
+      if (ui.step === 2) for (const k of M().unitT) {
+        const [c, r] = k.split(',').map(Number), q = PP.board.tileToScreen(c, r); if (!vis(q)) continue;
+        const R = clamp(big * 0.42, 7, 13), x = q.x - big * 0.75, y = q.y - big * 0.35;
+        disc(ctx, x, y, R, 'rgba(10,14,30,.8)', '#4cc9f0', 1.5); drawIcon(ctx, 'unit', x, y, R * 1.4);
       }
       drawCities(ctx, D, u, big);
     } else {
