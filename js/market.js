@@ -940,7 +940,6 @@
   const BUILT_COL = '#16a34a', BUILT_FILL = 'rgba(22,163,74,.5)', BUILT_DARK = 'rgba(8,60,28,.95)';
   // v49: already there before the plan (painted in ②): same green, but paler and hatched the other way (\\\)
   const PRE_COL = 'rgba(22,163,74,.75)', PRE_FILL = 'rgba(22,163,74,.22)', PRE_DARK = 'rgba(8,40,22,.85)';
-  const ACT_COL = '#3ddc84'; // what the ✓ Built button acts on
   const cityCol = k => CITY_COL[(k >= 0 ? k : 0) % CITY_COL.length];
   const TER_B = ['field', 'forest', 'mountain', 'water', 'space', 'cloud', 'city'];
   const RES_B = ['crop', 'ore', 'fruit'];
@@ -3492,12 +3491,13 @@
       const res = planResult(), p = curPlan(res);
       drawCities(ctx, D, u, big, true);
       if (p) drawPlan(ctx, D, p, u, big);
-      // the tile the ✓ Built button acts on: green outline with a glow (same green as the bar's edge)
-      const t = p ? actTarget(p) : null;
+      // the tile the ✓ Built button acts on: v50 a slim white dashed outline (was a green glow – green is also the colour of
+      // the built marks, players found it confusing); none while the step bar is hidden
+      const t = p && !(S().ui && S().ui.barMin) ? actTarget(p) : null;
       if (t && !t.none) {
-        ctx.save(); diamondPath(ctx, t.c, t.r, 1.06);
-        ctx.shadowColor = ACT_COL; ctx.shadowBlur = clamp(u * 0.3, 6, 14);
-        ctx.lineWidth = clamp(u * 0.08, 3, 5.5); ctx.strokeStyle = ACT_COL; ctx.stroke(); ctx.restore();
+        ctx.save(); diamondPath(ctx, t.c, t.r, 1.04);
+        ctx.lineWidth = clamp(u * 0.035, 1.5, 2.5); ctx.strokeStyle = 'rgba(255,255,255,.9)'; ctx.setLineDash([clamp(u * 0.09, 4, 7), clamp(u * 0.06, 3, 5)]);
+        ctx.stroke(); ctx.restore();
       }
       drawGrowBadges(ctx, D, u, big, true);
     }
