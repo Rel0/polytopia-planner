@@ -539,8 +539,8 @@ window.PP = window.PP || {};
 
   // side colours: ring, translucent tint inside the dark disc
   var PAL = {
-    me: { ring: '#5aa9ff', tint: '64,140,255', dark: '#0d1f45', fill: '#2f81f7' },
-    enemy: { ring: '#ff5c74', tint: '255,72,100', dark: '#45101b', fill: '#f85149' }
+    me: { ring: '#5aa9ff', tint: '64,140,255', dark: '#0d1f45', fill: PP.look === 'lagoon' ? '#2f7be0' : PP.look ? '#3b6ff0' : '#2f81f7' },
+    enemy: { ring: '#ff5c74', tint: '255,72,100', dark: '#45101b', fill: PP.look === 'lagoon' ? '#ff6b6b' : PP.look ? '#e5484d' : '#f85149' }
   };
   var LIGHT = '#ffffff';
   var DISC = 'rgba(10,14,28,';
@@ -572,7 +572,25 @@ window.PP = window.PP || {};
   function useIcons(type) { return !!(PP.icons && PP.icons.has && PP.icons.has(type)); }
 
   // white line icon; Rd = disc radius (px). Dark halo first, then the strokes, so it reads on any background.
+  // (an earlier test look drew two-letter monograms – kept off)
+  var MONO = PP.look === 'studio';
+  // Lagoon look: illustrated busts (js/art.js) – units without a drawing keep their figure
+  var ART = PP.look === 'lagoon';
+  function artOf(type) { return ART && PP.art && PP.art.isUnit(type); }
+  function mono(type) {
+    var n = (U(type) && U(type).name || type).replace(/[^A-Za-z ]/g, '').trim().split(/\s+/);
+    return (n.length > 1 ? n[0][0] + n[1][0] : n[0].slice(0, 2)).toUpperCase();
+  }
   function drawGlyph(ctx, type, x, y, Rd) {
+    if (artOf(type)) {
+      var im = PP.art.img(type);
+      if (im) { ctx.save(); ctx.beginPath(); ctx.arc(x, y, Rd, 0, Math.PI * 2); ctx.clip(); ctx.drawImage(im, x - Rd, y - Rd, 2 * Rd, 2 * Rd); ctx.restore(); return; }
+    }
+    if (MONO) {
+      ctx.save(); ctx.fillStyle = '#fff'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      ctx.font = '700 ' + (Rd * 0.78).toFixed(1) + 'px ' + FONT; ctx.fillText(mono(type), x, y + Rd * 0.04); ctx.restore();
+      return;
+    }
     if (useIcons(type)) {
       PP.icons.draw(ctx, type, x, y, Rd * ICON_K, { stroke: 'rgba(0,0,0,.25)', strokeWidth: clamp(Rd * 0.06, 0.6, 1.6) });
       return;
@@ -715,6 +733,16 @@ window.PP = window.PP || {};
   function coinSvg(type, side, px) {
     side = side === 'enemy' ? 'enemy' : 'me';
     var pal = PAL[side], Rd = 42, k = Rd * GK / 46, upx = px / 104 * k; // css px per glyph unit
+    if (artOf(type)) {
+      var cid = 'ac' + type + side;
+      return '<svg width="' + px + '" height="' + px + '" viewBox="-52 -52 104 104" aria-hidden="true"><defs><clipPath id="' + cid + '"><circle r="' + Rd + '"/></clipPath></defs>' +
+        '<circle r="' + Rd + '" fill="' + pal.fill + '"/><g clip-path="url(#' + cid + ')">' + PP.art.svg(type, 84).replace('<svg ', '<svg x="-42" y="-42" ') + '</g>' +
+        '<circle r="' + (Rd - 1.5) + '" fill="none" stroke="rgba(255,255,255,.9)" stroke-width="3"/></svg>';
+    }
+    if (MONO) {
+      return '<svg width="' + px + '" height="' + px + '" viewBox="-52 -52 104 104" aria-hidden="true"><circle r="' + Rd + '" fill="' + pal.fill + '"/>' +
+        '<text x="0" y="2" text-anchor="middle" dominant-baseline="middle" font-family=\'' + FONT.replace(/"/g, '') + '\' font-weight="700" font-size="33" fill="#fff">' + mono(type) + '</text></svg>';
+    }
     if (useIcons(type)) {
       var rw0 = Math.max(4.5, 1.3 * 104 / px), isz = Rd * ICON_K * 0.93, ic = PP.icons.svg(type, isz, { stroke: 'rgba(0,0,0,.22)', strokeWidth: 0.6 * 104 / px });
       return '<svg width="' + px + '" height="' + px + '" viewBox="-52 -52 104 104" aria-hidden="true">' +
@@ -1062,7 +1090,7 @@ window.PP = window.PP || {};
     var cb = sel(), nA = cb.attackers.length, nT = cb.targets.length;
     if (!nA || !nT || (nA < 2 && nT < 2)) return '';
     var S = seqNow();
-    var b = '<button class="un-seqb' + (S && S.show && S.state === 'done' ? ' on' : '') + '" data-un="seq">⚔️ ' + (S && S.state === 'done' ? (S.show ? 'Hide best attack sequence' : 'Show best attack sequence') : 'Best attack sequence') +
+    var b = '<button class="un-seqb' + (S && S.show && S.state === 'done' ? ' on' : '') + '" data-un="seq">' + (S && S.state === 'done' ? (S.show ? 'Hide best attack sequence' : 'Show best attack sequence') : 'Best attack sequence') +
       (S && S.state === 'done' && S.show ? '' : ' <small>(' + nA + ' attacker' + (nA > 1 ? 's' : '') + ' → ' + nT + ' target' + (nT > 1 ? 's' : '') + ')</small>') + '</button>';
     if (!S) return b;
     if (S.state === 'too') return b + '<div class="un-seqmsg">⚠ Too many – at most ' + SEQ_MAX_A + ' attackers and ' + SEQ_MAX_T + ' targets</div>';
@@ -1258,8 +1286,8 @@ window.PP = window.PP || {};
   }
   // poisoned / frozen toggles
   function statusChips(u) {
-    return '<span class="un-stx"><button data-un="poison" data-id="' + u.id + '" class="' + (u.poison ? 'on' : '') + '" aria-pressed="' + !!u.poison + '" title="Poisoned: defense bonus halved">🧪 Poisoned</button>' +
-      '<button data-un="frozen" data-id="' + u.id + '" class="' + (u.frozen ? 'on' : '') + '" aria-pressed="' + !!u.frozen + '" title="Frozen: can\'t attack or strike back">❄️ Frozen</button></span>';
+    return '<span class="un-stx"><button data-un="poison" data-id="' + u.id + '" class="' + (u.poison ? 'on' : '') + '" aria-pressed="' + !!u.poison + '" title="Poisoned: defense bonus halved">Poisoned</button>' +
+      '<button data-un="frozen" data-id="' + u.id + '" class="' + (u.frozen ? 'on' : '') + '" aria-pressed="' + !!u.frozen + '" title="Frozen: can\'t attack or strike back">Frozen</button></span>';
   }
 
   function calcHtml() {
@@ -1324,7 +1352,7 @@ window.PP = window.PP || {};
       h += verdictHtml(cityVerdict(res));
     }
     h += '</div>';
-    h += '<div class="un-btns">' + (res.used ? '<button class="go" data-un="apply">⚔️ Apply</button>' : '') +
+    h += '<div class="un-btns">' + (res.used ? '<button class="go" data-un="apply">Apply</button>' : '') +
       '<button class="lt" data-un="all">+ All in range</button></div>';
     return h;
   }
@@ -1371,8 +1399,8 @@ window.PP = window.PP || {};
   function shortName(k) { return SHORT[k] || U(k).name; }
   // top row: Place | Battle switch (+ in Place mode: side toggle for new units and the eraser)
   function modeHtml(p) {
-    var h = '<div class="un-top"><div class="un-mode" role="tablist"><button data-un="sub" data-v="place" class="' + (p.sub === 'place' ? 'on' : '') + '" role="tab">✏️ Place</button>' +
-      '<button data-un="sub" data-v="battle" class="' + (p.sub === 'battle' ? 'on' : '') + '" role="tab">⚔️ Battle</button></div>';
+    var h = '<div class="un-top"><div class="un-mode" role="tablist"><button data-un="sub" data-v="place" class="' + (p.sub === 'place' ? 'on' : '') + '" role="tab">Place</button>' +
+      '<button data-un="sub" data-v="battle" class="' + (p.sub === 'battle' ? 'on' : '') + '" role="tab">Battle</button></div>';
     if (p.sub === 'place') {
       h += '<button class="un-era' + (p.eraser ? ' on' : '') + '" data-un="eraser" aria-pressed="' + !!p.eraser + '" title="Eraser: tap units to delete them" aria-label="Eraser">🧽</button>';
     } else {
@@ -1434,7 +1462,7 @@ window.PP = window.PP || {};
   function battlePeekHtml() {
     var res = calc();
     var as = atkSide(), other = as === 'enemy' ? 'me' : 'enemy';
-    return '<div class="un-peek" data-peek="battle"><button class="pb ok" data-un="sub" data-v="place" aria-label="Back to Place" title="✏️ Place">✏️</button>' +
+    return '<div class="un-peek" data-peek="battle"><button class="pb ok" data-un="sub" data-v="place" aria-label="Back to Place" title="Place">✏️</button>' +
       '<button class="sd1 as ' + as + '" data-un="as" data-v="' + other + '" aria-label="Attacker: ' + (as === 'enemy' ? 'Enemy' : 'Me') + ' – tap to switch" title="Who attacks? (tap to switch)"><i>⚔</i>' + (as === 'enemy' ? 'Enemy' : 'Me') + '</button>' +
       '<span class="sum">' + battleSum() + '</span>' +
       (res && res.used ? '<button class="pb go" data-un="apply">Apply</button>' : '') + '</div>';
@@ -1727,7 +1755,7 @@ window.PP = window.PP || {};
     var p = uiPrefs(), u = resolveUnit(t);
     if (p.sub === 'battle') {
       if (u) { tapUnit(u); return; }
-      toast('Battle: tap ' + words().att + ', then ' + words().tgts + ' · ✏️ Place adds units', 2600);
+      toast('Battle: tap ' + words().att + ', then ' + words().tgts + ' · Place adds units', 2600);
       return;
     }
     // Place mode
@@ -1968,7 +1996,7 @@ window.PP = window.PP || {};
 
   var mode = {
     sheetSwitch: {
-      items: [{ id: 'place', label: '✏️ Place' }, { id: 'battle', label: '⚔️ Battle' }],
+      items: [{ id: 'place', label: 'Place' }, { id: 'battle', label: 'Battle' }],
       value: function () { return uiPrefs().sub; },
       set: function (v) {
         var p = uiPrefs();

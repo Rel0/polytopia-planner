@@ -1,0 +1,307 @@
+@font-face{font-family:'Space Grotesk';font-style:normal;font-weight:300 700;font-display:swap;src:url(/fonts/space-grotesk-latin.woff2) format('woff2');
+  unicode-range:U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD}
+/* Polytopia Planner – the app's look "Lagoon Glass" (Nov 2026; the look before is in git tag design-v3).
+   Lagoon colours + a faceted navy header, frosted glass over the map, glowing glass markers, chunky buttons with a navy
+   edge and a hard bottom shadow (only on what you tap), Space Grotesk. Applies to <html class="look-lagoon">. */
+:root.look-lagoon{--bg:#f1f7fc;--panel:rgba(255,255,255,.78);--panel2:rgba(255,255,255,.66);--line:rgba(20,50,74,.12);--text:#14324a;--muted:#5b7488;
+  --accent:#2f7fb8;--gold:#d98e04;--me:#2f7be0;--enemy:#ff6b6b;--ok:#16a37a;--warn:#d97706;--blue:#2f7fb8;--blue2:#2a6f9e;--sheet:rgba(255,255,255,.78);
+  --ink:#14324a;--aqua:#8fcdee;--aqua-soft:#dcedf8;--sand:#f2a516;--hard:3px 3px 0 #14324a;--blur:blur(22px) saturate(1.7);
+  --glass:rgba(255,255,255,.84);--glass-line:rgba(255,255,255,.8);--gsh:0 12px 34px rgba(20,50,74,.2)}
+.look-lagoon body{font-family:"Space Grotesk",system-ui,sans-serif;background:linear-gradient(180deg,#d3e9f6 0%,#e6f1f9 45%,#f1f7fc 100%);color:var(--text);-webkit-font-smoothing:antialiased}
+.look-lagoon #boot{background:#60a5cd;color:#fff}
+.look-lagoon button,.look-lagoon input,.look-lagoon select{font-family:inherit}
+
+/* ---------- header: the faceted navy band ---------- */
+.look-lagoon header{position:relative;background:#14324a;color:#fff;border:0;min-height:56px;padding:0 12px 6px 14px;padding-top:max(6px,env(safe-area-inset-top));z-index:7;
+  clip-path:polygon(0 0,100% 0,100% 82%,74% 100%,42% 86%,0 96%)}
+.look-lagoon header::after{content:'';position:absolute;inset:0;pointer-events:none;background:linear-gradient(118deg,rgba(255,255,255,.08) 0 34%,transparent 34% 61%,rgba(47,127,184,.32) 61% 100%)}
+.look-lagoon header>*{position:relative;z-index:1}
+.look-lagoon header h1{font-size:16px;font-weight:700;letter-spacing:-.01em;display:flex;align-items:center;gap:9px;color:#fff}
+.look-lagoon header h1 .logo{width:26px;height:26px;flex:none}
+.look-lagoon .hbtn{background:rgba(255,255,255,.1);color:#fff;border-radius:10px;width:36px;height:34px;font-size:17px;box-shadow:inset 0 0 0 1px rgba(255,255,255,.14)}
+.look-lagoon .budget{background:rgba(255,255,255,.12);color:#fff;box-shadow:inset 0 0 0 1px rgba(255,255,255,.18);font-weight:700;backdrop-filter:var(--blur)}
+.look-lagoon .budget b{color:var(--sand)}.look-lagoon .budget small{color:rgba(255,255,255,.6)}
+
+/* ---------- layout: glass over the map ---------- */
+.look-lagoon main{margin-top:-10px}
+.look-lagoon #stage{background:transparent}
+.look-lagoon #rail,.look-lagoon #drawer,.look-lagoon #mapAct,.look-lagoon #float,.look-lagoon #hint{background:var(--glass);backdrop-filter:var(--blur);-webkit-backdrop-filter:var(--blur);
+  box-shadow:inset 0 0 0 1px var(--glass-line),var(--gsh);border:0}
+.look-lagoon #rail button{border-radius:12px;color:var(--muted)}
+.look-lagoon #rail button span,.look-lagoon #rail button small{color:#5b7488}
+.look-lagoon #rail button small{font-weight:600}
+.look-lagoon #rail button.on{background:var(--aqua);box-shadow:inset 0 0 0 2px var(--ink),var(--hard)}
+.look-lagoon #rail button.on span,.look-lagoon #rail button.on small{color:var(--ink)}
+.look-lagoon #rail button.on::before{display:none}
+.look-lagoon #drawerHead{border-bottom:1px solid var(--line);padding:12px 10px 10px 16px}
+.look-lagoon #drawerHead b{font-size:17px;font-weight:700}
+.look-lagoon #drawerTitle .ti{color:var(--accent)}
+.look-lagoon #drawerBody{padding:10px 16px 16px;font-size:14px}
+.look-lagoon .x,.look-lagoon .sheethead .back{background:#fff;color:var(--ink);box-shadow:inset 0 0 0 2px var(--ink),2px 2px 0 var(--ink);border-radius:10px}
+.look-lagoon #drawerTab{background:var(--glass);backdrop-filter:var(--blur);border:0;box-shadow:inset 0 0 0 1px var(--glass-line);color:var(--ink)}
+.look-lagoon #drawerTab::before{background:rgba(20,50,74,.25)}
+@media (min-width:900px){
+  .look-lagoon main{padding:16px 14px 14px;gap:14px}
+  .look-lagoon #rail{width:198px;border-radius:20px;padding:14px 10px;gap:6px}
+  .look-lagoon #railTools{gap:6px}
+  .look-lagoon #rail button{flex-direction:row;justify-content:flex-start;gap:11px;min-height:42px;padding:0 12px}
+  .look-lagoon #rail button span{font-size:18px;display:flex}
+  .look-lagoon #rail button small{font-size:14.5px}
+  .look-lagoon #stage{border-radius:20px}
+  .look-lagoon #drawer{border-radius:22px}
+}
+@media (max-width:899px){
+  .look-lagoon main{padding:0}
+  .look-lagoon #rail{border-radius:0;box-shadow:inset 0 1px 0 rgba(255,255,255,.9),0 -1px 0 var(--line);padding:4px 8px}
+  .look-lagoon #rail button{gap:4px}
+  .look-lagoon #rail button.on{background:transparent;box-shadow:none}
+  .look-lagoon #rail button.on span{background:var(--aqua);border-radius:10px;padding:3px 9px;box-shadow:inset 0 0 0 2px var(--ink),2px 2px 0 var(--ink)}
+  .look-lagoon #drawer{left:8px;right:8px;width:auto;max-width:none;bottom:calc(60px + env(safe-area-inset-bottom) + 10px);border-radius:24px}
+  .look-lagoon #drawer.haspeek:not(.collapsed) #sheetExpand,.look-lagoon #drawer.haspeek:not(.collapsed) #sheetSwitch:not([hidden]),.look-lagoon #sheetExtra button{background:var(--glass);backdrop-filter:var(--blur);border:0;color:var(--ink);box-shadow:inset 0 0 0 1px var(--glass-line)}
+  .look-lagoon #sheetExpand i{color:var(--accent)}
+  .look-lagoon #sheetSwitch button.on{background:var(--ink);color:#fff}
+}
+
+/* ---------- buttons: navy edge + hard bottom shadow, only on what you tap ---------- */
+.look-lagoon .btn,.look-lagoon .mk .mk-btn,.look-lagoon .actions button,.look-lagoon .game .gopen,.look-lagoon .un-btns button{background:#fff;color:var(--ink);border:2px solid var(--ink);box-shadow:var(--hard);border-radius:12px;font-weight:700}
+.look-lagoon .btn.primary,.look-lagoon .actions .primary,.look-lagoon .btnrow button.primary,.look-lagoon .wide,.look-lagoon .end,.look-lagoon .mk-btn.pri,.look-lagoon .mk .mk-btn.pri,
+.look-lagoon .mk .mk-plan,.look-lagoon button.pri,.look-lagoon .game .gopen,.look-lagoon .un-btns button.go,.look-lagoon .un-peek .pb.go{background:var(--aqua);color:var(--ink);border:2px solid var(--ink);box-shadow:var(--hard);font-weight:700}
+.look-lagoon .btn:active,.look-lagoon .mk .mk-btn:active,.look-lagoon .mk .mk-plan:active,.look-lagoon #mapAct button:active,.look-lagoon .un-btns button:active{transform:translate(3px,3px);box-shadow:0 0 0 var(--ink)}
+.look-lagoon .btn.link{border:0;box-shadow:none;background:none;color:var(--muted)}
+.look-lagoon .btn.tutbtn{background:#fff}
+.look-lagoon .actions{background:transparent}
+.look-lagoon .btnrow button,.look-lagoon .toggle{border-color:var(--line)}
+/* segmented controls: white track with a navy edge, navy "on" */
+.look-lagoon .seg,.look-lagoon .mk .mk-steps,.look-lagoon .un-mode,.look-lagoon .un-side{background:#fff;border:2px solid var(--ink);box-shadow:var(--hard);border-radius:14px;padding:3px}
+.look-lagoon .seg button,.look-lagoon .mk .mk-steps button,.look-lagoon .un-mode button,.look-lagoon .un-side button{color:var(--muted);font-weight:600;border-radius:10px}
+.look-lagoon .seg button.on,.look-lagoon .mk .mk-steps button.on,.look-lagoon .un-mode button.on{background:var(--ink);color:#fff;box-shadow:none}
+.look-lagoon .un-side button.on.me{background:var(--me);color:#fff}.look-lagoon .un-side button.on.enemy{background:var(--enemy);color:#fff}
+/* quieter tabs inside panels */
+.look-lagoon .mk .mk-ptabs,.look-lagoon .un-sort>div,.look-lagoon .un-bon4{background:transparent;padding:0;gap:6px}
+.look-lagoon .mk .mk-ptabs button,.look-lagoon .un-sort button,.look-lagoon .un-bon4 button{background:rgba(255,255,255,.6);box-shadow:inset 0 0 0 1px var(--line);color:var(--muted);border-radius:10px}
+.look-lagoon .mk .mk-ptabs button.on,.look-lagoon .un-sort button.on,.look-lagoon .un-bon4 button.on{background:var(--ink);color:#fff;box-shadow:none}
+
+/* cards & lists: calm white glass, no edges */
+.look-lagoon .card2,.look-lagoon .urow,.look-lagoon .ugrid button,.look-lagoon .igrid button,.look-lagoon .menu button,.look-lagoon .game,.look-lagoon .chip{background:rgba(255,255,255,.7);border:0;box-shadow:inset 0 0 0 1px var(--line)}
+.look-lagoon .menu button{border-radius:14px}
+.look-lagoon .txt,.look-lagoon .step input{background:#fff;border-color:var(--line)}
+.look-lagoon .starbar{background:rgba(255,255,255,.7);border-bottom:1px solid var(--line)}
+.look-lagoon .starbar .big{background:#fff;box-shadow:inset 0 0 0 1px var(--line)}
+
+/* ---------- map step bar ---------- */
+.look-lagoon #mapAct{border-radius:18px;padding:8px 8px 8px 14px;color:var(--text)}
+.look-lagoon #mapAct .ma-tx small{color:var(--muted)}
+.look-lagoon #mapAct button{border:2px solid var(--ink);box-shadow:var(--hard);border-radius:12px}
+.look-lagoon #mapAct .ma-ok,.look-lagoon #mapAct .ma-next{background:var(--aqua);color:var(--ink)}
+.look-lagoon #mapAct .ma-ok:disabled{background:#e4eef0;color:#8aa3aa;border-color:#b8cdd2;box-shadow:3px 3px 0 #b8cdd2}
+.look-lagoon #mapAct .ma-un,.look-lagoon #mapAct .ma-alt,.look-lagoon #mapAct .ma-mini{background:#fff;color:var(--ink)}
+.look-lagoon #mapAct .ma-undo,.look-lagoon #mapAct .ma-fold{border:0;box-shadow:none;background:transparent;color:var(--muted)}
+.look-lagoon #stage:has(#mapAct:not([hidden])) #hint{display:none}
+.look-lagoon #hint{color:var(--text);border-radius:12px;font-weight:500}
+.look-lagoon #toast{background:var(--ink);color:#fff;font-weight:600}
+
+/* ---------- start card ---------- */
+.look-lagoon #empty .card{background:var(--glass);backdrop-filter:var(--blur);border:0;border-radius:24px;box-shadow:inset 0 0 0 1px var(--glass-line),var(--gsh)}
+.look-lagoon #empty .about[open]{background:rgba(255,255,255,.75)}
+.look-lagoon #empty .about,.look-lagoon #empty .privlink{color:var(--muted)}
+
+/* ---------- sheets ---------- */
+.look-lagoon #sheet{background:rgba(20,50,74,.3)}
+.look-lagoon #sheetBody{background:rgba(255,255,255,.88);backdrop-filter:var(--blur);border-radius:26px 26px 0 0}
+
+/* ---------- Market panel ---------- */
+.look-lagoon .mk .mk-pal{gap:8px}
+.look-lagoon .mk .mk-pal button{background:rgba(255,255,255,.75);border:0;box-shadow:inset 0 0 0 1px var(--line);color:var(--ink);border-radius:14px;min-height:74px;font-weight:600;font-size:11px;letter-spacing:0}
+.look-lagoon .mk .mk-pal button span{height:46px}
+.look-lagoon .mk .mk-pal button .art{width:46px;height:46px}
+.look-lagoon .mk .mk-pal button.on{background:var(--aqua);box-shadow:inset 0 0 0 2px var(--ink),var(--hard);color:var(--ink)}
+.look-lagoon .mk .mk-key{background:rgba(255,255,255,.7);border:0;box-shadow:inset 0 0 0 1px var(--line);border-radius:16px;display:flex;align-items:center;gap:12px;padding:12px 14px}
+.look-lagoon .mk .mk-key .t{flex:1;min-width:0;display:flex;flex-direction:column;gap:3px;color:var(--muted);font-size:13px}
+.look-lagoon .mk .kh{display:flex;align-items:baseline;gap:6px;color:var(--ink);line-height:1}
+.look-lagoon .mk .kh b{font-size:42px;font-weight:700;letter-spacing:-.04em}
+.look-lagoon .mk .kh i{font-style:normal;color:var(--sand);font-size:24px}
+.look-lagoon .mk .kh em{font-style:normal;color:var(--muted);font-size:14px;font-weight:500}
+.look-lagoon .mk .kh .kt{margin-left:auto;align-self:center;font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--ink);background:var(--aqua-soft);border:1.5px solid var(--ink);border-radius:8px;padding:2px 7px}
+.look-lagoon .mk .km b{color:var(--ink);font-weight:700}
+.look-lagoon .mk .mk-warn-u,.look-lagoon .mk .mk-chk{background:rgba(242,165,22,.12);border:0;color:#7a4b00;border-radius:14px}
+.look-lagoon .mk .mk-only button{background:rgba(255,255,255,.7);border:0;box-shadow:inset 0 0 0 1px var(--line);color:var(--ink)}
+.look-lagoon .mk .mk-only button.on{background:var(--ink);color:#fff}
+.look-lagoon .mk .mk-opt{background:rgba(255,255,255,.65);border:0;box-shadow:inset 0 0 0 1px var(--line);color:var(--muted);border-radius:12px}
+.look-lagoon .mk .mk-opt .bx{border:2px solid var(--ink);background:#fff;border-radius:6px}
+.look-lagoon .mk .mk-opt.on{color:var(--ink)}
+.look-lagoon .mk .mk-opt.on .bx{background:var(--aqua);color:var(--ink)}
+.look-lagoon .mk .mk-note{color:var(--muted)}
+.look-lagoon .mk h3{color:var(--ink)}
+
+/* ---------- Units panel ---------- */
+.look-lagoon .un-peek .sd1.me,.look-lagoon .un-peek .sd1.enemy{background:#fff;color:var(--ink);box-shadow:inset 0 0 0 2px var(--ink),2px 2px 0 var(--ink)}
+.look-lagoon .un-card{border:0;background:rgba(255,255,255,.6);box-shadow:inset 0 0 0 1px var(--line);border-radius:16px}
+.look-lagoon .un-pal button{border-radius:12px}
+.look-lagoon .un-pal button.on{background:var(--aqua);box-shadow:inset 0 0 0 2px var(--ink),2px 2px 0 var(--ink)}
+.look-lagoon .un-seqb{background:#fff;border:2px solid var(--ink);box-shadow:var(--hard);color:var(--ink)}
+.look-lagoon .mk .mk-pal{grid-template-columns:repeat(4,minmax(0,1fr))}
+.look-lagoon .mk .mk-pal i{display:none}
+
+/* ---------- line icons instead of emojis (js/lic.js) ---------- */
+.look-lagoon .li{width:1.15em;height:1.15em;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;vertical-align:-.2em;display:inline-block;flex:none}
+.look-lagoon .lix{display:contents}
+.look-lagoon .menu button .li{width:20px;height:20px;color:var(--accent);margin-right:2px}
+.look-lagoon #empty .card>div .li{width:44px;height:44px;color:var(--accent);stroke-width:1.6}
+.look-lagoon #empty .card .btn .li{width:18px;height:18px;margin-right:4px}
+
+/* ---------- panel header: a quiet round button, not a main action ---------- */
+.look-lagoon #drawerHead .x{background:rgba(255,255,255,.7);box-shadow:inset 0 0 0 1px var(--line);border-radius:50%;width:34px;height:34px;color:var(--ink)}
+/* Units: Place / Battle only once (inside the panel) when the panel is open */
+.look-lagoon #drawer:not(.peek) #sheetSwitch{display:none!important}
+
+/* ---------- Costs ---------- */
+.look-lagoon .cs-bar{background:transparent;box-shadow:none;border-bottom:1px solid var(--line)}
+.look-lagoon .cs-rest,.look-lagoon .cs-peek .lf,.look-lagoon .cs-empty,.look-lagoon .cs-st button{background:rgba(255,255,255,.7);box-shadow:inset 0 0 0 1px var(--line)}
+.look-lagoon .cs-rest b,.look-lagoon .cs-peek .lf b{color:var(--ink)}
+.look-lagoon .cs-st input{background:#fff;border-color:var(--line)}
+.look-lagoon .cs-prog{background:rgba(20,50,74,.1)}.look-lagoon .cs-prog i{background:var(--sand)}
+.look-lagoon .cs-tabs{background:transparent;gap:6px;padding:0}
+.look-lagoon .cs-tabs button{background:rgba(255,255,255,.6);box-shadow:inset 0 0 0 1px var(--line);border-radius:10px;padding:6px 0 5px;color:var(--muted)}
+.look-lagoon .cs-tabs button.on{background:var(--ink);color:#fff;box-shadow:none}
+.look-lagoon .cs-tabs button em{background:var(--sand);color:var(--ink)}
+.look-lagoon .cs-peek .pl{background:var(--aqua);color:var(--ink)!important;border:2px solid var(--ink);box-shadow:var(--hard)}
+.look-lagoon .cs-peek .pl.on{background:var(--ink);color:#fff!important}
+.look-lagoon .cs-warn{color:#a15c00}
+.look-lagoon .cs-x{background:rgba(255,255,255,.7);box-shadow:inset 0 0 0 1px var(--line)}
+.look-lagoon .cs-empty big .li{width:30px;height:30px;color:var(--accent)}
+
+/* ---------- Draw ---------- */
+.look-lagoon .dw-shapes button,.look-lagoon .dw-sizes button{background:rgba(255,255,255,.7);border:0;box-shadow:inset 0 0 0 1px var(--line);color:var(--ink)}
+.look-lagoon .dw-shapes button.on,.look-lagoon .dw-sizes button.on{background:var(--aqua);box-shadow:inset 0 0 0 2px var(--ink),var(--hard)}
+.look-lagoon .dw-shapes button.on small,.look-lagoon .dw-sizes button.on small{color:var(--ink)}
+.look-lagoon .dw-shapes .dw-eraser.on{background:#ffd9d9}
+.look-lagoon .dw-colors button::after{box-shadow:0 0 0 2px #fff,0 0 0 3px rgba(20,50,74,.18)}
+.look-lagoon .dw-colors button.on::before{border-color:var(--ink)}
+.look-lagoon .dw-row button{background:#fff;border:2px solid var(--ink);box-shadow:var(--hard);color:var(--ink);font-weight:700}
+.look-lagoon .dw-row button.dw-danger{color:#c8323a}
+.look-lagoon .dw-row button:disabled{border-color:#b8cdd2;box-shadow:3px 3px 0 #b8cdd2;color:#8aa3aa;opacity:1}
+
+/* ---------- Notes ---------- */
+.look-lagoon .nt-in{background:#fff;border-color:var(--line)}
+.look-lagoon .nt-mic{background:var(--aqua);color:var(--ink);border:2px solid var(--ink);box-shadow:var(--hard)}
+.look-lagoon .nt-add{background:#fff;border:2px solid var(--ink);box-shadow:var(--hard);color:var(--ink)}
+.look-lagoon .nt-lang{background:#fff;border-color:var(--line)}
+.look-lagoon .nt-item{background:rgba(255,255,255,.7);box-shadow:inset 0 0 0 1px var(--line)}
+.look-lagoon .nt-item.sel{border-color:var(--accent);background:var(--aqua-soft)}
+.look-lagoon .nt-lbl{color:#a15c00}
+.look-lagoon .nt-btns button{background:#fff;border-color:var(--line)}
+.look-lagoon .nt-msg{color:#7a4b00;background:rgba(242,165,22,.14)}
+.look-lagoon .nt-foot button,.look-lagoon .nt-foot .danger{background:#fff;border:2px solid var(--ink);box-shadow:var(--hard);color:var(--ink);border-radius:12px;font-weight:700}
+.look-lagoon .nt-foot button:disabled{border-color:#b8cdd2;box-shadow:3px 3px 0 #b8cdd2;color:#8aa3aa;opacity:1}
+
+/* ---------- grid detection card ---------- */
+.look-lagoon .calok{background:var(--aqua-soft)}.look-lagoon .calok b{color:var(--ink)}
+.look-lagoon .btnrow button{background:#fff;border:2px solid var(--ink);box-shadow:var(--hard);color:var(--ink);font-weight:700}
+.look-lagoon .btnrow button.primary{background:var(--aqua)}
+
+.look-lagoon .mk .mk-chkh,.look-lagoon .mk .mk-chkh b{color:#7a4b00}
+.look-lagoon .mk .mk-chkg a,.look-lagoon .mk .lnk{color:var(--accent)}
+
+/* ---------- fluency: one easing, soft transitions, things slide in instead of popping ---------- */
+:root.look-lagoon{--ease:cubic-bezier(.2,.8,.2,1)}
+.look-lagoon body{font-variant-numeric:tabular-nums}
+.look-lagoon button{transition:transform .12s var(--ease),box-shadow .12s var(--ease),background-color .2s var(--ease),color .2s var(--ease)}
+.look-lagoon #drawer{transition:transform .32s var(--ease),height .28s var(--ease),box-shadow .3s var(--ease)}
+.look-lagoon #mapAct:not([hidden]){animation:lgIn .3s var(--ease)}
+.look-lagoon #hint:not([hidden]){animation:lgFade .35s var(--ease)}
+.look-lagoon #float:not([hidden]){animation:lgUp .3s var(--ease)}
+.look-lagoon #sheet:not([hidden]){animation:lgFade .2s var(--ease)}
+.look-lagoon #sheet:not([hidden]) #sheetBody{animation:lgUp .34s var(--ease)}
+.look-lagoon #toast{transform:translate(-50%,10px);transition:opacity .2s var(--ease),transform .3s var(--ease)}
+.look-lagoon #toast.show{transform:translate(-50%,0)}
+.look-lagoon #empty:not([hidden]) .card{animation:lgUp .45s var(--ease)}
+@keyframes lgIn{from{opacity:0;transform:translate(-50%,8px)}to{opacity:1;transform:translate(-50%,0)}}
+@keyframes lgFade{from{opacity:0}to{opacity:1}}
+@keyframes lgUp{from{opacity:0;transform:translateY(16px)}to{opacity:1;transform:none}}
+/* a clear focus ring for the keyboard (not for taps) */
+.look-lagoon :focus-visible{outline:3px solid var(--aqua);outline-offset:2px;border-radius:10px}
+.look-lagoon button:focus:not(:focus-visible){outline:none}
+/* thin, quiet scrollbars in the panel */
+.look-lagoon #drawerBody,.look-lagoon #sheetBody{scrollbar-width:thin;scrollbar-color:rgba(20,50,74,.25) transparent}
+.look-lagoon #drawerBody::-webkit-scrollbar{width:6px}.look-lagoon #drawerBody::-webkit-scrollbar-thumb{background:rgba(20,50,74,.22);border-radius:6px}
+/* desktop: a soft hover on things you can tap */
+@media (hover:hover){
+  .look-lagoon #rail button:not(.on):hover,.look-lagoon .menu button:hover,.look-lagoon .mk .mk-pal button:not(.on):hover{background:rgba(255,255,255,.95)}
+  .look-lagoon .btn:hover,.look-lagoon .mk .mk-btn:hover,.look-lagoon #mapAct button:hover{transform:translate(-1px,-1px);box-shadow:4px 4px 0 var(--ink)}
+}
+/* headings and spacing in panels: one rhythm (8 px steps) */
+.look-lagoon #panel h3,.look-lagoon .mk h3{font-size:15px;font-weight:700;letter-spacing:-.01em;margin:18px 0 8px}
+.look-lagoon .menuh{color:var(--muted);letter-spacing:.08em;margin:16px 2px 6px}
+@media (prefers-reduced-motion:reduce){.look-lagoon *{animation:none!important;transition:none!important}}
+
+/* ---------- v2 "teal bracket" (concept A + D, chosen 19 Nov 2026): the faceted band in teal at the top and again at the
+   bottom (phone tab bar) / as the sidebar (desktop); the active tool is a white game piece with a navy edge ---------- */
+@media (max-width:899px){
+.look-lagoon #rail{background:#2a6f9e;box-shadow:none;clip-path:polygon(0 14%,28% 0,60% 16%,100% 2%,100% 100%,0 100%);height:calc(70px + env(safe-area-inset-bottom));padding-top:12px;position:relative}
+.look-lagoon #rail::after{content:'';position:absolute;inset:0;pointer-events:none;background:linear-gradient(62deg,rgba(143,205,238,.45) 0 30%,transparent 30% 58%,rgba(255,255,255,.07) 58% 100%)}
+.look-lagoon #rail button span,.look-lagoon #rail button small{color:rgba(255,255,255,.62)}
+.look-lagoon #rail button.on small{color:#fff}
+.look-lagoon #rail button.on span{color:#14324a;box-shadow:inset 0 0 0 2px #fff,2px 2px 0 rgba(0,0,0,.35)}
+.look-lagoon #drawer{bottom:calc(70px + env(safe-area-inset-bottom) + 8px)}}
+@media (min-width:900px){
+.look-lagoon #rail{background:#2a6f9e;box-shadow:0 12px 34px rgba(11,133,133,.3);position:relative;overflow:hidden}
+.look-lagoon #rail::after{content:'';position:absolute;inset:0;pointer-events:none;background:linear-gradient(160deg,rgba(255,255,255,.07) 0 22%,transparent 22% 70%,rgba(143,205,238,.4) 70% 100%)}
+.look-lagoon #rail button span,.look-lagoon #rail button small{color:rgba(255,255,255,.66)}
+.look-lagoon #rail button:not(.on):hover{background:rgba(255,255,255,.08)}
+.look-lagoon #rail button.on{background:#fff;box-shadow:inset 0 0 0 2px #14324a,3px 3px 0 rgba(0,0,0,.35)}
+.look-lagoon #rail button.on span,.look-lagoon #rail button.on small{color:#14324a}}
+.look-lagoon header{background:#2a6f9e}
+.look-lagoon header::after{background:linear-gradient(118deg,rgba(255,255,255,.14) 0 34%,transparent 34% 61%,rgba(143,205,238,.45) 61% 100%)}
+.look-lagoon .budget{background:rgba(20,50,74,.28)}
+.look-lagoon .hbtn{background:rgba(20,50,74,.22)}
+.look-lagoon .seg button.on,.look-lagoon .mk .mk-steps button.on,.look-lagoon .un-mode button.on,.look-lagoon .mk .mk-ptabs button.on{background:#2a6f9e}
+@media (max-width:899px){.look-lagoon #rail button.on span{background:#fff;color:#2a6f9e;box-shadow:inset 0 0 0 2px #14324a,2px 2px 0 rgba(0,0,0,.3)}}
+
+/* ---------- v3 "teal light" (concept T1, 19 Nov 2026): the same faceted bands top and bottom, but as light teal-tinted
+   glass – facets only hinted, dark text, the active tool an aqua game piece ---------- */
+/* T1 teal light: the bands as light teal glass, facets only hinted, dark text */
+.look-lagoon header{background:linear-gradient(90deg,#e4f5f3 0%,#d3ecea 100%);color:#14324a}
+.look-lagoon header::after{background:linear-gradient(118deg,rgba(255,255,255,.55) 0 34%,transparent 34% 61%,rgba(47,127,184,.13) 61% 100%)}
+.look-lagoon header h1{color:#14324a}
+.look-lagoon .budget{background:rgba(255,255,255,.7);color:#14324a;box-shadow:inset 0 0 0 1px rgba(20,50,74,.1)}
+.look-lagoon .budget b{color:#d98e04}.look-lagoon .budget small{color:#5b7488}
+.look-lagoon .hbtn{background:rgba(255,255,255,.7);color:#14324a;box-shadow:inset 0 0 0 1px rgba(20,50,74,.1)}
+.look-lagoon .seg button.on,.look-lagoon .mk .mk-steps button.on,.look-lagoon .un-mode button.on,.look-lagoon .mk .mk-ptabs button.on{background:#14324a}
+@media (max-width:899px){
+  .look-lagoon #rail{background:linear-gradient(90deg,#d3ecea 0%,#e4f5f3 100%)}
+  .look-lagoon #rail::after{background:linear-gradient(62deg,rgba(47,127,184,.12) 0 30%,transparent 30% 58%,rgba(255,255,255,.5) 58% 100%)}
+  .look-lagoon #rail button span,.look-lagoon #rail button small{color:#5b7488}
+  .look-lagoon #rail button.on small{color:#14324a}
+  .look-lagoon #rail button.on span{background:#8fcdee;color:#14324a;box-shadow:inset 0 0 0 2px #14324a,2px 2px 0 #14324a}
+}
+@media (min-width:900px){
+  .look-lagoon #rail{background:linear-gradient(180deg,#e4f5f3 0%,#d3ecea 100%);box-shadow:inset 0 0 0 1px rgba(255,255,255,.8),0 12px 34px rgba(20,50,74,.12)}
+  .look-lagoon #rail::after{background:linear-gradient(160deg,rgba(255,255,255,.5) 0 22%,transparent 22% 70%,rgba(47,127,184,.12) 70% 100%)}
+  .look-lagoon #rail button span,.look-lagoon #rail button small{color:#5b7488}
+  .look-lagoon #rail button:not(.on):hover{background:rgba(255,255,255,.6)}
+  .look-lagoon #rail button.on{background:#8fcdee;box-shadow:inset 0 0 0 2px #14324a,3px 3px 0 #14324a}
+  .look-lagoon #rail button.on span,.look-lagoon #rail button.on small{color:#14324a}
+}
+
+/* ---------- v4 bands in the user's sky blue (19 Nov 2026): #66acd4 → #5b9ec6, white text, facets as soft light ---------- */
+.look-lagoon header{background:linear-gradient(180deg,#66acd4 0%,#5b9ec6 100%);color:#fff}
+.look-lagoon header::after{background:linear-gradient(118deg,rgba(255,255,255,.14) 0 34%,transparent 34% 61%,rgba(255,255,255,.1) 61% 100%)}
+.look-lagoon header h1{color:#fff;text-shadow:0 1px 4px rgba(20,50,74,.18)}
+.look-lagoon .budget{background:rgba(255,255,255,.2);color:#fff;box-shadow:inset 0 0 0 1px rgba(255,255,255,.3)}
+.look-lagoon .budget b{color:#fff1c2}.look-lagoon .budget small{color:rgba(255,255,255,.75)}
+.look-lagoon .hbtn{background:rgba(255,255,255,.18);color:#fff;box-shadow:inset 0 0 0 1px rgba(255,255,255,.28)}
+@media (max-width:899px){
+  .look-lagoon #rail{background:linear-gradient(180deg,#66acd4 0%,#5b9ec6 100%)}
+  .look-lagoon #rail::after{background:linear-gradient(62deg,rgba(255,255,255,.12) 0 30%,transparent 30% 58%,rgba(255,255,255,.08) 58% 100%)}
+  .look-lagoon #rail button span,.look-lagoon #rail button small{color:rgba(255,255,255,.78)}
+  .look-lagoon #rail button.on small{color:#fff}
+  .look-lagoon #rail button.on span{background:#fff;color:#2f7fb8;box-shadow:inset 0 0 0 2px #14324a,2px 2px 0 #14324a}
+}
+@media (min-width:900px){
+  .look-lagoon #rail{background:linear-gradient(180deg,#66acd4 0%,#5b9ec6 100%);box-shadow:0 12px 34px rgba(64,120,170,.25)}
+  .look-lagoon #rail::after{background:linear-gradient(160deg,rgba(255,255,255,.14) 0 22%,transparent 22% 70%,rgba(255,255,255,.08) 70% 100%)}
+  .look-lagoon #rail button span,.look-lagoon #rail button small{color:rgba(255,255,255,.82)}
+  .look-lagoon #rail button:not(.on):hover{background:rgba(255,255,255,.14)}
+  .look-lagoon #rail button.on{background:#fff;box-shadow:inset 0 0 0 2px #14324a,3px 3px 0 #14324a}
+  .look-lagoon #rail button.on span,.look-lagoon #rail button.on small{color:#14324a}
+}

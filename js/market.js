@@ -949,7 +949,7 @@
   const PAL_ROWS = [['field', 'forest', 'crop', 'fruit', 'mountain', 'ore', 'water'], ['lumber', 'sawmill', 'farm', 'windmill', 'mine', 'forge', 'market'],
     ['city', 'enemy', 'unit', 'space', 'cloud', 'monument']];
   // v50 the brushes behind three tabs – only one group open at a time
-  const PAL_TABS = [['ter', '🟩', 'Terrain'], ['bld', '🏠', 'Buildings'], ['oth', '⋯', 'Other']];
+  const PAL_TABS = [['ter', '', 'Terrain'], ['bld', '', 'Buildings'], ['oth', '', 'Other']];
   const palTabOf = id => (PAL_ROWS[1].indexOf(id) >= 0 ? 'bld' : PAL_ROWS[2].indexOf(id) >= 0 ? 'oth' : 'ter');
   const BRUSH_LABEL = { field: 'Empty', forest: 'Forest', mountain: 'Mountain', water: 'Water', space: 'Space', cloud: 'Cloud', monument: 'Monument', city: 'City', crop: 'Crop', ore: 'Metal', fruit: 'Fruit', enemy: 'Enemy', unit: 'Unit',
     farm: 'Farm', mine: 'Mine', lumber: 'Lumber', windmill: 'Windmill', forge: 'Forge', sawmill: 'Sawmill', market: 'Market' };
@@ -1634,7 +1634,7 @@
       let h = '<div class="gw-menu"><div class="gw-mh"><b>🔬 Which techs do you have?</b><button class="lnk" data-a="techMenu">close ▴</button></div><div class="gw-pick">';
       h += TECH_PICK.map(id => { const on = owned.has(id); return `<button class="${on ? 'on' : ''}" data-tech="${id}" style="--cc:${on ? '#06d6a0' : '#5a6488'}" aria-pressed="${on}"><span class="bx">${on ? '✓' : ''}</span>${esc(techName(id))}</button>`; }).join('');
       h += '</div>';
-      h += cand.length ? `<button class="mk-btn pri" data-a="tech">▶ Start</button>`
+      h += cand.length ? `<button class="mk-btn pri" data-a="tech">Start</button>`
         : '<div class="mk-note">You have every tech the Markets need.</div>';
       return h + '</div>';
     }
@@ -1746,7 +1746,7 @@
       h += ringWarn + t3Btn();
       h += `<button class="mk-opt wide${qk ? ' on' : ''}" data-a="growQuick" aria-pressed="${qk}" style="margin:0 0 6px;width:100%"><span class="bx">${qk ? '✓' : ''}</span><span>⚡ Quick check<small>less exact: ★ can be 1–3 too low</small></span></button>`;
       // v41: no time estimate before the start (it scared people off) – the progress bar shows it while checking
-      h += n ? `<button class="mk-btn pri" data-a="growth">▶ Start</button>`
+      h += n ? `<button class="mk-btn pri" data-a="growth">Start</button>`
         : '<button class="mk-btn" disabled>Pick at least one city</button>';
       return h + '</div>';
     }
@@ -2697,8 +2697,10 @@
     if (!p) return '<b>No income possible</b> <small>– check the tiles and the options below</small>';
     // v49: what the Markets could earn at most (8 each) – shows how close the plan gets
     const mk = plural(p.marketCount, 'market', 'markets') + (p.marketCount ? ` <small>(max ${p.marketCount * CAP})</small>` : '');
-    if (!p.actions) return `${TAG[p.tag]}: <b class="g">${p.income} ★/turn</b> · ${mk} <small>– all built already</small>`;
-    return `${TAG[p.tag]}: <b class="g">${p.income} ★/turn</b> · ${mk} · cost <b>${p.cost}&nbsp;★</b> · ${plural(p.actions, 'step', 'steps')}`;
+    // Daylight: the result as one big number, the details as a quiet line below
+    const hero = `<span class="kh"><b>${p.income}</b><i>★</i><em>per turn</em><small class="kt">${TAG[p.tag]}</small></span>`;
+    if (!p.actions) return hero + `<span class="km">${mk} · all built already</span>`;
+    return hero + `<span class="km">cost <b>${p.cost} ★</b> · ${plural(p.actions, 'step', 'steps')} · ${mk}</span>`;
   }
 
   function renderPanel(el) {
@@ -2726,14 +2728,14 @@
     } else if (ui.step === 2) {
       // v49: while checking a tile the palette shows what that tile has (and its brushes change it)
       const chkX = ui.chk ? cellAt(ui.chk.c, ui.chk.r) : null, bOn = id => (chkX ? (chkX.stored || id === 'unit' || id === 'enemy' ? brushOn(id, chkX) : id === (chkX.cloud ? 'cloud' : chkX.terrain) || chkX.res.indexOf(id) >= 0 || chkX.bld === id) : ui.brush === id);
-      const bt = id => `<button data-brush="${id}" class="${bOn(id) ? 'on' : ''} ${PAL_ROWS[2].indexOf(id) >= 0 ? 'o' + (id === 'enemy' ? ' en' : '') : TER_B.indexOf(id) >= 0 ? 't' : RES_B.indexOf(id) >= 0 ? 'rs' : 'b'}" title="${esc(nm(id))}"><span>${iconHtml(id, 21)}</span>${BRUSH_LABEL[id]}</button>`;
+      const bt = id => `<button data-brush="${id}" class="${bOn(id) ? 'on' : ''} ${PAL_ROWS[2].indexOf(id) >= 0 ? 'o' + (id === 'enemy' ? ' en' : '') : TER_B.indexOf(id) >= 0 ? 't' : RES_B.indexOf(id) >= 0 ? 'rs' : 'b'}" title="${esc(nm(id))}"><span>${PP.look === 'lagoon' && PP.art && PP.art.has(id) ? PP.art.svg(id, 46) : iconHtml(id, 21)}</span>${BRUSH_LABEL[id]}</button>`;
       // v33: brushes grouped by what belongs together (16 = two rows of 8), the Plan button as a wide row below
       const su = S().ui || (S().ui = {}), tab = PAL_TABS.some(t => t[0] === su.palTab) ? su.palTab : palTabOf(ui.brush), row = PAL_ROWS[PAL_TABS.findIndex(t => t[0] === tab)];
       // which tab has the active brush (a dot when it is not the open one)
       const act = ui.brush ? palTabOf(ui.brush) : null;
       h += `<div data-peek="tiles:${tab}">${stepsHtml()}<div class="mk-ptabs" role="tablist">` + PAL_TABS.map(t => `<button data-paltab="${t[0]}" role="tab" aria-selected="${t[0] === tab}" class="${t[0] === tab ? 'on' : ''}">${t[1]} ${t[2]}${act === t[0] && t[0] !== tab ? '<i></i>' : ''}</button>`).join('') + '</div>' +
         `<div class="mk-pal">` + row.map(bt).join('') + '<i></i>'.repeat(Math.max(0, 7 - row.length)) + '</div>' +
-        '<button class="mk-btn pri mk-plan" data-step="3">▶ Show the plan</button></div>' +
+        '<button class="mk-btn pri mk-plan" data-step="3">Show the plan</button></div>' +
         // v37: the explanation is below the collapsed panel (Less shows only up to "Show the plan")
         chkPanelHtml();
       h += citiesHtml();
@@ -2752,18 +2754,18 @@
         (p && p.actions ? `<button class="mk-btn ${added ? 'ok' : 'pri'}" data-a="${added ? 'fromPlan' : 'toPlan'}">${added ? '✓ In plan' : '➕ Cost plan'}</button>` : '') + '</div>';
       // v49: the plan builds on tiles the detection is unsure about → say so right at the top (they have a ? on the map)
       const pu = p ? planUnsure(p).size : 0;
-      if (pu) h += `<div class="mk-warn-u">⚠ The plan builds on <b>${plural(pu, 'tile', 'tiles')}</b> the detection is unsure about (<b>?</b> on the map) – <button class="lnk" data-step="2">check them in ②</button></div>`;
+      if (pu) h += `<div class="mk-warn-u">The plan builds on <b>${plural(pu, 'tile', 'tiles')}</b> the detection is unsure about (<b>?</b> on the map) – <button class="lnk" data-step="2">check them in ②</button></div>`;
       // v49: "show only …" (forests to cut down, buildings to destroy, forests to grow, Border Growth) – also on the map bar
       const av = onlyAvail(p), of = onlyOn(p);
-      if (av.length) h += '<div class="mk-only"><span>Show only:</span>' + av.map(f => `<button class="${of === f ? 'on' : ''}" data-only="${f}" aria-pressed="${of === f}">${ONLY[f].ic} ${ONLY[f].on}</button>`).join('') + '</div>';
+      if (av.length) h += '<div class="mk-only"><span>Show only:</span>' + av.map(f => `<button class="${of === f ? 'on' : ''}" data-only="${f}" aria-pressed="${of === f}">${ONLY[f].on}</button>`).join('') + '</div>';
       if (p && !vp) h += altsHtml(res);
       if (p && !vp && !(res && (res.pending || res.altPending))) { const tw = savedTwin(curPlanRaw(res));
-        h += tw ? `<div class="mk-note" style="margin:6px 0 0">📌 This plan is saved as <b>${esc(tw.name)}</b></div>` : `<button class="mk-btn sm" data-a="savePlan" style="margin:6px 0 0">📌 Save this plan to compare</button>`; }
+        h += tw ? `<div class="mk-note" style="margin:6px 0 0">📌 This plan is saved as <b>${esc(tw.name)}</b></div>` : `<button class="mk-btn sm" data-a="savePlan" style="margin:6px 0 0">Save this plan to compare</button>`; }
       h += plansHtml(vp ? (curPlanRaw(res)) : p);
       h += (ui.sel && p ? selLine(p, ui.sel.c, ui.sel.r) : '') + '</div>';
       h += '<h3>Allowed actions</h3><div class="mk-opts">' + OPT_KEYS.map(k => {
         const [ic, lab, sub] = OPT_LABEL[k];
-        return `<button class="mk-opt ${m.opts[k] ? 'on' : ''} ${k === 'produce' ? 'wide' : ''}" data-opt="${k}"><span class="bx">${m.opts[k] ? '✓' : ''}</span><span>${ic} ${lab}${sub ? `<small>${sub}</small>` : ''}</span></button>`;
+        return `<button class="mk-opt ${m.opts[k] ? 'on' : ''} ${k === 'produce' ? 'wide' : ''}" data-opt="${k}"><span class="bx">${m.opts[k] ? '✓' : ''}</span><span>${lab}${sub ? `<small>${sub}</small>` : ''}</span></button>`;
       }).join('') + '</div>';
       h += '<h3>Workshops you can build</h3><div class="mk-opts">' + WS_KEYS.map(k => {
         const it = ITEM(k) || {}, tech = it.tech && PP.TECH && PP.TECH[it.tech] ? PP.TECH[it.tech].name : TECH_OF_WS[k];
@@ -2986,7 +2988,7 @@
   function chkPanelHtml() {
     const l = unsureList(); if (!l.length) return '';
     const by = {}; l.forEach(x => { const t = x.terrain + (x.bld ? '+' + x.bld : ''); (by[t] || (by[t] = [])).push(x); });
-    let h = `<div class="mk-chk"><div class="mk-chkh">⚠ <b>${plural(l.length, 'tile', 'tiles')} with ?</b>${l.some(x => x.inPlan) ? ` · ${l.filter(x => x.inPlan).length} used by the plan` : ''}<button class="mk-btn sm pri" data-a="chkStart">▶ Check one by one</button></div>`;
+    let h = `<div class="mk-chk"><div class="mk-chkh"><b>${plural(l.length, 'tile', 'tiles')} with ?</b>${l.some(x => x.inPlan) ? ` · ${l.filter(x => x.inPlan).length} used by the plan` : ''}<button class="mk-btn sm pri" data-a="chkStart">Check one by one</button></div>`;
     h += Object.keys(by).sort((a, b) => by[b].length - by[a].length).map(t => { const [ter, bl] = t.split('+');
       return `<div class="mk-chkg"><span>${iconHtml(bl || ter, 18)} ${by[t].length} × ${esc(nm(ter))}${bl ? ' + ' + esc(nm(bl)) : ''}?</span><button class="lnk" data-chkshow="${t}">Show</button><button class="lnk" data-chkall="${t}">✓ All correct</button></div>`; }).join('');
     return h + '</div>';
@@ -3001,7 +3003,7 @@
       return `<span class="ma-tx"><small>① Cities</small><br>${plural(n, 'city', 'cities')} selected</span><button class="ma-ok ma-next" data-ma="step" data-to="2">② What’s here ▶</button>`;
     }
     if (ui.step === 2 && !ui.borders) { const nu = unsureList().length;
-      return `<span class="ma-tx"><small>② What’s here</small><br>Mark the tiles, then plan</span>${nu ? `<button class="ma-un" data-ma="chknext" title="Check the tiles with ?">❓ ${nu}</button>` : ''}<button class="ma-ok ma-next" data-ma="step" data-to="3">▶ Plan</button>`; }
+      return `<span class="ma-tx"><small>② What’s here</small><br>Mark the tiles, then plan</span>${nu ? `<button class="ma-un" data-ma="chknext" title="Check the tiles with ?">? ${nu}</button>` : ''}<button class="ma-ok ma-next" data-ma="step" data-to="3">Plan</button>`; }
     return '';
   }
   // v49: the bar can be folded into a small button (it is in the way of the map at times) – S().ui.barMin
@@ -3278,9 +3280,15 @@
     }
     emoji(ctx, ICON[id] || '▪️', x, y, size * 0.86, alpha);
   }
+  // Lagoon look: the dark marker discs become navy glass with a soft aqua glow
+  const GLASS = PP.look === 'lagoon', DARKF = /^rgba\((10,14,30|25,30,55),/;
   function disc(ctx, x, y, rad, fill, stroke, lw, dash) {
     ctx.beginPath(); ctx.arc(x, y, rad, 0, Math.PI * 2);
-    if (fill) { ctx.fillStyle = fill; ctx.fill(); }
+    if (fill && GLASS && DARKF.test(fill)) {
+      ctx.save(); ctx.shadowColor = 'rgba(143,205,238,.65)'; ctx.shadowBlur = Math.max(4, rad * 0.6);
+      ctx.fillStyle = 'rgba(20,50,74,.74)'; ctx.fill(); ctx.restore();
+      ctx.beginPath(); ctx.arc(x, y, rad, 0, Math.PI * 2);
+    } else if (fill) { ctx.fillStyle = fill; ctx.fill(); }
     if (stroke) { ctx.lineWidth = lw || 1.5; ctx.strokeStyle = stroke; if (dash) ctx.setLineDash(dash); ctx.stroke(); ctx.setLineDash([]); }
   }
   function numBadge(ctx, n, x, y, rad, bg, fg) {
@@ -3329,7 +3337,7 @@
       const ord = cw ? [0, 3, 2, 1] : [0, 1, 2, 3];
       ord.forEach((q, i) => (i ? ctx.lineTo(pts[q].x, pts[q].y) : ctx.moveTo(pts[q].x, pts[q].y))); ctx.closePath();
     }
-    ctx.fillStyle = ui.step === 1 ? 'rgba(6,9,22,.42)' : 'rgba(6,9,22,.55)'; ctx.fill('nonzero');
+    ctx.fillStyle = GLASS ? (ui.step === 1 ? 'rgba(20,50,74,.3)' : 'rgba(20,50,74,.4)') : ui.step === 1 ? 'rgba(6,9,22,.42)' : 'rgba(6,9,22,.55)'; ctx.fill('nonzero'); // Lagoon: a lighter navy veil
     if (ui.step === 1 && ui.borders) {
       const ek = editCityK(A), eci = A.cities.find(x => key(x.c, x.r) === ek);
       if (eci) {

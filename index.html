@@ -1,9 +1,9 @@
 <!DOCTYPE html>
-<html lang="en" class="look-dark">
+<html lang="en" class="look-lagoon">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
-<meta name="theme-color" content="#1c2340">
+<meta name="theme-color" content="#66acd4">
 <title>Polytopia Planner – Damage Calculator, Star &amp; Market Planner</title>
 <meta name="description" content="Free fan tool for The Battle of Polytopia: damage &amp; combat calculator, star budget planner and market optimizer – right on your own screenshot. Works on phone and desktop.">
 <link rel="canonical" href="https://polytopiaplanner.com/">
@@ -79,13 +79,13 @@
   @keyframes bootbar{0%{transform:translateX(-100%)}100%{transform:translateX(250%)}}
 </style>
 <link rel="stylesheet" href="css/app.css?v=29">
-<link rel="stylesheet" href="css/app-dark.css?v=1">
-<script>window.PP = window.PP || {}; PP.boardBg = '#010409'; // the space around the map (see css/app-dark.css)</script>
+<link rel="stylesheet" href="css/app-lagoon.css?v=1">
+<script>window.PP = window.PP || {}; PP.look = 'lagoon'; PP.boardBg = 'transparent'; // the look of css/app-lagoon.css; the sky gradient shows around the map</script>
 </head>
 <body>
 <div id="boot" aria-hidden="true"><div class="bc"><img src="icons/icon-192.png" alt=""><span>Polytopia Planner</span><div class="bb"><i></i></div></div></div>
 <header>
-  <h1>🗺️ Polytopia Planner</h1>
+  <h1><svg class="logo" viewBox="0 0 28 28" aria-hidden="true"><path d="M14 2l12 7-12 7L2 9z" fill="#bfe2f5"/><path d="M2 9l12 7v10L2 19z" fill="#5b9ec6"/><path d="M26 9l-12 7v10l12-7z" fill="#2f7fb8"/><path d="M14 4.5l6 3.5-6 3.5L8 8z" fill="#ffc53d"/></svg>Polytopia Planner</h1>
   <button id="budget" class="budget" title="Stars (open Costs)" hidden></button>
   <button id="undoBtn" class="hbtn" title="Undo the last change (Ctrl+Z)" aria-label="Undo the last change" disabled>↶</button>
   <button id="fitBtn" class="hbtn" title="Show whole image" aria-label="Show whole image">⤢</button>
@@ -152,6 +152,8 @@
 <script src="js/ai.js?v=29"></script>
 <script src="js/core.js?v=29"></script>
 <script src="js/icons.js?v=29"></script>
+<script src="js/art.js?v=1"></script>
+<script src="js/lic.js?v=1"></script>
 <script src="js/units.js?v=29"></script>
 <script src="js/cost.js?v=29"></script>
 <script src="js/draw.js?v=29"></script>
