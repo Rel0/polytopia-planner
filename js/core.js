@@ -379,7 +379,7 @@ window.PP = window.PP || {};
   let drawerEl = null;
   let cv, ctx, stage, dpr = 1, cw = 0, ch = 0, img = null, imgUrl = null, needFit = true;
   let hiRes = null; // upscaled + sharpened copy of the screenshot, used when zoomed in
-  let view = { x: 0, y: 0, s: 0.3 };
+  let view = { x: 0, y: 0, s: 0.3 }, fitView = null;
   let rafId = 0;
   let bgFn = null; // v5: background provider (world layer), drawn in image coordinates
   const worldSize = () => (S().board === 'image' && img ? { w: img.naturalWidth, h: img.naturalHeight } : BLANK);
@@ -469,6 +469,7 @@ window.PP = window.PP || {};
     const aw = Math.max(50, cw - 2 * pad), ah = Math.max(50, ch - 2 * pad);
     const s = Math.min(aw / w, ah / h);
     view = { s, x: (cw - w * s) / 2, y: pad + (ah - h * s) / 2 };
+    fitView = { s: view.s, x: view.x, y: view.y, w: cw, h: ch }; // v50: the view as fitted (wake re-fits it after a size change)
     needFit = false; draw();
   }
 
@@ -1948,10 +1949,19 @@ window.PP = window.PP || {};
     const wake = () => {
       wakeT.forEach(clearTimeout);
       wakeT = [0, 250, 800].map(t => setTimeout(() => {
-        try { const r = stage.getBoundingClientRect(); if (r.width && r.height) { cw = 0; resize(); } fitSheet(); placeHint(); } catch (e) { reportError(e, 'wake'); }
+        try {
+          // the whole map was shown (not moved / zoomed since) and the stage changed size: fit it again; otherwise keep the
+          // view – resize() re-creates the canvas, keeps the map centred and redraws
+          const r = stage.getBoundingClientRect(), fitted = hiddenFitted || isFitted();
+          if (r.width && r.height) { resize(); if (fitted && boardReady() && (Math.abs(r.width - fitView.w) > 2 || Math.abs(r.height - fitView.h) > 2)) fit(); }
+          fitSheet(); placeHint();
+        } catch (e) { reportError(e, 'wake'); }
       }, t));
     };
-    document.addEventListener('visibilitychange', () => { if (!document.hidden) wake(); });
+    // whether the whole map was shown, taken when the app goes to the background (on resume the size may already have changed)
+    const isFitted = () => !!fitView && view.s === fitView.s && view.x === fitView.x && view.y === fitView.y;
+    let hiddenFitted = false;
+    document.addEventListener('visibilitychange', () => { if (document.hidden) hiddenFitted = isFitted(); else { wake(); setTimeout(() => { hiddenFitted = false; }, 1000); } });
     window.addEventListener('pageshow', wake);
     window.addEventListener('focus', wake);
     window.addEventListener('orientationchange', wake);
