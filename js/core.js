@@ -1941,6 +1941,20 @@ window.PP = window.PP || {};
     drawerEl.appendChild(sx);
     let rsT = 0;
     window.addEventListener('resize', () => { clearTimeout(rsT); rsT = setTimeout(() => { fitSheet(); placeHint(); }, 60); });
+    // v50: back from the background (tablets, home-screen app): iPadOS may have released the canvas memory and the visible
+    // height settles late – the map stayed half black until a reload. Re-measure, re-create the canvas and redraw (now and
+    // twice more while the viewport settles). Same after the page cache, focus and rotation.
+    let wakeT = [];
+    const wake = () => {
+      wakeT.forEach(clearTimeout);
+      wakeT = [0, 250, 800].map(t => setTimeout(() => {
+        try { const r = stage.getBoundingClientRect(); if (r.width && r.height) { cw = 0; resize(); } fitSheet(); placeHint(); } catch (e) { reportError(e, 'wake'); }
+      }, t));
+    };
+    document.addEventListener('visibilitychange', () => { if (!document.hidden) wake(); });
+    window.addEventListener('pageshow', wake);
+    window.addEventListener('focus', wake);
+    window.addEventListener('orientationchange', wake);
     // re-place hint + canvas after the drawer slid in/out or docked
     drawerEl.addEventListener('transitionend', () => { placeHint(); });
     $('#blankBtn').onclick = setBlank;

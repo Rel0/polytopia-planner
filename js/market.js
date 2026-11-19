@@ -39,6 +39,10 @@
   const BASE = { farm: 'field', mine: 'mountain', lumber: 'forest', windmill: 'field', forge: 'field', sawmill: 'field', market: 'field' };
   const PHASE = { destroy: 0, fruit: 1, plant: 2, clear: 3, burn: 4, farm: 5, mine: 5, lumber: 5, windmill: 6, forge: 6, sawmill: 6, market: 7 };
   const BIG = 10000;
+  // Clear Forest gives +1 ★, but a plan should not cut a forest just for that ★ (players keep the forest – it is a future
+  // Lumber Hut spot – and it is one more step): for the choice between plans the clear counts CLEAR_KEEP ★ more, so a
+  // forest is only cut down when that saves real stars elsewhere or brings more ★/turn (shown costs stay the real ★)
+  const CLEAR_KEEP = 1;
   const FRUIT_POP = 3.5; // v49: ★ value of the +1 population from harvesting fruit (only for choosing between plans)     // w = primary·BIG + secondary (cost & actions)
   const HUGE = 1e9;      // V = income·HUGE − w
   const NB = [[-1, -1], [0, -1], [1, -1], [-1, 0], [1, 0], [-1, 1], [0, 1], [1, 1]];
@@ -147,7 +151,7 @@
     const dOK = canAct.map(a => a && o.destroy);
     // v49: harvesting fruit also gives +1 population – for the choice of tiles it counts FRUIT_POP ★ less (the shown cost
     // stays the real ★), so a building goes on a fruit tile you harvest anyway rather than on a forest you clear
-    const seq = steps => { let cost = 0; for (const s of steps) cost += C[s] - (s === 'fruit' ? FRUIT_POP : 0); return { steps, cost, act: steps.length }; };
+    const seq = steps => { let cost = 0; for (const s of steps) cost += C[s] - (s === 'fruit' ? FRUIT_POP : 0) + (s === 'clear' ? CLEAR_KEEP : 0); return { steps, cost, act: steps.length }; };
     const pField = cells.map((x, i) => { if (!canAct[i]) return null; const p = fieldPath(x, o); return p ? seq(p) : null; });
     const pProd = cells.map((x, i) => {
       const m = {};
@@ -582,7 +586,7 @@
       steps.forEach((s, k) => { spent += s.cost; const r = rank.has(s.i) ? rank.get(s.i) : null; if (r != null && lastOf.get(r) === k && inc.get(r)) { run += inc.get(r); s.incAfter = run; if (firstInc == null) firstInc = spent; } });
       materialize.firstInc = firstInc; }
     let cost = 0; steps.forEach(s => { cost += s.cost; });
-    const wcost = cost - FRUIT_POP * steps.filter(s => s.item === 'fruit').length; // what the search compares
+    const wcost = cost - FRUIT_POP * steps.filter(s => s.item === 'fruit').length + CLEAR_KEEP * steps.filter(s => s.item === 'clear').length; // what the search compares
     const tiles = [];
     cells.forEach((x, i) => { if (stepsAt[i].length) tiles.push(Object.assign(at(i), { item: fin[i], from: cells[i].bld, city: home[i], steps: steps.filter(s => s.i === i) })); });
     const used = ws.filter(w => w.feeds.length || w.isNew);
